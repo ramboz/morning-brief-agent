@@ -77,20 +77,20 @@ async function jiraFetch(path, params = {}) {
   const baseUrl = process.env.JIRA_BASE_URL
   if (!baseUrl) throw new Error('[jira] JIRA_BASE_URL is not set')
 
-  const user = process.env.JIRA_USER
   const token = process.env.JIRA_API_TOKEN
-  if (!user || !token) throw new Error('[jira] JIRA_USER or JIRA_API_TOKEN is not set')
+  if (!token) throw new Error('[jira] JIRA_API_TOKEN is not set')
 
-  const auth = Buffer.from(`${user}:${token}`).toString('base64')
   const url = new URL(`${baseUrl}${path}`)
 
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) url.searchParams.set(k, String(v))
   }
 
+  // JIRA DC PATs are Bearer tokens (not Basic Auth credentials).
+  // See: https://confluence.atlassian.com/enterprise/using-personal-access-tokens-1026032365.html
   const response = await fetch(url.toString(), {
     headers: {
-      'Authorization': `Basic ${auth}`,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
   })
@@ -193,7 +193,7 @@ function mapIssue(issue, reason, baseUrl) {
  * @param {Date} since - Lookback start time (used for fallback display; JQL uses hours from config)
  * @returns {Promise<{ ok: boolean, data?: { issues: object[], truncated: boolean }, error?: string }>}
  */
-export async function fetchJira(since) {
+export async function fetchJira(_since) {
   if (isMock) {
     try {
       const fixture = JSON.parse(await fs.readFile('tests/fixtures/jira.json', 'utf-8'))
@@ -212,22 +212,32 @@ export async function fetchJira(since) {
   const projectClause = `project in (${config.projects.join(', ')})`
 
   try {
-    // Fetch current user's accountId for @mention query
-    let accountId = null
+    // Fetch current user info to build the @mention JQL tag.
+    // DC instances use [~username] syntax; Cloud uses [~accountId:uuid].
+    let mentionTag = null
     try {
       const me = await jiraFetch('/rest/api/2/myself')
-      accountId = me.accountId ?? me.name ?? null
+      if (me.name) {
+        // Self-hosted DC: username-based mention syntax
+        mentionTag = `[~${me.name}]`
+      } else if (me.accountId) {
+        // Atlassian Cloud: accountId-based mention syntax
+        mentionTag = `[~accountId:${me.accountId}]`
+      }
     } catch (err) {
-      console.warn('[jira] Could not fetch user accountId — mention query will be skipped:', err.message)
+      if (err.status === 401) throw err  // propagates to outer catch → auth error
+      console.warn('[jira] Could not fetch user info — mention query will be skipped:', err.message)
     }
 
     const q1 = `${projectClause} AND assignee = currentUser() AND updated >= -${hours}h ORDER BY updated DESC`
 
-    const q2ScriptRunner = `${projectClause} AND assignee != currentUser() AND updated >= -${hours}h AND issueFunction in commented("by currentUser() after -${hours}h") ORDER BY updated DESC`
+    // ScriptRunner JQL: currentUser() works inside issueFunction on DC v9.x, but the
+    // inner `after -Nh` time clause does not. Rely on the outer updated filter instead.
+    const q2ScriptRunner = `${projectClause} AND assignee != currentUser() AND updated >= -${hours}h AND issueFunction in commented("by currentUser()") ORDER BY updated DESC`
     const q2Fallback = `${projectClause} AND assignee != currentUser() AND updated >= -${hours}h AND comment ~ currentUser() ORDER BY updated DESC`
 
-    const q3 = accountId
-      ? `${projectClause} AND comment ~ "[~accountId:${accountId}]" AND updated >= -${hours}h AND assignee != currentUser() ORDER BY updated DESC`
+    const q3 = mentionTag
+      ? `${projectClause} AND comment ~ "${mentionTag}" AND updated >= -${hours}h AND assignee != currentUser() ORDER BY updated DESC`
       : null
 
     const queryPromises = [
@@ -246,10 +256,25 @@ export async function fetchJira(since) {
     ]
 
     if (q3) {
-      queryPromises.push(runJqlQuery(q3).then(r => ({ ...r, reason: 'mentioned' })))
+      queryPromises.push(
+        runJqlQuery(q3)
+          .catch(err => {
+            if (err.status === 400) {
+              return { issues: [], truncated: false }
+            }
+            throw err
+          })
+          .then(r => ({ ...r, reason: 'mentioned' }))
+      )
     }
 
     const results = await Promise.allSettled(queryPromises)
+
+    // If any query was rejected due to auth, surface it immediately
+    const authFailure = results.find(r => r.status === 'rejected' && r.reason?.status === 401)
+    if (authFailure) {
+      return { ok: false, error: 'JIRA auth failed — check JIRA_API_TOKEN in .env' }
+    }
 
     // Deduplicate: assigned > commented > mentioned
     const seen = new Set()
@@ -274,7 +299,7 @@ export async function fetchJira(since) {
     return { ok: true, data: { issues: allIssues, truncated } }
   } catch (err) {
     if (err.status === 401) {
-      return { ok: false, error: 'JIRA auth failed — check JIRA_USER and JIRA_API_TOKEN' }
+      return { ok: false, error: 'JIRA auth failed — check JIRA_API_TOKEN in .env' }
     }
     if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
       return { ok: false, error: 'JIRA unreachable — check JIRA_BASE_URL and VPN' }

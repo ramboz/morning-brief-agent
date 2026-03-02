@@ -7,23 +7,27 @@ Always begin each session with: **"Read CLAUDE.md and specs/00-architecture.md b
 
 ## Phase 1 — Project Scaffold + Auth
 
-**Goal:** Working repo with MSAL auth that can acquire a Graph API token and make one real API call.
+**Goal:** Working repo with full scaffold, stubbed MSAL auth (MS Graph pending admin approval), and the config/ folder pattern in place.
 
 **Deliverables:**
 - `package.json` with correct dependencies, `"type": "module"`, and dev dependencies for commitlint + husky
 - `commitlint.config.js`
 - `.husky/commit-msg` hook
 - `.env.example` with all variables from CLAUDE.md
-- `.gitignore` (includes `.env`, `token.json`, `logs/`, `output/`, `tests/fixtures/`, `slack-sections.json`)
+- `.gitignore` (includes `.env`, `token.json`, `logs/`, `output/`, `tests/fixtures/`, `config/slack.json`)
 - `src/utils/flags.js` — `isDryRun`, `isMock`, `isSaveFixture` helpers
-- `src/auth/msalClient.js` — full MSAL token flow (interactive first run, silent refresh after)
+- `src/auth/msalClient.js` — **stub only**: `acquireToken()` logs "MS Graph pending admin approval" and returns `null`. Full implementation deferred to Phase 6.
 - `src/index.js` — skeleton orchestrator (imports sources, calls `Promise.allSettled`, logs results, writes to log file)
 - `logs/` directory created (gitignored)
 - `output/` directory created (gitignored)
 - `tests/fixtures/` directory created (gitignored)
+- `config/` directory with all example config files committed, actual configs gitignored:
+  - `config/github.example.json`
+  - `config/jira.example.json`
+  - `config/confluence.example.json`
+  - `config/slack.example.json`
 - `scripts/run.bat` — redirects stdout/stderr to `logs/YYYY-MM-DD.log`
-- `slack-sections.example.json` — example config with placeholder section names
-- Proof: `node src/auth/msalClient.js` successfully prints an access token
+- Proof: `node src/index.js --dry-run` runs without errors and prints "Briefing complete" 
 
 **Claude Code Prompt:**
 ```
@@ -43,7 +47,7 @@ Scaffold the morning-briefing Node.js project:
    - Create .husky/commit-msg with: npx --no -- commitlint --edit $1
 
 4. Create .env.example and .gitignore as specified in CLAUDE.md
-   (gitignore must include: .env, token.json, logs/, output/, tests/fixtures/, slack-sections.json)
+   (gitignore must include: .env, token.json, logs/, output/, tests/fixtures/, config/slack.json)
 
 5. Create src/utils/flags.js exporting isDryRun, isMock, isSaveFixture as specified in CLAUDE.md
 
@@ -55,31 +59,30 @@ Scaffold the morning-briefing Node.js project:
      "Another Section": ["#channel-three"]
    }
 
-8. Create src/auth/msalClient.js implementing:
-   - PublicClientApplication using AZURE_CLIENT_ID and AZURE_TENANT_ID from .env
-   - acquireToken() that:
-     a. On first run: opens browser for interactive login, saves refresh token to MSAL_TOKEN_PATH
-     b. On subsequent runs: silently refreshes using saved token
-     c. On silent failure: falls back to interactive, see specs/02-auth.md
-     d. Returns the access token string
-   - Scopes: Mail.Read, Mail.ReadWrite, Mail.Send, Calendars.Read, TeamsActivity.Read,
-     OnlineMeetings.Read, Files.Read.All, offline_access
-   - Respects isMock (skip token acquisition entirely in mock mode)
-   - Standalone runner at bottom
+8. Create src/auth/msalClient.js as a stub:
+   - Export acquireToken() that logs "[auth] MS Graph pending admin approval — skipping" and returns null
+   - Add a TODO comment referencing specs/02-auth.md for the full implementation
+   - Standalone runner at bottom that prints the null result
 
-9. Create src/index.js as a skeleton that:
-   - Loads .env via dotenv
-   - Reads LOG_DIR from env, creates today's log file path
-   - Calls acquireToken() (skipped in mock mode)
-   - Has placeholder Promise.allSettled([]) with a comment for each source
-   - Logs "Briefing complete" with duration at the end
+9. Create the config/ directory with example files (copy from specs):
+   - config/github.example.json  (see specs/08-github.md for schema)
+   - config/jira.example.json    (see specs/06-jira.md for schema)
+   - config/confluence.example.json (see specs/07-confluence.md for schema)
+   - config/slack.example.json   (see specs/04-slack.md for schema)
 
-10. Create scripts/run.bat that:
+10. Create src/index.js as a skeleton that:
+    - Loads .env via dotenv
+    - Reads LOG_DIR from env, creates today's log file path
+    - Has placeholder Promise.allSettled([]) with a comment for each source
+    - Logs "Briefing complete" with duration at the end
+
+11. Create scripts/run.bat that:
     - cd to the project directory
     - Runs: node src/index.js >> logs\YYYY-MM-DD.log 2>&1
     - Uses dynamic date in the log filename
 
 Do not implement any source modules yet.
+Do not implement full MSAL auth yet — that is Phase 6.
 ```
 
 ---
@@ -179,7 +182,7 @@ Update src/index.js to:
 **Spec to write before this phase:** `specs/04-slack.md`
 
 **Deliverables:**
-- `slack-sections.json` example file with placeholder section names
+- `config/slack.json` example file with placeholder section names
 - `src/sources/slack.js`
 - `summarizeSlackMentions()`, `summarizeSlackDMs()`, `summarizeSlackSection()` in `src/ai/summarize.js`
 - Dynamic Slack sections rendered in daily note
@@ -191,13 +194,13 @@ Read CLAUDE.md, specs/00-architecture.md, and specs/04-slack.md before writing a
 
 Implement src/sources/slack.js with:
 
-1. loadSectionsConfig() — reads slack-sections.json, resolves channel names to IDs via
+1. loadSectionsConfig() — reads config/slack.json, resolves channel names to IDs via
    conversations.list, returns { sectionName: [{ id, name }] }
 
 2. fetchSlack(since) — main function that:
    a. Calls auth.test() to get the authenticated user's ID
    b. Fetches mentions via search.messages({ query: '<@userId>', count: 100 })
-   c. Fetches full history for priority channels only (from slack-sections.json)
+   c. Fetches full history for priority channels only (from config/slack.json)
       with 1200ms delay between conversations.history calls to respect rate limits
    d. Fetches DM list and history for DMs with activity since `since`
    e. Counts activity in non-priority channels (no full fetch — just metadata)
@@ -212,7 +215,7 @@ src/ai/summarize.js following the prompt guidance in specs/04-slack.md.
 Update src/output/dailyNote.js to handle dynamic Slack sections:
 - On first run: render all sections with their individual AGENT anchors
 - On re-run: smart merge each section by its anchor
-- Handle variable number of sections from slack-sections.json
+- Handle variable number of sections from config/slack.json
 
 Update src/index.js to include Slack in the Promise.allSettled() call.
 ```
@@ -289,7 +292,7 @@ Update src/index.js and dailyNote.js accordingly.
 
 ---
 
-## Phase 7 — Teams (Activity + Meeting Transcripts)
+## Phase 7 — Action Items + Polish (Activity + Meeting Transcripts)
 
 **Goal:** Add Teams activity feed and yesterday's meeting transcript summaries.
 
@@ -327,7 +330,7 @@ Update src/index.js and dailyNote.js.
 
 ---
 
-## Phase 8 — Action Items Synthesis + Polish
+## Future — Cowork + MCP Migration (Post-CLI)
 
 **Goal:** The final cross-source Action Items synthesis, plus cleanup and Task Scheduler setup.
 
@@ -368,7 +371,7 @@ These specs should be written by you before handing each phase to Claude Code. T
 |---|---|
 | `specs/02-auth.md` | MSAL token storage format, error handling for expired tokens, re-auth flow |
 | `specs/03-outlook.md` | Which Graph API fields to fetch, triage classification criteria, draft format |
-| `specs/04-slack.md` | Token setup, slack-sections.json format, rate limiting strategy, mention detection |
+| `specs/04-slack.md` | Token setup, config/slack.json format, rate limiting strategy, mention detection |
 | `specs/05-teams.md` | Which activity types matter, transcript file format (.vtt parsing), fallback if no transcripts |
 | `specs/06-jira.md` | JQL queries to use, which issue fields matter, comment handling |
 | `specs/07-confluence.md` | Which spaces to watch, page change detection, what counts as "recent" |

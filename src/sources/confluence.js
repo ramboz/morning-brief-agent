@@ -54,20 +54,20 @@ async function confluenceFetch(path, params = {}) {
   const baseUrl = process.env.CONFLUENCE_BASE_URL
   if (!baseUrl) throw new Error('[confluence] CONFLUENCE_BASE_URL is not set')
 
-  const user = process.env.CONFLUENCE_USER
   const token = process.env.CONFLUENCE_API_TOKEN
-  if (!user || !token) throw new Error('[confluence] CONFLUENCE_USER or CONFLUENCE_API_TOKEN is not set')
+  if (!token) throw new Error('[confluence] CONFLUENCE_API_TOKEN is not set')
 
-  const auth = Buffer.from(`${user}:${token}`).toString('base64')
   const url = new URL(`${baseUrl}${path}`)
 
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) url.searchParams.set(k, String(v))
   }
 
+  // Confluence DC PATs are Bearer tokens (not Basic Auth credentials).
+  // See: https://confluence.atlassian.com/enterprise/using-personal-access-tokens-1026032365.html
   const response = await fetch(url.toString(), {
     headers: {
-      'Authorization': `Basic ${auth}`,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
   })
@@ -198,7 +198,7 @@ async function runSpacesIndividually(spaces, hours) {
  * @param {Date} since - Lookback start time (hours derived from config/env)
  * @returns {Promise<{ ok: boolean, data?: { pages: object[], truncated: boolean }, error?: string }>}
  */
-export async function fetchConfluence(since) {
+export async function fetchConfluence(_since) {
   if (isMock) {
     try {
       const fixture = JSON.parse(await fs.readFile('tests/fixtures/confluence.json', 'utf-8'))

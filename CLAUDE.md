@@ -63,7 +63,11 @@ morning-briefing/
 │   │   └── implement-phase.md
 │   └── README.md
 ├── slack-sections.json          # Channel priority config (optionally gitignored)
-├── slack-sections.example.json  # Example config to commit
+├── config/
+│   ├── github.example.json      # Committed — copy to github.json and fill in
+│   ├── jira.example.json        # Committed — copy to jira.json and fill in
+│   ├── confluence.example.json  # Committed — copy to confluence.json and fill in
+│   └── slack.example.json       # Committed — copy to slack.json and fill in
 ├── commitlint.config.js         # Commitlint configuration
 ├── .husky/
 │   └── commit-msg               # Git hook — runs commitlint
@@ -110,8 +114,11 @@ The orchestrator (`index.js`) always uses `Promise.allSettled()` and handles bot
 token.json
 logs/
 output/
-slack-sections.json
 tests/fixtures/
+config/github.json
+config/jira.json
+config/confluence.json
+config/slack.json
 ```
 
 ### Logging
@@ -120,6 +127,15 @@ tests/fixtures/
 - No external logging libraries
 - When running via Task Scheduler, stdout and stderr are redirected to `logs/YYYY-MM-DD.log` by `scripts/run.bat`
 - Log files are gitignored and rotate naturally — one file per day, old files accumulate until manually cleared
+
+### Config File Pattern
+
+Service-specific config lives in `config/{service}.json`. Example files (`config/{service}.example.json`) are committed to the repo. Actual config files are gitignored. Every source module that uses a config file must:
+- Fail clearly with a helpful message if the config file is missing (don't silently use defaults that might be wrong)
+- Validate required fields (e.g. `projects` array for JIRA) before making any API calls
+- Support a `lookback_hours_override` field that overrides the global `LOOKBACK_HOURS` env var
+
+---
 
 ### No Over-Engineering
 This is a personal tool. Prefer:
@@ -168,7 +184,7 @@ export const isSaveFixture = process.argv.includes('--save-fixture')
 ## Environment Variables Reference
 
 ```bash
-# Microsoft / Graph API
+# Microsoft / Graph API (⚠️ deferred — pending admin approval)
 AZURE_CLIENT_ID=
 AZURE_TENANT_ID=
 MSAL_TOKEN_PATH=./token.json
@@ -177,14 +193,17 @@ MSAL_TOKEN_PATH=./token.json
 JIRA_BASE_URL=https://jira.yourcompany.com
 JIRA_USER=your@email.com
 JIRA_API_TOKEN=
+JIRA_CONFIG_PATH=./config/jira.json
 
 # Confluence (self-hosted)
 CONFLUENCE_BASE_URL=https://confluence.yourcompany.com
 CONFLUENCE_USER=your@email.com
 CONFLUENCE_API_TOKEN=
+CONFLUENCE_CONFIG_PATH=./config/confluence.json
 
 # GitHub.com
 GITHUB_COM_TOKEN=
+GITHUB_CONFIG_PATH=./config/github.json
 
 # Corporate GitHub
 GITHUB_CORP_BASE_URL=https://github.yourcompany.com/api/v3
@@ -192,6 +211,7 @@ GITHUB_CORP_TOKEN=
 
 # Slack
 SLACK_USER_TOKEN=xoxp-...
+SLACK_CONFIG_PATH=./config/slack.json
 SLACK_SECTIONS_CONFIG=./slack-sections.json
 
 # Anthropic
