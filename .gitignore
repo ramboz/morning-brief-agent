@@ -1,8 +1,12 @@
 .env
 token.json
 logs/
-output/
+/output/
 slack-sections.json
 tests/fixtures/
 node_modules/
 .DS_Store
+config/jira.json
+config/confluence.json
+config/github.json
+config/slack.json
