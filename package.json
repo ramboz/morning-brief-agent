@@ -1,0 +1,27 @@
+{
+  "name": "morning-brief-agent",
+  "version": "0.1.0",
+  "description": "Personal productivity agent that produces an Obsidian daily briefing note",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dry-run": "node src/index.js --dry-run",
+    "mock": "node src/index.js --mock --dry-run",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@azure/msal-node": "^2.16.2",
+    "@octokit/rest": "^20.1.1",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.7.1",
+    "@commitlint/config-conventional": "^19.7.1",
+    "husky": "^9.1.7"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
