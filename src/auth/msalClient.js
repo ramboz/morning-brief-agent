@@ -1,17 +1,36 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { PublicClientApplication } from '@azure/msal-node'
 import { fileURLToPath } from 'url'
+
+const execAsync = promisify(exec)
+
+/**
+ * Opens a URL in the system default browser, cross-platform.
+ * Required by acquireTokenInteractive — MSAL Node does not open the browser itself.
+ * @param {string} url
+ */
+async function openBrowser(url) {
+  const cmd = process.platform === 'win32'
+    ? `start "" "${url}"`
+    : process.platform === 'darwin'
+    ? `open "${url}"`
+    : `xdg-open "${url}"`
+  await execAsync(cmd)
+}
 
 const SCOPES = [
   'Mail.Read',
   'Mail.ReadWrite',
   'Mail.Send',
   'Calendars.Read',
-  'TeamsActivity.Read',
   'OnlineMeetings.Read',
-  'Files.Read.All',
   'offline_access',
+  // Deferred — require admin consent, only needed for Phase 7 (Teams):
+  // 'TeamsActivity.Read'  — always requires admin consent
+  // 'Files.Read.All'      — requires admin consent; revisit with IT when implementing Teams
 ]
 
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000 // 5 minutes
@@ -19,7 +38,6 @@ const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000 // 5 minutes
 function buildMsalApp() {
   const clientId = process.env.AZURE_CLIENT_ID
   const tenantId = process.env.AZURE_TENANT_ID
-
   if (!clientId) throw new Error('[auth] AZURE_CLIENT_ID is not set in environment')
   if (!tenantId) throw new Error('[auth] AZURE_TENANT_ID is not set in environment')
 
@@ -27,6 +45,10 @@ function buildMsalApp() {
     auth: {
       clientId,
       authority: `https://login.microsoftonline.com/${tenantId}`,
+      // No redirectUri here — acquireTokenInteractive uses MSAL's internal loopback client
+      // which picks a dynamic port (e.g. http://localhost:52341).
+      // Register bare "http://localhost" in Azure portal to allow any port:
+      // App Registration → Authentication → Mobile and desktop applications → http://localhost
     },
   })
 }
@@ -108,9 +130,12 @@ export async function acquireToken() {
     }
   }
 
-  // Interactive login (first run or after silent failure)
+  // Interactive auth code flow with PKCE (first run or after silent failure).
+  // Opens the system browser to the Microsoft login page and captures the redirect
+  // on http://localhost. Requires http://localhost registered as a redirect URI in
+  // Azure portal: App Registration → Authentication → Mobile and desktop applications.
   try {
-    const result = await app.acquireTokenInteractive({ scopes: SCOPES })
+    const result = await app.acquireTokenInteractive({ scopes: SCOPES, openBrowser })
     await saveTokenCache(tokenPath, result)
     return result.accessToken
   } catch (err) {
