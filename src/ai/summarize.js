@@ -136,9 +136,65 @@ export async function summarizeConfluence(pages) {
 }
 
 // ---------------------------------------------------------------------------
+// GitHub
+// ---------------------------------------------------------------------------
+
+const PROMPT_GITHUB = `You are summarizing GitHub notification activity for a morning briefing.
+
+You will receive a JSON array of GitHub notifications (PRs, issues, CI failures, mentions). For each notification, write one concise line describing what happened or what action is needed.
+
+Set "needsAction": true for items that require immediate attention:
+- review_requested: a PR review is waiting on you
+- assign: you were assigned to an issue
+- ci_activity with failures: CI is broken on your PR
+- mention or team_mention: someone is asking for your input
+
+Set "needsAction": false for informational items (your PR has new comments, a PR you're watching was updated, etc.).
+
+Keep summaries short and action-oriented. Examples:
+- "Review requested — adds OAuth2 support to auth flow"
+- "Your PR has new comments from alice"
+- "CI failing: build and test steps failed"
+- "Assigned to bug: login fails on Safari"
+
+Return JSON only. No markdown, no explanation, no preamble.
+
+Output shape:
+[
+  {
+    "id": "12345678",
+    "repo": "myorg/my-repo",
+    "title": "feat: add OAuth2 support",
+    "url": "https://...",
+    "summary": "Review requested — adds OAuth2 support to auth flow",
+    "needsAction": true
+  }
+]`
+
+/**
+ * Summarizes GitHub notifications using the Claude API.
+ * Input is truncated to 30 notifications before sending.
+ * @param {object[]} notifications - Array of enriched notification objects from fetchGithub*()
+ * @param {string} label - Instance label for logging (e.g. 'github.com', 'Corporate GitHub')
+ * @returns {Promise<object[]>}
+ */
+export async function summarizeGithub(notifications, label) {
+  if (!notifications || notifications.length === 0) return []
+
+  const input = notifications.slice(0, 30)
+
+  try {
+    const text = await callClaude(PROMPT_GITHUB, JSON.stringify(input))
+    return JSON.parse(text)
+  } catch (err) {
+    console.error(`[ai] summarizeGithub (${label}) failed:`, err.message)
+    return []
+  }
+}
+
+// ---------------------------------------------------------------------------
 // TODO: Add summarizeEmails() — Phase 3
 // TODO: Add summarizeSlackMentions(), summarizeSlackDMs(), summarizeSlackSection() — Phase 4
-// TODO: Add summarizeGithub() — Phase 6
 // TODO: Add summarizeTeamsActivity(), summarizeMeetings() — Phase 7
 // TODO: Add synthesizeActionItems() — Phase 8
 // ---------------------------------------------------------------------------

@@ -2,12 +2,15 @@ import 'dotenv/config'
 import { isDryRun, isMock } from './utils/flags.js'
 import { fetchJira } from './sources/jira.js'
 import { fetchConfluence } from './sources/confluence.js'
-import { summarizeJira, summarizeConfluence } from './ai/summarize.js'
+import { fetchGithubDotCom } from './sources/githubDotCom.js'
+import { fetchGithubCorp } from './sources/githubCorp.js'
+import { summarizeJira, summarizeConfluence, summarizeGithub } from './ai/summarize.js'
 import {
   writeDailyNote,
   renderJiraTickets,
   renderJiraDiscussions,
   renderConfluence,
+  renderGithub,
 } from './output/dailyNote.js'
 
 const startTime = Date.now()
@@ -27,13 +30,16 @@ if (isMock) console.log('[index] MOCK — reading from tests/fixtures/ instead o
 const [
   jiraResult,
   confluenceResult,
-  // TODO: fetchOutlook  — Phase 2 (pending MS Graph admin approval)
-  // TODO: fetchSlack    — Phase 4
-  // TODO: fetchGithubDotCom, fetchGithubCorp — Phase 6
-  // TODO: fetchTeams    — Phase 7 (pending MS Graph admin approval)
+  githubComResult,
+  githubCorpResult,
+  // TODO: fetchOutlook — Phase 2 (pending MS Graph admin approval)
+  // TODO: fetchSlack   — Phase 4
+  // TODO: fetchTeams   — Phase 7 (pending MS Graph admin approval)
 ] = await Promise.allSettled([
   fetchJira(since),
   fetchConfluence(since),
+  fetchGithubDotCom(since),
+  fetchGithubCorp(since),
 ])
 
 /**
@@ -56,6 +62,8 @@ function getValue(result, label) {
 
 const jira = getValue(jiraResult, 'JIRA')
 const confluence = getValue(confluenceResult, 'Confluence')
+const githubCom = getValue(githubComResult, 'GitHub.com')
+const githubCorp = getValue(githubCorpResult, 'Corporate GitHub')
 
 // ---------------------------------------------------------------------------
 // Step 2: Summarize with Claude API
@@ -63,6 +71,8 @@ const confluence = getValue(confluenceResult, 'Confluence')
 
 let jiraSummary = { actionRequired: [], updates: [] }
 let confluenceSummary = []
+let githubComSummary = []
+let githubCorpSummary = []
 
 if (jira.ok && jira.data.issues.length > 0) {
   console.log(`[index] Summarizing ${jira.data.issues.length} JIRA issues...`)
@@ -76,6 +86,20 @@ if (confluence.ok && confluence.data.pages.length > 0) {
   confluenceSummary = await summarizeConfluence(confluence.data.pages)
 } else if (confluence.ok) {
   console.log('[index] Confluence: no pages in lookback window')
+}
+
+if (githubCom.ok && githubCom.data.notifications.length > 0) {
+  console.log(`[index] Summarizing ${githubCom.data.notifications.length} GitHub.com notifications...`)
+  githubComSummary = await summarizeGithub(githubCom.data.notifications, 'github.com')
+} else if (githubCom.ok) {
+  console.log('[index] GitHub.com: no notifications in lookback window')
+}
+
+if (githubCorp.ok && githubCorp.data.notifications.length > 0) {
+  console.log(`[index] Summarizing ${githubCorp.data.notifications.length} Corporate GitHub notifications...`)
+  githubCorpSummary = await summarizeGithub(githubCorp.data.notifications, 'Corporate GitHub')
+} else if (githubCorp.ok) {
+  console.log('[index] Corporate GitHub: no notifications in lookback window')
 }
 
 // ---------------------------------------------------------------------------
@@ -115,20 +139,42 @@ if (!confluence.ok) {
   }
 }
 
-// Action items: JIRA actionRequired items as a flat checklist
+// GitHub.com
+if (!githubCom.ok) {
+  rendered.github_com = `_GitHub.com unavailable: ${githubCom.error}_`
+} else {
+  rendered.github_com = renderGithub(githubComSummary)
+}
+
+// Corporate GitHub
+if (!githubCorp.ok) {
+  rendered.github_corp = `_Corporate GitHub unavailable: ${githubCorp.error}_`
+} else {
+  rendered.github_corp = renderGithub(githubCorpSummary)
+}
+
+// Action items: JIRA actionRequired + GitHub items needing action
 // TODO: Phase 8 will add synthesizeActionItems() for cross-source synthesis
-const actionItems = jiraSummary.actionRequired.map(item => {
-  const issue = issueMap.get(item.key)
-  const url = issue?.url ?? ''
-  return `- [ ] [JIRA] [${item.key}](${url}) — ${item.summary}`
-})
+const actionItems = [
+  ...jiraSummary.actionRequired.map(item => {
+    const issue = issueMap.get(item.key)
+    const url = issue?.url ?? ''
+    return `- [ ] [JIRA] [${item.key}](${url}) — ${item.summary}`
+  }),
+  ...githubComSummary.filter(n => n.needsAction).map(n =>
+    `- [ ] [GitHub] [${n.title}](${n.url}) — ${n.summary}`
+  ),
+  ...githubCorpSummary.filter(n => n.needsAction).map(n =>
+    `- [ ] [GitHub Corp] [${n.title}](${n.url}) — ${n.summary}`
+  ),
+]
 rendered.action_items = actionItems.length > 0 ? actionItems.join('\n') : '_Nothing to report._'
 
 // ---------------------------------------------------------------------------
 // Step 5: Write the daily note
 // ---------------------------------------------------------------------------
 
-const sources = [jira, confluence].filter(r => r.ok).length
+const sources = [jira, confluence, githubCom, githubCorp].filter(r => r.ok).length
 const items = actionItems.length
 
 const result = await writeDailyNote(rendered, { sources, items })
