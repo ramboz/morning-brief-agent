@@ -1,5 +1,13 @@
 {
-  "Engineering": ["#eng-general", "#eng-backend", "#incidents", "#deployments"],
-  "Product": ["#product", "#roadmap", "#design-feedback"],
-  "Company": ["#general", "#announcements"]
+  "channels": [
+    "#eng-general",
+    "#eng-backend",
+    "#incidents",
+    "#deployments",
+    "#product",
+    "#roadmap",
+    "#design-feedback",
+    "#general",
+    "#announcements"
+  ]
 }

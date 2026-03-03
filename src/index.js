@@ -1,11 +1,11 @@
 import 'dotenv/config'
-import { isDryRun, isMock, isDebug, debug } from './utils/flags.js'
+import { isDryRun, isMock, isDebug, debug, lookbackHours, aiModel } from './utils/flags.js'
 import { fetchJira } from './sources/jira.js'
 import { fetchConfluence } from './sources/confluence.js'
 import { fetchGithubDotCom } from './sources/githubDotCom.js'
 import { fetchGithubCorp } from './sources/githubCorp.js'
 import { fetchSlack } from './sources/slack.js'
-import { summarizeJira, summarizeConfluence, summarizeGithub, summarizeSlackMentions, summarizeSlackThreads, summarizeSlackDMs, summarizeSlackSection } from './ai/summarize.js'
+import { summarizeJira, summarizeConfluence, summarizeGithub, summarizeSlackMentions, summarizeSlackThreads, summarizeSlackDMs, summarizeSlackChannels } from './ai/summarize.js'
 import {
   writeDailyNote,
   renderJiraTickets,
@@ -15,21 +15,20 @@ import {
   renderSlackMentions,
   renderSlackThreads,
   renderSlackDMs,
-  renderSlackSections,
-  renderSlackSection,
+  renderSlackChannels,
   renderSlackOther,
 } from './output/dailyNote.js'
 
 const startTime = Date.now()
 
-const since = new Date(
-  Date.now() - parseInt(process.env.LOOKBACK_HOURS ?? '24') * 60 * 60 * 1000
-)
+const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
 
-console.log(`[index] Morning briefing started (lookback: ${process.env.LOOKBACK_HOURS ?? 24}h)`)
+const lookbackLabel = lookbackHours >= 24 ? `${lookbackHours / 24}d` : `${lookbackHours}h`
+console.log(`[index] Morning briefing started (lookback: ${lookbackLabel})`)
 if (isDryRun) console.log('[index] DRY RUN — output goes to ./output/, no vault writes')
 if (isMock) console.log('[index] MOCK — reading from tests/fixtures/ instead of live APIs')
 if (isDebug) console.log('[index]:debug Debug logging enabled')
+if (aiModel) console.log(`[index] AI model override: ${aiModel}`)
 
 // ---------------------------------------------------------------------------
 // Step 1: Fetch all sources in parallel
@@ -91,7 +90,7 @@ let githubCorpSummary = []
 let slackMentionsSummary = []
 let slackThreadsSummary = []
 let slackDMsSummary = []
-const slackSectionSummaries = {} // { sectionName: channelSummaries[] }
+let slackChannelsSummary = []
 
 if (jira.ok && jira.data.issues.length > 0) {
   console.log(`[index] Summarizing ${jira.data.issues.length} JIRA issues...`)
@@ -148,14 +147,11 @@ if (slack.ok) {
     slackDMsSummary = await summarizeSlackDMs(slack.data.directMessages)
     debug('[index]', `Slack DMs summarization done in ${Date.now() - t}ms`)
   }
-  for (const [sectionName, sectionData] of Object.entries(slack.data.sections)) {
-    const channelsWithMessages = sectionData.channels.filter(ch => ch.messages.length > 0)
-    if (channelsWithMessages.length > 0) {
-      console.log(`[index] Summarizing Slack section: ${sectionName}...`)
-      const t = Date.now()
-      slackSectionSummaries[sectionName] = await summarizeSlackSection(sectionName, sectionData.channels)
-      debug('[index]', `Slack section "${sectionName}" summarization done in ${Date.now() - t}ms`)
-    }
+  if (slack.data.channels.some(ch => ch.messages.length > 0)) {
+    console.log(`[index] Summarizing ${slack.data.channels.length} Slack priority channels...`)
+    const t = Date.now()
+    slackChannelsSummary = await summarizeSlackChannels(slack.data.channels)
+    debug('[index]', `Slack channels summarization done in ${Date.now() - t}ms`)
   }
 }
 
@@ -214,18 +210,14 @@ if (!githubCorp.ok) {
 if (!slack.ok) {
   rendered.slack_mentions = `_Slack unavailable: ${slack.error}_`
   rendered.slack_dms = ''
-  rendered.slack_sections_dynamic = ''
+  rendered.slack_channels = ''
   rendered.slack_other = ''
 } else {
   rendered.slack_mentions = renderSlackMentions(slackMentionsSummary)
   rendered.slack_threads = renderSlackThreads(slackThreadsSummary)
   rendered.slack_dms = renderSlackDMs(slackDMsSummary)
-  rendered.slack_sections_dynamic = renderSlackSections(slackSectionSummaries)
+  rendered.slack_channels = renderSlackChannels(slackChannelsSummary)
   rendered.slack_other = renderSlackOther(slack.data.otherChannelsActivity)
-  // Add individual section keys for smart-merge on re-runs
-  for (const [sectionName, channels] of Object.entries(slackSectionSummaries)) {
-    rendered[`slack_section_${sectionName}`] = renderSlackSection(channels)
-  }
 }
 
 // Action items: JIRA actionRequired + GitHub items needing action

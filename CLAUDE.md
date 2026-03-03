@@ -43,15 +43,19 @@ morning-briefing/
 │   │   └── msalClient.js        # MSAL token acquisition + refresh
 │   ├── sources/
 │   │   ├── outlook.js           # Mail + drafts via Graph API
+│   │   ├── slack.js             # Slack mentions, DMs, priority channels
 │   │   ├── teams.js             # Activity feed + transcripts via SharePoint
 │   │   ├── jira.js              # Self-hosted JIRA REST API v2
 │   │   ├── confluence.js        # Self-hosted Confluence REST API
 │   │   ├── githubDotCom.js      # github.com notifications via Octokit
-│   │   └── githubCorp.js        # Corporate GitHub notifications via Octokit
+│   │   ├── githubCorp.js        # Corporate GitHub notifications via Octokit
+│   │   └── githubShared.js      # Shared GitHub fetch/filter/enrich logic
 │   ├── ai/
-│   │   └── summarize.js         # All Claude API calls live here
+│   │   └── summarize.js         # All AI summarization calls (claude-cli or openai)
 │   ├── output/
 │   │   └── dailyNote.js         # Assembles + writes Obsidian daily note
+│   ├── utils/
+│   │   └── flags.js             # CLI flags, debug helper, lookback calculation
 │   └── index.js                 # Orchestrator — entry point
 ├── tests/
 │   └── fixtures/                # Saved API responses for offline/mock testing
@@ -64,7 +68,6 @@ morning-briefing/
 │   ├── skills/
 │   │   └── implement-phase.md
 │   └── README.md
-├── slack-sections.json          # Channel priority config (optionally gitignored)
 ├── config/
 │   ├── github.example.json      # Committed — copy to github.json and fill in
 │   ├── jira.example.json        # Committed — copy to jira.json and fill in
@@ -126,6 +129,8 @@ config/slack.json
 ### Logging
 - Use `console.error('[module]', ...)` for errors
 - Use `console.log('[module]', ...)` for progress
+- Use `debug('[module]', ...)` from `src/utils/flags.js` for verbose debug output (only shows when `--debug` flag is set)
+- Debug logs use the convention `[module]:debug message` and include pagination progress, query timings, item counts, and API call details
 - No external logging libraries
 - When running via Task Scheduler, stdout and stderr are redirected to `logs/YYYY-MM-DD.log` by `scripts/run.bat`
 - Log files are gitignored and rotate naturally — one file per day, old files accumulate until manually cleared
@@ -148,15 +153,18 @@ This is a personal tool. Prefer:
 
 ---
 
-## Dry-Run Mode
+## CLI Flags
 
 The script supports the following flags:
 
 ```bash
-node src/index.js                        # Normal run
-node src/index.js --dry-run              # No writes, output to ./output/
-node src/index.js --mock                 # Use fixture files, skip live APIs
-node src/index.js --mock --dry-run       # Full offline test — no API calls, no writes
+node src/index.js                          # Normal run
+node src/index.js --dry-run                # No writes, output to ./output/
+node src/index.js --mock                   # Use fixture files, skip live APIs
+node src/index.js --mock --dry-run         # Full offline test — no API calls, no writes
+node src/index.js --debug                  # Verbose debug logging for all sources
+node src/index.js --days 3                 # Look back 3 days instead of default 24h
+node src/index.js --model haiku            # Use a specific Claude model for summarization
 ```
 
 ### --dry-run
@@ -171,12 +179,29 @@ node src/index.js --mock --dry-run       # Full offline test — no API calls, n
 - Summarization and output still run normally
 - Always combine with `--dry-run` unless you want to write to the vault with fixture data
 
-### Flag helpers (export from a shared utils file)
+### --debug
+- Enables verbose debug logging for all source modules
+- Shows pagination progress, query timings, item counts, and AI call details
+- Useful for diagnosing slow runs or API issues
+
+### --days N
+- Overrides `LOOKBACK_HOURS` for this run
+- Useful for Monday mornings (`--days 3`) or returning from PTO (`--days 14`)
+- Supports `--days 3` (space) and `--days=3` (equals) syntax
+
+### --model \<name\>
+- Passes `--model <name>` to the Claude CLI backend (e.g. `--model haiku` for faster summarization)
+- Ignored when `AI_BACKEND=openai`
+
+### Flag helpers (src/utils/flags.js)
 ```js
-// src/utils/flags.js
 export const isDryRun = process.argv.includes('--dry-run')
 export const isMock = process.argv.includes('--mock')
 export const isSaveFixture = process.argv.includes('--save-fixture')
+export const isDebug = process.argv.includes('--debug')
+export const lookbackHours = /* --days flag > LOOKBACK_HOURS env > 24h default */
+export const aiModel = /* --model flag, null if not set */
+export function debug(label, ...args) { /* no-op unless --debug */ }
 ```
 
 `isDryRun` and `isMock` must be checked before **every** write operation and API call respectively.
@@ -191,15 +216,13 @@ AZURE_CLIENT_ID=
 AZURE_TENANT_ID=
 MSAL_TOKEN_PATH=./token.json
 
-# JIRA (self-hosted)
+# JIRA (self-hosted DC — PAT used as Bearer token)
 JIRA_BASE_URL=https://jira.yourcompany.com
-JIRA_USER=your@email.com
 JIRA_API_TOKEN=
 JIRA_CONFIG_PATH=./config/jira.json
 
-# Confluence (self-hosted)
+# Confluence (self-hosted DC — PAT used as Bearer token)
 CONFLUENCE_BASE_URL=https://confluence.yourcompany.com
-CONFLUENCE_USER=your@email.com
 CONFLUENCE_API_TOKEN=
 CONFLUENCE_CONFIG_PATH=./config/confluence.json
 
@@ -214,7 +237,6 @@ GITHUB_CORP_TOKEN=
 # Slack
 SLACK_USER_TOKEN=xoxp-...
 SLACK_CONFIG_PATH=./config/slack.json
-SLACK_SECTIONS_CONFIG=./slack-sections.json
 
 # AI Backend: "claude-cli" (uses Claude Code CLI, no API key) or "openai"
 AI_BACKEND=claude-cli
@@ -223,6 +245,9 @@ AI_BACKEND=claude-cli
 OPENAI_API_KEY=
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4o
+
+# Timeout per AI call in ms (default 5 min; claude-cli can be slow on first run)
+AI_TIMEOUT_MS=300000
 
 # Obsidian vault path
 OBSIDIAN_VAULT_PATH=C:/Users/yourname/Google Drive/MyVault
@@ -241,14 +266,17 @@ LOG_DIR=./logs
 All summarization calls are centralized in `src/ai/summarize.js` — no other file calls the AI directly. Two backends are supported, selected via `AI_BACKEND` env var:
 
 ### `claude-cli` (default)
-Invokes `claude -p "<prompt>"` as a subprocess. Requires Claude Code to be installed and authenticated. No API key or billing needed — uses your existing Claude subscription. System prompt and user content are combined into a single string passed to `-p`.
+Invokes `claude -p "<prompt>"` as a subprocess. Requires Claude Code to be installed and authenticated. No API key or billing needed — uses your existing Claude subscription. System prompt and user content are combined into a single string passed to `-p`. Supports `--model <name>` override via CLI flag.
+
+The Claude CLI sometimes wraps JSON output in markdown code fences (`` ```json ... ``` ``). A `parseJSONResponse()` helper strips these before parsing.
 
 ### `openai`
-Calls an OpenAI-compatible chat completions API. Works with `api.openai.com` and ChatGPT Enterprise endpoints (`OPENAI_BASE_URL`). Requires `OPENAI_API_KEY`.
+Calls an OpenAI-compatible chat completions API. Works with `api.openai.com` and ChatGPT Enterprise endpoints (`OPENAI_BASE_URL`). Requires `OPENAI_API_KEY`. Uses `response_format.json_schema` for structured output enforcement.
 
 ### Shared conventions
 - Each source has its own summarization function with a named prompt constant
 - Prompts live at the top of `summarize.js` as `const PROMPT_X = ...` — never inline
+- JSON schemas (`const SCHEMA_X = ...`) define expected output shapes — enforced via `response_format` on OpenAI, used for documentation on `claude-cli`
 - Max tokens per call: 1000 (ignored by `claude-cli` backend)
 - The final "Action Items" synthesis gets a separate call with all source summaries as input
 
@@ -271,7 +299,7 @@ The Obsidian daily note follows this exact markdown structure (section headers m
 ### 🔴 Mentions & Threads
 ### Thread Updates
 ### Direct Messages
-<!-- dynamic sections from slack-sections.json -->
+### Priority Channels
 ### Other Channels
 ## 💬 Teams Activity
 ### Customer Mentions
@@ -397,7 +425,7 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) e
 
 ### Examples
 ```
-feat(slack): implement Slack source module with section config
+feat(slack): implement Slack source module with channel config
 
 fix(outlook): handle 429 rate limit with Retry-After header
 

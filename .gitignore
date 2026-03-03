@@ -2,7 +2,6 @@
 token.json
 logs/
 /output/
-slack-sections.json
 tests/fixtures/
 node_modules/
 .DS_Store

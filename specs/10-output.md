@@ -55,7 +55,8 @@ Every daily note starts from this exact template on first run. Section headers m
 ### Direct Messages
 <!-- AGENT:slack_dms -->
 
-<!-- AGENT:slack_sections_dynamic -->
+### Priority Channels
+<!-- AGENT:slack_channels -->
 
 ### Other Channels
 <!-- AGENT:slack_other -->
@@ -95,23 +96,6 @@ Each managed section contains an HTML comment anchor: `<!-- AGENT:{key} -->`. Th
 **Critical rule:** The script only writes content within anchored sections. Anything the user writes outside these anchors (notes, tasks, reflections) is **never touched**.
 
 ---
-
-## Dynamic Slack Sections
-
-The Slack section contains a dynamic number of subsections based on `slack-sections.json`. Each section gets its own anchor:
-
-```
-<!-- AGENT:slack_section_Engineering -->
-<!-- AGENT:slack_section_Product -->
-<!-- AGENT:slack_section_Company -->
-```
-
-The `<!-- AGENT:slack_sections_dynamic -->` anchor in the template is a **placeholder** that gets replaced on first run with the actual section anchors. On re-runs, the individual section anchors are used for smart merge.
-
-The output module must:
-1. On first run: replace `slack_sections_dynamic` with the rendered section content including individual anchors
-2. On re-runs: find and update each `slack_section_{Name}` anchor individually
-3. If a section disappears from `slack-sections.json`, preserve existing content in the note under that anchor — never delete
 
 ---
 

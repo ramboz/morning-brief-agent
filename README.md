@@ -66,9 +66,7 @@ All sources are fault-tolerant — if JIRA is down or GitHub is unreachable, the
 ### 🔴 Mentions & Threads
 ### Thread Updates
 ### Direct Messages
-### Engineering
-### Product
-### Company
+### Priority Channels
 ### Other Channels
 
 ## 💬 Yesterday's Meetings
@@ -95,7 +93,7 @@ All sources are fault-tolerant — if JIRA is down or GitHub is unreachable, the
 - **Node.js 20+** (`node --version` to check)
 - **Git** (for commit hooks via husky)
 - **An Obsidian vault** synced via Google Drive (or any local/synced folder)
-- **A Claude subscription** (for the Claude API key — uses `claude-sonnet-4` model)
+- **Claude Code CLI** installed and authenticated (used for AI summarization via `claude -p` — no API key needed, uses your existing Claude subscription). Alternatively, an OpenAI-compatible API key.
 - **Microsoft work account** with access to Outlook and Teams
 - **Slack workspace** membership (user token — requires workspace admin approval to install the app)
 - **JIRA + Confluence** personal API token (self-hosted)
@@ -121,19 +119,21 @@ cp .env.example .env
 
 Open `.env` and fill in all values. See [Environment Variables](#environment-variables) below for details on obtaining each credential.
 
-### 3. Create your Slack channel sections config
+### 3. Create your Slack config
 
 ```bash
-cp slack-sections.example.json slack-sections.json
+cp config/slack.example.json config/slack.json
 ```
 
-Edit `slack-sections.json` to match your Slack sidebar sections:
+Edit `config/slack.json` with the channels you want full summaries for:
 
 ```json
 {
-  "Engineering": ["#eng-general", "#eng-backend", "#incidents"],
-  "Product": ["#product", "#roadmap"],
-  "Company": ["#general", "#announcements"]
+  "channels": [
+    "#eng-general", "#eng-backend", "#incidents",
+    "#product", "#roadmap",
+    "#general", "#announcements"
+  ]
 }
 ```
 
@@ -217,7 +217,7 @@ Copy `.env.example` to `.env` and fill in each value.
 | Variable | How to get it |
 |---|---|
 | `SLACK_USER_TOKEN` | api.slack.com/apps → your app → OAuth & Permissions → User OAuth Token (`xoxp-...`) |
-| `SLACK_SECTIONS_CONFIG` | Leave as `./slack-sections.json` |
+| `SLACK_CONFIG_PATH` | Leave as `./config/slack.json` |
 
 **Slack app setup:** See [docs/slack-app-setup.md](docs/slack-app-setup.md) for step-by-step instructions including required scopes.
 
@@ -245,11 +245,15 @@ Copy `.env.example` to `.env` and fill in each value.
 | `GITHUB_CORP_BASE_URL` | Your corporate GitHub API URL, e.g. `https://github.yourcompany.com/api/v3` |
 | `GITHUB_CORP_TOKEN` | Same process on your corporate GitHub instance |
 
-### Anthropic
+### AI Backend
 
-| Variable | How to get it |
-|---|---|
-| `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys |
+| Variable | Default | Description |
+|---|---|---|
+| `AI_BACKEND` | `claude-cli` | `claude-cli` uses Claude Code CLI (`claude -p`), no API key needed. `openai` uses an OpenAI-compatible API. |
+| `OPENAI_API_KEY` | — | Only needed if `AI_BACKEND=openai` |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible endpoint (also works with ChatGPT Enterprise) |
+| `OPENAI_MODEL` | `gpt-4o` | Model for the OpenAI backend |
+| `AI_TIMEOUT_MS` | `300000` | Timeout per AI call in ms (5 min default) |
 
 ### Obsidian
 
@@ -271,11 +275,14 @@ Copy `.env.example` to `.env` and fill in each value.
 ## Flags Reference
 
 ```bash
-node src/index.js                        # Normal run
-node src/index.js --dry-run              # No writes — output to ./output/
-node src/index.js --mock                 # Use saved fixtures, skip live APIs
-node src/index.js --mock --dry-run       # Fully offline — no API calls, no writes
-node src/sources/outlook.js --save-fixture  # Save live API response as fixture
+node src/index.js                          # Normal run
+node src/index.js --dry-run                # No writes — output to ./output/
+node src/index.js --mock                   # Use saved fixtures, skip live APIs
+node src/index.js --mock --dry-run         # Fully offline — no API calls, no writes
+node src/index.js --debug                  # Verbose debug logging for all sources
+node src/index.js --days 3                 # Look back 3 days instead of default 24h
+node src/index.js --model haiku            # Use a specific Claude model for summarization
+node src/sources/outlook.js --save-fixture # Save live API response as fixture
 ```
 
 ### --dry-run
@@ -293,6 +300,15 @@ Run the full pipeline against saved fixture files instead of live APIs:
 - ✅ Fast — no network calls
 - ✅ Ideal for tuning Claude prompts without burning API credits
 - Requires fixtures to exist in `tests/fixtures/` — save them first with `--save-fixture`
+
+### --debug
+Enables verbose debug logging for all source modules. Shows pagination progress, query timings, item counts, and AI call details. Useful for diagnosing slow runs or API issues.
+
+### --days N
+Overrides `LOOKBACK_HOURS` for this run. Useful for Monday mornings (`--days 3`) or returning from PTO (`--days 14`). Supports `--days 3` (space) and `--days=3` (equals) syntax.
+
+### --model \<name\>
+Passes `--model <name>` to the Claude CLI backend. Use `--model haiku` for faster summarization at the cost of slightly less nuanced output. Ignored when `AI_BACKEND=openai`.
 
 ### --save-fixture
 On any standalone source runner, saves the live API response to `tests/fixtures/{source}.json`.
@@ -386,15 +402,17 @@ morning-briefing/
 │   │   ├── jira.js              # JIRA REST API v2 (self-hosted)
 │   │   ├── confluence.js        # Confluence REST API (self-hosted)
 │   │   ├── githubDotCom.js      # github.com notifications
-│   │   └── githubCorp.js        # Corporate GitHub notifications
+│   │   ├── githubCorp.js        # Corporate GitHub notifications
+│   │   └── githubShared.js      # Shared GitHub fetch/filter/enrich logic
 │   ├── ai/
-│   │   └── summarize.js         # All Claude API calls
+│   │   └── summarize.js         # All AI summarization calls (claude-cli or openai)
 │   ├── output/
 │   │   └── dailyNote.js         # Assemble + smart-merge Obsidian daily note
+│   ├── utils/
+│   │   └── flags.js             # CLI flags, debug helper, lookback calculation
 │   └── index.js                 # Orchestrator — entry point
 ├── output/                      # Dry-run output (gitignored)
 ├── CLAUDE.md                    # Project conventions for Claude Code
-├── slack-sections.json          # Your Slack channel priority config (gitignored)
 ├── .env.example
 ├── .env                         # Your secrets (gitignored)
 ├── token.json                   # MSAL refresh token (gitignored)
@@ -439,7 +457,7 @@ If Claude is uncertain about a classification, it defaults to `fyi` — never au
 ## Known Limitations
 
 - **Teams channel messages** require `ChannelMessage.Read.All` which needs IT admin consent. Currently using the Teams activity feed and SharePoint transcript files as a workaround. Full channel message history can be enabled later once admin consent is granted.
-- **Slack sidebar sections** are not available via the Slack API — channel priority is configured manually in `slack-sections.json`.
+- **Slack sidebar sections** are not available via the Slack API — priority channels are configured as a flat list in `config/slack.json`.
 - **Meeting transcripts** require Teams meetings to have been recorded. The script skips meetings without transcripts silently.
 - **MSAL token refresh** requires the user to be logged in. If you restart your machine and don't log in before the scheduled run time, the script may fail to refresh silently and log an error.
 
@@ -488,7 +506,7 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) e
 
 **Examples:**
 ```
-feat(slack): implement Slack source with section config
+feat(slack): implement Slack source with channel config
 fix(outlook): handle 429 rate limit with Retry-After header
 prompt(email): tune triage to reduce false positives for newsletters
 docs: add Azure app setup guide

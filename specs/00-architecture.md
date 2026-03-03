@@ -9,20 +9,20 @@ A Node.js CLI script that runs locally each morning via Windows Task Scheduler. 
 ## Execution Flow
 
 ```
-node src/index.js [--dry-run]
+node src/index.js [--dry-run] [--debug] [--days N] [--model haiku]
         │
         ├── Acquire Microsoft Graph token (MSAL, silent refresh)
         │
         ├── Fetch all sources in parallel (Promise.allSettled)
-        │   ├── outlook.js        → unread emails (last 24h)
-        │   ├── slack.js          → mentions, DMs, priority channel activity (last 24h)
+        │   ├── outlook.js        → unread emails
+        │   ├── slack.js          → mentions, DMs, priority channel activity
         │   ├── teams.js          → activity feed + yesterday's meeting transcripts
-        │   ├── jira.js           → ticket activity (last 24h)
-        │   ├── confluence.js     → page changes (last 24h)
-        │   ├── githubDotCom.js   → notifications (last 24h)
-        │   └── githubCorp.js     → notifications (last 24h)
+        │   ├── jira.js           → ticket activity
+        │   ├── confluence.js     → page changes
+        │   ├── githubDotCom.js   → notifications
+        │   └── githubCorp.js     → notifications
         │
-        ├── Summarize each source via Claude API (parallel)
+        ├── Summarize each source via AI (claude-cli or openai backend)
         │   └── summarize.js      → one function per source
         │
         ├── Perform write operations (if not dry-run)
@@ -53,19 +53,22 @@ node src/index.js [--dry-run]
 - **Flow:** Personal Access Token in Authorization header
 - **Library:** `@octokit/rest` — two separate instances, one per GitHub host
 
-### Anthropic Claude API
-- **Flow:** API key in `x-api-key` header
-- **Library:** `@anthropic-ai/sdk`
+### AI Summarization
+- **Default backend (`claude-cli`):** Invokes `claude -p "<prompt>"` as a subprocess. Uses the user's existing Claude subscription — no API key needed. Supports `--model <name>` override.
+- **Alternative backend (`openai`):** OpenAI-compatible chat completions API. Uses `response_format.json_schema` for structured output. Requires `OPENAI_API_KEY`.
 
 ---
 
 ## Data Lookback Window
 
-All sources fetch data from the last `LOOKBACK_HOURS` hours (default: 24). This is passed as a parameter to each source fetch function, calculated once in `index.js`:
+All sources fetch data from the last N hours, calculated once in `index.js` from `lookbackHours` (exported by `src/utils/flags.js`). The priority chain is: `--days N` CLI flag → `LOOKBACK_HOURS` env var → 24h default.
 
 ```js
-const since = new Date(Date.now() - parseInt(process.env.LOOKBACK_HOURS ?? 24) * 60 * 60 * 1000)
+import { lookbackHours } from './utils/flags.js'
+const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
 ```
+
+Individual source configs can override via `lookback_hours_override` in their `config/{service}.json`.
 
 ---
 
@@ -133,18 +136,18 @@ This approach uses only `Files.Read.All` and `OnlineMeetings.Read`, both approve
 
 ---
 
-## Dependencies (anticipated)
+## Dependencies
 
 ```json
 {
   "@azure/msal-node": "^2.x",
-  "@anthropic-ai/sdk": "^0.x",
   "@octokit/rest": "^20.x",
+  "@slack/web-api": "^7.x",
   "dotenv": "^16.x"
 }
 ```
 
-No HTTP client library needed — Node.js 20 built-in `fetch` is used for all REST calls (Graph API, JIRA, Confluence).
+No HTTP client library needed — Node.js 20 built-in `fetch` is used for all REST calls (Graph API, JIRA, Confluence). AI summarization uses the Claude Code CLI (`claude -p`) by default — no AI SDK dependency needed.
 
 ---
 

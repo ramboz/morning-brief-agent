@@ -1,8 +1,8 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
-import { WebClient } from '@slack/web-api'
-import { isMock, isSaveFixture } from '../utils/flags.js'
+import { WebClient, LogLevel } from '@slack/web-api'
+import { isMock, isSaveFixture, debug } from '../utils/flags.js'
 
 const ALERT_KEYWORDS = /\b(incident|alert|failed|error|outage|down|critical|urgent|p1|p2)\b/i
 
@@ -14,65 +14,84 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 // ---------------------------------------------------------------------------
 
 /**
- * Loads slack-sections.json and resolves channel names to IDs via conversations.list.
- * Returns { ok: false } without error if the file is simply missing.
+ * Fetches all public/private channels the user is a member of (paginated, called once).
+ * Returns the raw channel objects so callers can extract what they need.
  * @param {WebClient} slack
- * @returns {Promise<{ ok: boolean, sections?: object }>}
+ * @returns {Promise<object[]>}
  */
-async function loadSectionsConfig(slack) {
-  const configPath = process.env.SLACK_SECTIONS_CONFIG ?? './slack-sections.json'
+async function fetchMemberChannels(slack) {
+  const allChannels = []
+  let cursor
+  let page = 0
+  do {
+    page++
+    debug('[slack]', `users.conversations page ${page}...`)
+    const resp = await slack.users.conversations({
+      types: 'public_channel,private_channel',
+      exclude_archived: true,
+      limit: 1000,
+      ...(cursor ? { cursor } : {}),
+    })
+    allChannels.push(...(resp.channels ?? []))
+    debug('[slack]', `page ${page}: ${resp.channels?.length ?? 0} channels (${allChannels.length} total)`)
+    cursor = resp.response_metadata?.next_cursor
+  } while (cursor)
+  return allChannels
+}
+
+/**
+ * Loads Slack config from SLACK_CONFIG_PATH (default: config/slack.json).
+ * Expects { "channels": ["#channel-one", "#channel-two", ...] }.
+ * Resolves channel names to IDs using a pre-fetched channel list.
+ * @param {object[]} memberChannels - From fetchMemberChannels()
+ * @returns {Promise<{ ok: boolean, channels?: Array<{id: string, name: string}> }>}
+ */
+async function loadConfig(memberChannels) {
+  const configPath = process.env.SLACK_CONFIG_PATH ?? './config/slack.json'
 
   let raw
   try {
     raw = await fs.readFile(configPath, 'utf-8')
   } catch (err) {
     if (err.code === 'ENOENT') {
-      console.warn(`[slack] sections config not found at ${configPath} — skipping section summaries`)
+      console.error(`[slack] Config not found at ${configPath} — copy config/slack.example.json to ${configPath} and fill in`)
       return { ok: false }
     }
-    console.warn(`[slack] Failed to read sections config: ${err.message}`)
+    console.warn(`[slack] Failed to read config: ${err.message}`)
     return { ok: false }
   }
 
-  let sectionDefs
+  let config
   try {
-    sectionDefs = JSON.parse(raw)
+    config = JSON.parse(raw)
   } catch {
-    console.warn('[slack] sections config is not valid JSON — skipping section summaries')
+    console.warn(`[slack] Config at ${configPath} is not valid JSON — skipping channel summaries`)
     return { ok: false }
   }
 
-  // Build name→{id,name} map from all member channels
-  const channelMap = new Map()
-  let cursor
-  do {
-    const resp = await slack.conversations.list({
-      types: 'public_channel,private_channel',
-      exclude_archived: true,
-      limit: 200,
-      ...(cursor ? { cursor } : {}),
-    })
-    for (const ch of resp.channels ?? []) {
-      if (ch.is_member) channelMap.set(ch.name.toLowerCase(), { id: ch.id, name: ch.name })
-    }
-    cursor = resp.response_metadata?.next_cursor
-  } while (cursor)
+  const channelNames = config.channels
+  if (!Array.isArray(channelNames) || channelNames.length === 0) {
+    console.warn('[slack] No "channels" array in config — skipping channel summaries')
+    return { ok: false }
+  }
 
-  const sections = {}
-  for (const [sectionName, channelNames] of Object.entries(sectionDefs)) {
-    sections[sectionName] = []
-    for (const rawName of channelNames) {
-      const normalized = rawName.replace(/^#/, '').toLowerCase()
-      const resolved = channelMap.get(normalized)
-      if (resolved) {
-        sections[sectionName].push(resolved)
-      } else {
-        console.warn(`[slack] Channel not found or not a member: ${rawName}`)
-      }
+  const channelMap = new Map()
+  for (const ch of memberChannels) {
+    channelMap.set(ch.name.toLowerCase(), { id: ch.id, name: ch.name })
+  }
+
+  const channels = []
+  for (const rawName of channelNames) {
+    const normalized = rawName.replace(/^#/, '').toLowerCase()
+    const resolved = channelMap.get(normalized)
+    if (resolved) {
+      channels.push(resolved)
+    } else {
+      console.warn(`[slack] Channel not found or not a member: ${rawName}`)
     }
   }
 
-  return { ok: true, sections, channelMap }
+  return { ok: true, channels }
 }
 
 // ---------------------------------------------------------------------------
@@ -254,25 +273,38 @@ async function fetchDirectMessages(slack, userCache, myUserId, since) {
   let dmChannels = []
   try {
     let cursor
+    let page = 0
     do {
-      const resp = await slack.conversations.list({
+      page++
+      debug('[slack]', `DM users.conversations page ${page}...`)
+      const resp = await slack.users.conversations({
         types: 'im,mpim',
         exclude_archived: true,
-        limit: 200,
+        limit: 1000,
         ...(cursor ? { cursor } : {}),
       })
       dmChannels.push(...(resp.channels ?? []))
       cursor = resp.response_metadata?.next_cursor
     } while (cursor)
+    debug('[slack]', `Found ${dmChannels.length} DM conversations`)
   } catch (err) {
     console.warn('[slack] DM list failed:', err.message)
     return []
   }
 
   const sinceTs = String(since.getTime() / 1000)
+  const sinceTsNum = parseFloat(sinceTs)
+
+  // Pre-filter: skip DMs where the latest message is older than the lookback window
+  const activeDMs = dmChannels.filter(dm => {
+    if (!dm.latest || !dm.latest.ts) return false
+    return parseFloat(dm.latest.ts) >= sinceTsNum
+  })
+  debug('[slack]', `${activeDMs.length} of ${dmChannels.length} DMs had activity since lookback`)
+
   const directMessages = []
 
-  for (const dm of dmChannels) {
+  for (const dm of activeDMs) {
     try {
       const resp = await slack.conversations.history({ channel: dm.id, oldest: sinceTs, limit: 50 })
       const messages = (resp.messages ?? []).filter(m => !m.subtype || m.subtype === 'bot_message')
@@ -393,52 +425,35 @@ async function fetchChannelHistory(slack, userCache, channel, myUserId, since) {
 }
 
 /**
- * Fetches history for all priority section channels with rate limiting.
+ * Fetches history for all priority channels with rate limiting.
  * @param {WebClient} slack
  * @param {Map} userCache
- * @param {object} sections - { sectionName: [{ id, name }] }
+ * @param {Array<{id: string, name: string}>} channels
  * @param {string} myUserId
  * @param {Date} since
- * @returns {Promise<object>} - { sectionName: { channels: [...] } }
+ * @returns {Promise<object[]>}
  */
-async function fetchSections(slack, userCache, sections, myUserId, since) {
-  const result = {}
-  for (const [sectionName, channels] of Object.entries(sections)) {
-    result[sectionName] = { channels: [] }
-    for (const channel of channels) {
-      const channelData = await fetchChannelHistory(slack, userCache, channel, myUserId, since)
-      result[sectionName].channels.push(channelData)
-      await sleep(1200) // Tier 3 rate limit: ~50 req/min
-    }
+async function fetchPriorityChannels(slack, userCache, channels, myUserId, since) {
+  const result = []
+  for (const channel of channels) {
+    const channelData = await fetchChannelHistory(slack, userCache, channel, myUserId, since)
+    result.push(channelData)
+    await sleep(1200) // Tier 3 rate limit: ~50 req/min
   }
   return result
 }
 
 /**
- * Counts non-priority channels with unread messages (via conversations.list unread_count).
- * @param {WebClient} slack
+ * Counts non-priority channels with unread messages from pre-fetched channel list.
+ * @param {object[]} memberChannels - From fetchMemberChannels()
  * @param {Set<string>} priorityChannelIds
- * @returns {Promise<{ totalChannelsWithActivity: number, mentionCount: number }>}
+ * @returns {{ totalChannelsWithActivity: number, mentionCount: number }}
  */
-async function countOtherChannelActivity(slack, priorityChannelIds) {
+function countOtherChannelActivity(memberChannels, priorityChannelIds) {
   let totalChannelsWithActivity = 0
-  try {
-    let cursor
-    do {
-      const resp = await slack.conversations.list({
-        types: 'public_channel,private_channel',
-        exclude_archived: true,
-        limit: 200,
-        ...(cursor ? { cursor } : {}),
-      })
-      for (const ch of resp.channels ?? []) {
-        if (!ch.is_member || priorityChannelIds.has(ch.id)) continue
-        if ((ch.unread_count ?? 0) > 0) totalChannelsWithActivity++
-      }
-      cursor = resp.response_metadata?.next_cursor
-    } while (cursor)
-  } catch (err) {
-    console.warn('[slack] Could not count other channel activity:', err.message)
+  for (const ch of memberChannels) {
+    if (priorityChannelIds.has(ch.id)) continue
+    if ((ch.unread_count ?? 0) > 0) totalChannelsWithActivity++
   }
   return { totalChannelsWithActivity, mentionCount: 0 }
 }
@@ -466,30 +481,69 @@ export async function fetchSlack(since) {
   const token = process.env.SLACK_USER_TOKEN
   if (!token) return { ok: false, error: 'Slack token missing — check SLACK_USER_TOKEN in .env' }
 
-  const slack = new WebClient(token)
-  const userCache = new Map()
-
-  let userId
   try {
-    const auth = await slack.auth.test()
-    userId = auth.user_id
+    const slack = new WebClient(token, {
+      logLevel: LogLevel.INFO,
+      logger: {
+        getLevel: () => LogLevel.INFO,
+        setLevel: () => {},
+        setName: () => {},
+        debug: () => {},
+        info: (...args) => {
+          const msg = args.join(' ')
+          if (msg.includes('rate limit')) {
+            const retryMatch = msg.match(/retry in (\d+)/i)
+            const secs = retryMatch ? retryMatch[1] : '?'
+            debug('[slack]', `Rate limited — retrying in ${secs}s`)
+          }
+        },
+        warn: () => {},
+        error: (...args) => console.error('[slack:sdk]', ...args),
+      },
+    })
+    const userCache = new Map()
+
+    let userId
+    try {
+      const auth = await slack.auth.test()
+      userId = auth.user_id
+    } catch (err) {
+      if (err.data?.error === 'invalid_auth') return { ok: false, error: 'Slack auth failed — check SLACK_USER_TOKEN' }
+      return { ok: false, error: `Slack auth failed: ${err.message}` }
+    }
+
+    // Fetch all member channels once — reused by loadConfig and countOtherChannelActivity
+    console.log('[slack] Fetching channel list...')
+    const memberChannels = await fetchMemberChannels(slack)
+    console.log(`[slack] Found ${memberChannels.length} member channels`)
+
+    const config = await loadConfig(memberChannels)
+    const priorityChannels = config.ok ? config.channels : []
+    const priorityChannelIds = new Set(priorityChannels.map(ch => ch.id))
+
+    debug('[slack]', 'Fetching mentions...')
+    const mentions = await fetchMentions(slack, userCache, userId, since)
+    debug('[slack]', `${mentions.length} mentions found`)
+
+    debug('[slack]', 'Fetching thread updates...')
+    const threadUpdates = await fetchThreadUpdates(slack, userCache, userId, since)
+    debug('[slack]', `${threadUpdates.length} thread updates found`)
+
+    debug('[slack]', 'Fetching DMs...')
+    const directMessages = await fetchDirectMessages(slack, userCache, userId, since)
+    debug('[slack]', `${directMessages.length} DM conversations with activity`)
+
+    debug('[slack]', `Fetching history for ${priorityChannels.length} priority channels...`)
+    const channelData = await fetchPriorityChannels(slack, userCache, priorityChannels, userId, since)
+
+    const otherChannelsActivity = countOtherChannelActivity(memberChannels, priorityChannelIds)
+    debug('[slack]', `${otherChannelsActivity.totalChannelsWithActivity} other channels with activity`)
+
+    return { ok: true, data: { mentions, threadUpdates, directMessages, channels: channelData, otherChannelsActivity } }
   } catch (err) {
-    if (err.data?.error === 'invalid_auth') return { ok: false, error: 'Slack auth failed — check SLACK_USER_TOKEN' }
-    return { ok: false, error: `Slack auth failed: ${err.message}` }
+    console.error('[slack] fetch failed:', err.message)
+    return { ok: false, error: err.message }
   }
-
-  // Load sections config — non-fatal if missing
-  const sectionsConfig = await loadSectionsConfig(slack)
-  const sections = sectionsConfig.ok ? sectionsConfig.sections : {}
-  const priorityChannelIds = new Set(Object.values(sections).flatMap(chs => chs.map(ch => ch.id)))
-
-  const mentions = await fetchMentions(slack, userCache, userId, since)
-  const threadUpdates = await fetchThreadUpdates(slack, userCache, userId, since)
-  const directMessages = await fetchDirectMessages(slack, userCache, userId, since)
-  const sectionData = await fetchSections(slack, userCache, sections, userId, since)
-  const otherChannelsActivity = await countOtherChannelActivity(slack, priorityChannelIds)
-
-  return { ok: true, data: { mentions, threadUpdates, directMessages, sections: sectionData, otherChannelsActivity } }
 }
 
 // Standalone runner

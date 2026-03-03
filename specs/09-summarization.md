@@ -6,16 +6,16 @@
 
 ---
 
-## SDK Setup
+## Backend Setup
+
+Two AI backends are supported, selected via `AI_BACKEND` env var:
+
+- **`claude-cli` (default):** Invokes `claude -p "<prompt>"` as a subprocess. No API key needed — uses the user's existing Claude subscription. Supports `--model <name>` override via the `aiModel` flag from `src/utils/flags.js`.
+- **`openai`:** Calls an OpenAI-compatible chat completions API (`OPENAI_BASE_URL`). Uses `response_format.json_schema` for structured output enforcement.
 
 ```js
-import Anthropic from '@anthropic-ai/sdk'
-
-const MODEL = 'claude-sonnet-4-20250514'
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const AI_BACKEND = process.env.AI_BACKEND ?? 'claude-cli'
 ```
-
-`MODEL` is a single constant used everywhere in the file — changing it in one place updates all calls.
 
 ---
 
@@ -42,26 +42,42 @@ If Claude returns invalid JSON, log a warning (include the first 200 chars of th
 ### Standard call wrapper
 
 ```js
-async function callClaude(prompt, userContent, maxTokens = 1000) {
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: maxTokens,
-    system: prompt,
-    messages: [{ role: 'user', content: userContent }],
-  })
-  return response.content[0].text
+async function callClaude(prompt, userContent, opts = {}) {
+  const { maxTokens = 1000, schema } = opts
+  if (AI_BACKEND === 'openai') {
+    return callOpenAI(prompt, userContent, maxTokens, schema)
+  }
+  return callClaudeCLI(prompt, userContent, schema)
 }
 ```
 
-All summarization functions use this wrapper. Errors from it are caught in the caller.
+- `callClaudeCLI` spawns `claude -p` as a subprocess with a configurable timeout (`AI_TIMEOUT_MS`, default 5 min). If `aiModel` is set (via `--model` flag), passes `--model <name>` to the CLI.
+- `callOpenAI` calls the configured chat completions endpoint. When a `schema` is provided, it's passed via `response_format.json_schema` for structured output.
+
+All summarization functions use `callClaude` as the entry point. Errors are caught in each caller.
+
+### JSON response handling
+
+The Claude CLI sometimes wraps JSON output in markdown code fences (`` ```json ... ``` ``). A `parseJSONResponse()` helper strips these before parsing:
+
+```js
+function parseJSONResponse(text) {
+  const stripped = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '')
+  return JSON.parse(stripped)
+}
+```
+
+### JSON schemas
+
+Each summarization function has a corresponding `SCHEMA_X` constant that defines the expected output shape. These are used by the OpenAI backend via `response_format.json_schema` for structured output enforcement. The `claude-cli` backend relies on prompt instructions and `parseJSONResponse` instead.
 
 ### Error pattern
 
 ```js
 async function summarizeX(data) {
   try {
-    const text = await callClaude(PROMPT_X, JSON.stringify(data))
-    return JSON.parse(text)
+    const text = await callClaude(PROMPT_X, JSON.stringify(data), { schema: SCHEMA_X })
+    return parseJSONResponse(text)
   } catch (err) {
     console.error('[ai] summarizeX failed:', err.message)
     return /* safe default for this function */
@@ -69,7 +85,7 @@ async function summarizeX(data) {
 }
 ```
 
-If the Claude API is unavailable, the section appears as `_Summarization unavailable._` in the daily note rather than crashing the run.
+If the AI backend is unavailable, the section appears as `_Summarization unavailable._` in the daily note rather than crashing the run.
 
 ### Input truncation
 
@@ -171,11 +187,11 @@ See `specs/04-slack.md` for full prompt guidance.
 
 ---
 
-### summarizeSlackSection(sectionName, channels)
+### summarizeSlackChannels(channels)
 
 See `specs/04-slack.md` for full prompt guidance.
 
-**Input:** section name (string) + array of channel objects with messages (user's own messages already filtered out)
+**Input:** array of channel objects with messages (user's own messages already filtered out)
 **Max input:** 5 messages + 10 thread replies per channel before sending
 **Max tokens:** 1000
 
@@ -388,7 +404,7 @@ The final call. Takes all per-source summaries and produces a cross-source prior
 ```js
 {
   email:      { actionRequired, drafts, ... },
-  slack:      { mentions, dms, sections },
+  slack:      { mentions, threads, dms, channels },
   teams:      { activities, meetings },
   jira:       { actionRequired, updates },
   confluence: [...],
@@ -424,7 +440,9 @@ The final call. Takes all per-source summaries and produces a cross-source prior
 
 | Scenario | Behaviour |
 |---|---|
-| `ANTHROPIC_API_KEY` missing | Throw at module load time — this is fatal. Log: `[ai] ANTHROPIC_API_KEY not set` |
+| `AI_BACKEND=openai` but `OPENAI_API_KEY` missing | Log error at startup: `[ai] OPENAI_API_KEY not set — summarization will fail` |
+| `claude-cli` timeout (exceeds `AI_TIMEOUT_MS`) | Kill subprocess, log error with PID and elapsed time, reject with timeout error |
+| `claude-cli` empty response | Reject with clear error: `claude CLI returned empty response` |
 | API call fails (network, 5xx) | Log error with source name, return safe empty default for that function |
 | Response is not valid JSON | Log warning with first 200 chars of raw response, return safe empty default |
 | Rate limit (429) | Log warning, return safe empty default — do not retry (one daily run, no retry budget) |
@@ -433,7 +451,8 @@ The final call. Takes all per-source summaries and produces a cross-source prior
 
 ## Notes for Implementation
 
-- Instantiate the Anthropic client once at module level, not inside each function
-- Pass source data as the `user` turn; keep behavioral instructions in `system`
+- `callClaude`, `callClaudeCLI`, `callOpenAI`, and `parseJSONResponse` are internal — do not export them
+- For `claude-cli`: system prompt and user content are combined into a single `-p` string (no separate system/user turns)
+- For `openai`: system prompt is the `system` turn, user content is the `user` turn
 - `synthesizeActionItems` is the only function that receives data from multiple sources — keep it that way
-- The `callClaude` wrapper is internal — do not export it
+- JSON schemas live as `const SCHEMA_X = ...` constants alongside their corresponding `PROMPT_X` constants

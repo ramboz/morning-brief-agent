@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
-import { isMock, isSaveFixture } from '../utils/flags.js'
+import { isMock, isSaveFixture, debug } from '../utils/flags.js'
 
 const MAX_PAGES_PER_QUERY = 2
 const PAGE_SIZE = 50
@@ -145,6 +145,7 @@ async function runCqlQuery(cql, expand = 'version,space,body.excerpt,ancestors')
   let truncated = false
 
   for (let page = 0; page < MAX_PAGES_PER_QUERY; page++) {
+    debug('[confluence]', `CQL page ${page + 1}/${MAX_PAGES_PER_QUERY} (start=${start})...`)
     const response = await confluenceFetch('/rest/api/content/search', {
       cql,
       start,
@@ -154,6 +155,7 @@ async function runCqlQuery(cql, expand = 'version,space,body.excerpt,ancestors')
 
     const results = response.results ?? []
     allResults.push(...results)
+    debug('[confluence]', `page ${page + 1}: ${results.length} results (${allResults.length} total)`)
 
     if (results.length < PAGE_SIZE) break
 
@@ -179,9 +181,11 @@ async function runSpacesIndividually(spaces, hours) {
   let truncated = false
 
   for (const space of spaces) {
+    debug('[confluence]', `Querying space "${space}" individually...`)
     const cql = `space = "${space}" AND lastModified >= now("-${hours}h") AND type = page ORDER BY lastModified DESC`
     try {
       const { results, truncated: t } = await runCqlQuery(cql)
+      debug('[confluence]', `space "${space}": ${results.length} pages`)
       allResults.push(...results)
       if (t) truncated = true
     } catch (err) {
@@ -215,13 +219,15 @@ export async function fetchConfluence(_since) {
   const baseUrl = process.env.CONFLUENCE_BASE_URL
   const hours = config.lookback_hours_override ?? parseInt(process.env.LOOKBACK_HOURS ?? '24')
   const spaceClause = `space in (${config.spaces.map(s => `"${s}"`).join(', ')})`
+  debug('[confluence]', `Fetching from ${config.spaces.length} spaces, lookback ${hours}h`)
 
   try {
-    // Fetch current user's username for mention search
     let username = null
     try {
+      debug('[confluence]', 'Fetching current user info...')
       const me = await confluenceFetch('/rest/api/user/current')
       username = me.username ?? me.accountId ?? null
+      debug('[confluence]', `User: ${me.displayName ?? username ?? 'unknown'}`)
     } catch (err) {
       console.warn('[confluence] Could not fetch current user — mention search will be skipped:', err.message)
     }
@@ -234,9 +240,11 @@ export async function fetchConfluence(_since) {
       ? `${spaceClause} AND type = comment AND text ~ "[~${username}]" AND created >= now("-${hours}h")`
       : null
 
+    debug('[confluence]', `Running ${q2 ? 2 : 1} CQL queries (pages${q2 ? ' + mentions' : ''})...`)
+    const t0 = Date.now()
+
     const [q1Result, q2Result] = await Promise.allSettled([
       runCqlQuery(q1).catch(err => {
-        // Combined CQL may fail if a space key is invalid — fall back to per-space queries
         console.warn('[confluence] Combined CQL failed, trying per-space fallback:', err.message)
         return runSpacesIndividually(config.spaces, hours)
       }),
@@ -247,6 +255,7 @@ export async function fetchConfluence(_since) {
           })
         : Promise.resolve({ results: [], truncated: false }),
     ])
+    debug('[confluence]', `CQL queries completed in ${Date.now() - t0}ms`)
 
     const pageMap = new Map()
     let truncated = false
@@ -285,7 +294,11 @@ export async function fetchConfluence(_since) {
       }
     }
 
-    return { ok: true, data: { pages: Array.from(pageMap.values()), truncated } }
+    const pages = Array.from(pageMap.values())
+    const mentioned = pages.filter(p => p.reason === 'mentioned').length
+    debug('[confluence]', `${pages.length} pages (${mentioned} with mentions)${truncated ? ' [truncated]' : ''}`)
+
+    return { ok: true, data: { pages, truncated } }
   } catch (err) {
     if (err.status === 401) {
       return { ok: false, error: 'Confluence auth failed — check CONFLUENCE_USER and CONFLUENCE_API_TOKEN' }

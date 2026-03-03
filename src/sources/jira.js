@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
-import { isMock, isSaveFixture } from '../utils/flags.js'
+import { isMock, isSaveFixture, debug } from '../utils/flags.js'
 
 const FIELDS = 'summary,status,priority,assignee,reporter,updated,comment,labels,issuetype,parent'
 const MAX_PAGES = 3
@@ -124,12 +124,13 @@ function stripJiraMarkup(text) {
  * @param {string} jql
  * @returns {Promise<{ issues: object[], truncated: boolean }>}
  */
-async function runJqlQuery(jql) {
+async function runJqlQuery(jql, label = 'query') {
   const allIssues = []
   let startAt = 0
   let truncated = false
 
   for (let page = 0; page < MAX_PAGES; page++) {
+    debug('[jira]', `${label} page ${page + 1}/${MAX_PAGES} (startAt=${startAt})...`)
     const result = await jiraFetch('/rest/api/2/search', {
       jql,
       startAt,
@@ -138,6 +139,7 @@ async function runJqlQuery(jql) {
     })
 
     const issues = result.issues ?? []
+    debug('[jira]', `${label} page ${page + 1}: ${issues.length} issues (${result.total ?? '?'} total)`)
     if (issues.length === 0) break
 
     allIssues.push(...issues)
@@ -210,22 +212,17 @@ export async function fetchJira(_since) {
   const baseUrl = process.env.JIRA_BASE_URL
   const hours = config.lookback_hours_override ?? parseInt(process.env.LOOKBACK_HOURS ?? '24')
   const projectClause = `project in (${config.projects.join(', ')})`
+  debug('[jira]', `Fetching from ${config.projects.length} projects, lookback ${hours}h`)
 
   try {
-    // Fetch current user info to build the @mention JQL tag.
-    // DC instances use [~username] syntax; Cloud uses [~accountId:uuid].
     let mentionTag = null
     try {
+      debug('[jira]', 'Fetching current user info...')
       const me = await jiraFetch('/rest/api/2/myself')
-      if (me.name) {
-        // Self-hosted DC: username-based mention syntax
-        mentionTag = `[~${me.name}]`
-      } else if (me.accountId) {
-        // Atlassian Cloud: accountId-based mention syntax
-        mentionTag = `[~accountId:${me.accountId}]`
-      }
+      mentionTag = me.name ? `[~${me.name}]` : (me.accountId ? `[~accountId:${me.accountId}]` : null)
+      debug('[jira]', `User: ${me.displayName ?? me.name ?? 'unknown'}`)
     } catch (err) {
-      if (err.status === 401) throw err  // propagates to outer catch → auth error
+      if (err.status === 401) throw err
       console.warn('[jira] Could not fetch user info — mention query will be skipped:', err.message)
     }
 
@@ -240,15 +237,17 @@ export async function fetchJira(_since) {
       ? `${projectClause} AND comment ~ "${mentionTag}" AND updated >= -${hours}h AND assignee != currentUser() ORDER BY updated DESC`
       : null
 
-    const queryPromises = [
-      runJqlQuery(q1).then(r => ({ ...r, reason: 'assigned' })),
+    debug('[jira]', `Running ${q3 ? 3 : 2} JQL queries in parallel (assigned, commented${q3 ? ', mentioned' : ''})...`)
+    const t0 = Date.now()
 
-      // Try ScriptRunner JQL first; fall back to vanilla text search on 400
-      runJqlQuery(q2ScriptRunner)
+    const queryPromises = [
+      runJqlQuery(q1, 'assigned').then(r => ({ ...r, reason: 'assigned' })),
+
+      runJqlQuery(q2ScriptRunner, 'commented')
         .catch(err => {
           if (err.status === 400) {
             console.log('[jira] ScriptRunner unavailable, using fallback JQL for comments')
-            return runJqlQuery(q2Fallback)
+            return runJqlQuery(q2Fallback, 'commented')
           }
           throw err
         })
@@ -257,7 +256,7 @@ export async function fetchJira(_since) {
 
     if (q3) {
       queryPromises.push(
-        runJqlQuery(q3)
+        runJqlQuery(q3, 'mentioned')
           .catch(err => {
             if (err.status === 400) {
               return { issues: [], truncated: false }
@@ -269,6 +268,7 @@ export async function fetchJira(_since) {
     }
 
     const results = await Promise.allSettled(queryPromises)
+    debug('[jira]', `JQL queries completed in ${Date.now() - t0}ms`)
 
     // If any query was rejected due to auth, surface it immediately
     const authFailure = results.find(r => r.status === 'rejected' && r.reason?.status === 401)
@@ -295,6 +295,8 @@ export async function fetchJira(_since) {
         }
       }
     }
+
+    debug('[jira]', `${allIssues.length} issues after dedup (assigned: ${allIssues.filter(i => i.reason === 'assigned').length}, commented: ${allIssues.filter(i => i.reason === 'commented').length}, mentioned: ${allIssues.filter(i => i.reason === 'mentioned').length})${truncated ? ' [truncated]' : ''}`)
 
     return { ok: true, data: { issues: allIssues, truncated } }
   } catch (err) {

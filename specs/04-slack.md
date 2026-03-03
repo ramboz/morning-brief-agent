@@ -55,39 +55,38 @@ reactions:read        — read reactions (for context scoring)
 
 ```
 SLACK_USER_TOKEN=xoxp-...
-SLACK_SECTIONS_CONFIG=./slack-sections.json
+SLACK_CONFIG_PATH=./config/slack.json
 ```
 
 ---
 
 ## Channel Priority Configuration
 
-Sidebar sections are not available via the Slack API. Channel prioritization is defined in a config file at `SLACK_SECTIONS_CONFIG` (default: `./slack-sections.json`).
+Channel prioritization is defined in `config/slack.json` (`SLACK_CONFIG_PATH` env var). This is a flat list of channels to monitor — only these channels get full history and AI summaries. Everything else is checked for mentions only.
 
 ### Format
 
 ```json
 {
-  "Engineering": ["#eng-general", "#eng-backend", "#incidents", "#deployments"],
-  "Product": ["#product", "#roadmap", "#design-feedback"],
-  "Company": ["#general", "#announcements"]
+  "channels": [
+    "#eng-general", "#eng-backend", "#incidents", "#deployments",
+    "#product", "#roadmap", "#design-feedback",
+    "#general", "#announcements"
+  ]
 }
 ```
 
-- Keys are section names (used as headers in the daily note)
-- Values are arrays of channel names (with or without `#` prefix — normalize on load)
-- Order of sections = order in daily note
-- Channels not listed here are "other channels" — fetched for mentions only
+- Channel names with or without `#` prefix — normalized on load
+- Channels not listed here are "other channels" — checked for mentions only
 - The file is gitignored if it contains sensitive channel names, but can be committed if preferred — user's choice
 
 ### Config Loading
 
 ```js
-export async function loadSectionsConfig() {
-  // Read slack-sections.json
+async function loadConfig(slack) {
+  // Read config/slack.json
   // Resolve channel names to IDs using conversations.list
-  // Return: { sectionName: [{ id, name }] }
-  // Cache channel name→ID mapping for the session (avoid repeated API calls)
+  // Return: { ok: true, channels: [{ id, name }] }
 }
 ```
 
@@ -101,9 +100,9 @@ With 100+ channels, fetching all history naively would be extremely slow and hit
 
 ### Step 1: Get all channel IDs the user is a member of
 ```
-conversations.list({ types: 'public_channel,private_channel', exclude_archived: true })
+users.conversations({ types: 'public_channel,private_channel', exclude_archived: true })
 ```
-Paginate until all channels are retrieved. Filter to `is_member: true`.
+Paginate until all channels are retrieved. This endpoint returns only channels the user is a member of — no `is_member` filtering needed. Call this once and reuse the list for `loadConfig` and `countOtherChannelActivity`.
 
 ### Step 2: Fetch mentions across ALL channels (efficient path)
 Use the search API to find all messages mentioning the user in the last 24h:
@@ -113,7 +112,7 @@ search.messages({ query: '<@{userId}>', count: 100 })
 This is a single API call covering all channels. Requires the user token.
 
 ### Step 3: Fetch full history only for priority channels
-For each channel in `slack-sections.json`, fetch messages since `since`. Filter out the user's own messages before returning — sections show what the org is discussing, not what the user already said:
+For each channel in `config/slack.json`, fetch messages since `since`. Filter out the user's own messages before returning — sections show what the org is discussing, not what the user already said:
 ```
 conversations.history({ channel: channelId, oldest: since.unix(), limit: 200 })
 ```
@@ -147,7 +146,7 @@ Slack's Web API has a Tier system. Key limits:
 - `search.messages`: Tier 2 — ~20 requests/min
 - `users.info`: Tier 4 — ~100 requests/min
 
-With 100+ channels, fetching history for ALL of them would hit rate limits. **Only fetch full history for priority channels** (those in `slack-sections.json`). For all other channels, rely on the search API for mention detection only.
+With 100+ channels, fetching history for ALL of them would hit rate limits. **Only fetch full history for priority channels** (those in `config/slack.json`). For all other channels, rely on the search API for mention detection only.
 
 Implement a simple rate limit helper:
 ```js
@@ -207,28 +206,23 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
         ]
       }
     ],
-    sections: {
-      "Engineering": {
-        channels: [
+    channels: [
+      {
+        id: "C012AB3CD",
+        name: "eng-general",
+        messages: [
+          // User's own messages are excluded — only others' messages
           {
-            id: "C012AB3CD",
-            name: "eng-general",
-            messages: [
-              // User's own messages are excluded — only others' messages
-              {
-                ts: "1709298180.000200",
-                user: { id: "U012AB3CD", name: "Alice Chen" },
-                text: "Deployed v2.4.1 to production ✅",
-                replyCount: 3,
-                reactions: [{ name: "white_check_mark", count: 4 }]
-              }
-            ],
-            threadReplies: []
+            ts: "1709298180.000200",
+            user: { id: "U012AB3CD", name: "Alice Chen" },
+            text: "Deployed v2.4.1 to production ✅",
+            replyCount: 3,
+            reactions: [{ name: "white_check_mark", count: 4 }]
           }
-        ]
-      },
-      "Product": { channels: [...] }
-    },
+        ],
+        threadReplies: []
+      }
+    ],
     otherChannelsActivity: {
       totalChannelsWithActivity: 12,
       mentionCount: 0
@@ -250,8 +244,8 @@ For each DM thread, produce a 1-2 sentence summary and flag if a reply from the 
 ### summarizeSlackThreads(threadUpdates)
 For each thread the user was part of, summarize the new replies from others and determine whether a follow-up is expected. Only threads where others have replied after the user's last message are included — the user already has the last word is not surfaced.
 
-### summarizeSlackSection(sectionName, channels)
-For each priority section, identify discussions where the user should consider engaging today:
+### summarizeSlackChannels(channels)
+For all priority channels, identify discussions where the user should consider engaging today:
 - Open questions or debates where their expertise or opinion would be valuable
 - Architecture or technical decisions being made without a clear conclusion
 - Customer feedback or incidents being discussed
@@ -280,7 +274,7 @@ Note: user's own messages are already filtered from channel data before this fun
 - **Bob Smith** — Wants to sync tomorrow. Reply expected. *(3h ago)*
 - **Carol Wu** — Sent the Q1 budget doc for your review. *(7h ago)*
 
-### Engineering
+### Priority Channels
 #### #eng-general
 - Discussion on migrating to Postgres 16 — no decision yet, Alice asked for input
 - Increased latency on checkout API flagged — may be the new caching layer
@@ -288,7 +282,6 @@ Note: user's own messages are already filtered from channel data before this fun
 #### #incidents
 - P1 incident resolved after 2h. Post-mortem scheduled for Thursday.
 
-### Product
 #### #roadmap
 - Q2 priorities under discussion — mobile feature timeline unclear, decision pending
 
@@ -301,13 +294,9 @@ Anchor comments for smart merge:
 <!-- AGENT:slack_mentions -->
 <!-- AGENT:slack_threads -->
 <!-- AGENT:slack_dms -->
-<!-- AGENT:slack_section_Engineering -->
-<!-- AGENT:slack_section_Product -->
-<!-- AGENT:slack_section_Company -->
+<!-- AGENT:slack_channels -->
 <!-- AGENT:slack_other -->
 ```
-
-Section anchors are generated dynamically from the section names in `slack-sections.json`. The output module must handle variable section names.
 
 ---
 
@@ -317,8 +306,8 @@ Section anchors are generated dynamically from the section names in `slack-secti
 |---|---|
 | `SLACK_USER_TOKEN` missing | Return `{ ok: false, error: 'SLACK_USER_TOKEN not set' }` |
 | Token invalid / revoked | Return `{ ok: false, error: 'Slack auth failed — check token' }` |
-| `slack-sections.json` missing | Log warning, skip section summaries, still fetch mentions and DMs |
-| `slack-sections.json` has unknown channel name | Log warning for that channel, skip it, continue |
+| `config/slack.json` missing | Log warning, skip channel summaries, still fetch mentions and DMs |
+| `config/slack.json` has unknown channel name | Log warning for that channel, skip it, continue |
 | Rate limit hit (HTTP 429) | Read `Retry-After` header, sleep, retry once |
 | Individual channel history fails | Log warning, skip that channel, continue |
 | Search API fails | Log warning, fall back to mention detection within priority channel history only |
@@ -348,12 +337,12 @@ Add to dependencies:
 Add to environment variables:
 ```
 SLACK_USER_TOKEN=xoxp-...
-SLACK_SECTIONS_CONFIG=./slack-sections.json
+SLACK_CONFIG_PATH=./config/slack.json
 ```
 
 Add to .gitignore (optional, user decides):
 ```
-slack-sections.json
+config/slack.json
 ```
 
 ---

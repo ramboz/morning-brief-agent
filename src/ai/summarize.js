@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { spawn } from 'child_process'
-import { debug } from '../utils/flags.js'
+import { debug, aiModel } from '../utils/flags.js'
 
 // ---------------------------------------------------------------------------
 // AI Backend configuration
@@ -15,6 +15,149 @@ if (!['claude-cli', 'openai'].includes(AI_BACKEND)) {
 }
 if (AI_BACKEND === 'openai' && !process.env.OPENAI_API_KEY) {
   console.error('[ai] OPENAI_API_KEY not set — summarization will fail')
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Strips markdown code fences from AI responses and parses JSON.
+ * Fallback for backends that don't support JSON schema enforcement.
+ * @param {string} text - Raw AI response
+ * @returns {any} Parsed JSON
+ */
+function parseJSONResponse(text) {
+  const stripped = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '')
+  return JSON.parse(stripped)
+}
+
+// ---------------------------------------------------------------------------
+// JSON schemas — enforce structured output via --json-schema (claude-cli)
+// or response_format (openai)
+// ---------------------------------------------------------------------------
+
+const SCHEMA_JIRA = {
+  type: 'object',
+  properties: {
+    actionRequired: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          key: { type: 'string' },
+          summary: { type: 'string' },
+        },
+        required: ['key', 'summary'],
+        additionalProperties: false,
+      },
+    },
+    updates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          key: { type: 'string' },
+          summary: { type: 'string' },
+        },
+        required: ['key', 'summary'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['actionRequired', 'updates'],
+  additionalProperties: false,
+}
+
+const SCHEMA_CONFLUENCE = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      title: { type: 'string' },
+      space: { type: 'string' },
+      url: { type: 'string' },
+      summary: { type: 'string' },
+      needsAttention: { type: 'boolean' },
+    },
+    required: ['title', 'space', 'url', 'summary', 'needsAttention'],
+    additionalProperties: false,
+  },
+}
+
+const SCHEMA_GITHUB = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      repo: { type: 'string' },
+      title: { type: 'string' },
+      url: { type: 'string' },
+      summary: { type: 'string' },
+      needsAction: { type: 'boolean' },
+    },
+    required: ['id', 'repo', 'title', 'url', 'summary', 'needsAction'],
+    additionalProperties: false,
+  },
+}
+
+const SCHEMA_SLACK_MENTIONS = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      channelName: { type: 'string' },
+      user: { type: 'string' },
+      summary: { type: 'string' },
+      needsReply: { type: 'boolean' },
+      permalink: { type: 'string' },
+    },
+    required: ['channelName', 'user', 'summary', 'needsReply', 'permalink'],
+    additionalProperties: false,
+  },
+}
+
+const SCHEMA_SLACK_DMS = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      withUser: { type: 'string' },
+      summary: { type: 'string' },
+      replyExpected: { type: 'boolean' },
+    },
+    required: ['withUser', 'summary', 'replyExpected'],
+    additionalProperties: false,
+  },
+}
+
+const SCHEMA_SLACK_CHANNELS = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      channel: { type: 'string' },
+      bullets: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['channel', 'bullets'],
+    additionalProperties: false,
+  },
+}
+
+const SCHEMA_SLACK_THREADS = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      channelName: { type: 'string' },
+      parentText: { type: 'string' },
+      summary: { type: 'string' },
+      needsReply: { type: 'boolean' },
+    },
+    required: ['channelName', 'parentText', 'summary', 'needsReply'],
+    additionalProperties: false,
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -83,32 +226,36 @@ Set "needsAttention": true if the user was mentioned or the change directly affe
  * Backend is selected via AI_BACKEND env var ("claude-cli" or "openai").
  * @param {string} prompt - System prompt
  * @param {string} userContent - User message content
- * @param {number} [maxTokens] - Used by the OpenAI backend; ignored by claude-cli
+ * @param {{ maxTokens?: number, schema?: object }} [opts]
  * @returns {Promise<string>} Raw text response
  */
-async function callClaude(prompt, userContent, maxTokens = 1000) {
+async function callClaude(prompt, userContent, opts = {}) {
+  const { maxTokens = 1000, schema } = opts
   if (AI_BACKEND === 'openai') {
-    return callOpenAI(prompt, userContent, maxTokens)
+    return callOpenAI(prompt, userContent, maxTokens, schema)
   }
-  return callClaudeCLI(prompt, userContent)
+  return callClaudeCLI(prompt, userContent, schema)
 }
 
 /**
  * Invokes Claude Code CLI in print mode as a subprocess.
- * Requires `claude` to be installed and authenticated in the current shell.
+ * When a JSON schema is provided, passes --json-schema to enforce structured output.
  * @param {string} prompt - System prompt (prepended to user content)
  * @param {string} userContent - Data to summarize
+ * @param {object} [schema] - JSON Schema for structured output validation
  * @returns {Promise<string>}
  */
-function callClaudeCLI(prompt, userContent) {
+function callClaudeCLI(prompt, userContent, schema) {
   const fullPrompt = `${prompt}\n\n${userContent}`
-  debug('[ai]', `callClaudeCLI — prompt ${fullPrompt.length} chars`)
   const t0 = Date.now()
 
+  const args = ['-p', fullPrompt]
+  if (aiModel) args.push('--model', aiModel)
+
+  debug('[ai]', `callClaudeCLI — model=${aiModel ?? 'default'}, prompt ${fullPrompt.length} chars`)
+
   return new Promise((resolve, reject) => {
-    // stdin: 'ignore' is critical — without it the subprocess blocks waiting
-    // on an open stdin pipe (execFile/execFileAsync leave stdin open by default)
-    const child = spawn('claude', ['-p', fullPrompt], {
+    const child = spawn('claude', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -117,10 +264,15 @@ function callClaudeCLI(prompt, userContent) {
     child.stdout.on('data', d => { stdout += d })
     child.stderr.on('data', d => { stderr += d })
 
+    const timeoutMs = parseInt(process.env.AI_TIMEOUT_MS ?? '300000')
     const timer = setTimeout(() => {
+      const elapsed = Math.round((Date.now() - t0) / 1000)
+      console.error(`[ai] claude CLI timed out after ${elapsed}s — killing pid ${child.pid}`)
+      if (stderr.trim()) console.error(`[ai] stderr before timeout: ${stderr.slice(0, 500)}`)
+      if (stdout.trim()) debug('[ai]', `stdout before timeout (${stdout.length} chars): ${stdout.slice(0, 200)}`)
       child.kill()
-      reject(new Error('claude CLI timed out after 120s'))
-    }, 120_000)
+      reject(new Error(`claude CLI timed out after ${elapsed}s`))
+    }, timeoutMs)
 
     child.on('error', err => {
       clearTimeout(timer)
@@ -129,12 +281,19 @@ function callClaudeCLI(prompt, userContent) {
 
     child.on('close', code => {
       clearTimeout(timer)
+      if (stderr.trim()) {
+        debug('[ai]', `stderr: ${stderr.trim().slice(0, 500)}`)
+      }
       if (code !== 0) {
         reject(new Error(`claude CLI exited ${code}: ${stderr.slice(0, 300)}`))
         return
       }
       const response = stdout.trim()
       debug('[ai]', `callClaudeCLI — done in ${Date.now() - t0}ms, response ${response.length} chars`)
+      if (!response) {
+        reject(new Error('claude CLI returned empty response'))
+        return
+      }
       resolve(response)
     })
   })
@@ -142,17 +301,33 @@ function callClaudeCLI(prompt, userContent) {
 
 /**
  * Calls an OpenAI-compatible chat completions API.
- * Works with api.openai.com and ChatGPT Enterprise endpoints.
+ * When a schema is provided, uses response_format for structured output.
  * @param {string} prompt - System prompt
  * @param {string} userContent - User message content
  * @param {number} maxTokens
+ * @param {object} [schema] - JSON Schema for structured output
  * @returns {Promise<string>}
  */
-async function callOpenAI(prompt, userContent, maxTokens) {
+async function callOpenAI(prompt, userContent, maxTokens, schema) {
   const baseUrl = (process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/$/, '')
   const model = process.env.OPENAI_MODEL ?? 'gpt-4o'
   debug('[ai]', `callOpenAI — model=${model}, endpoint=${baseUrl}, prompt ${(prompt + userContent).length} chars`)
   const t0 = Date.now()
+
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    messages: [
+      { role: 'system', content: prompt },
+      { role: 'user', content: userContent },
+    ],
+  }
+  if (schema) {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: { name: 'response', strict: true, schema },
+    }
+  }
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -160,14 +335,7 @@ async function callOpenAI(prompt, userContent, maxTokens) {
       'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: userContent },
-      ],
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {
@@ -199,16 +367,10 @@ export async function summarizeJira(issues) {
     .slice(0, 30)
 
   try {
-    const text = await callClaude(PROMPT_JIRA, JSON.stringify(input))
-    return JSON.parse(text)
+    const text = await callClaude(PROMPT_JIRA, JSON.stringify(input), { schema: SCHEMA_JIRA })
+    return parseJSONResponse(text)
   } catch (err) {
     console.error('[ai] summarizeJira failed:', err.message)
-    if (err.message && !err.message.includes('JSON')) {
-      // API error — return empty default
-    } else {
-      // JSON parse error — log raw response excerpt
-      console.warn('[ai] summarizeJira raw response (first 200 chars):', String(err.message).slice(0, 200))
-    }
     return { actionRequired: [], updates: [] }
   }
 }
@@ -232,8 +394,8 @@ export async function summarizeConfluence(pages) {
     .slice(0, 20)
 
   try {
-    const text = await callClaude(PROMPT_CONFLUENCE, JSON.stringify(input))
-    return JSON.parse(text)
+    const text = await callClaude(PROMPT_CONFLUENCE, JSON.stringify(input), { schema: SCHEMA_CONFLUENCE })
+    return parseJSONResponse(text)
   } catch (err) {
     console.error('[ai] summarizeConfluence failed:', err.message)
     return []
@@ -297,8 +459,8 @@ export async function summarizeGithub(notifications, label) {
   const input = notifications.slice(0, 30)
 
   try {
-    const text = await callClaude(PROMPT_GITHUB, JSON.stringify(input))
-    return JSON.parse(text)
+    const text = await callClaude(PROMPT_GITHUB, JSON.stringify(input), { schema: SCHEMA_GITHUB })
+    return parseJSONResponse(text)
   } catch (err) {
     console.error(`[ai] summarizeGithub (${label}) failed:`, err.message)
     return []
@@ -341,7 +503,7 @@ Output shape:
   }
 ]`
 
-const PROMPT_SLACK_SECTION = `You are helping someone decide where to focus their attention today based on Slack channel activity.
+const PROMPT_SLACK_CHANNELS = `You are helping someone decide where to focus their attention today based on Slack channel activity.
 
 You will receive an array of channels with recent messages from others (the user's own messages are already excluded). For each channel, identify discussions where the user should consider engaging:
 - Open questions or debates where their expertise or opinion would be valuable
@@ -398,8 +560,8 @@ export async function summarizeSlackMentions(mentions) {
   const input = mentions.slice(0, 20)
 
   try {
-    const text = await callClaude(PROMPT_SLACK_MENTIONS, JSON.stringify(input))
-    return JSON.parse(text)
+    const text = await callClaude(PROMPT_SLACK_MENTIONS, JSON.stringify(input), { schema: SCHEMA_SLACK_MENTIONS })
+    return parseJSONResponse(text)
   } catch (err) {
     console.error('[ai] summarizeSlackMentions failed:', err.message)
     return []
@@ -417,8 +579,8 @@ export async function summarizeSlackDMs(directMessages) {
   const input = directMessages.slice(0, 10)
 
   try {
-    const text = await callClaude(PROMPT_SLACK_DMS, JSON.stringify(input))
-    return JSON.parse(text)
+    const text = await callClaude(PROMPT_SLACK_DMS, JSON.stringify(input), { schema: SCHEMA_SLACK_DMS })
+    return parseJSONResponse(text)
   } catch (err) {
     console.error('[ai] summarizeSlackDMs failed:', err.message)
     return []
@@ -426,17 +588,15 @@ export async function summarizeSlackDMs(directMessages) {
 }
 
 /**
- * Summarizes one Slack section's channel activity using the Claude API.
+ * Summarizes priority channel activity using the Claude API.
  * Identifies discussions where the user should consider engaging.
- * @param {string} sectionName - Section label (e.g. 'Engineering')
- * @param {object[]} channels - From fetchSlack().data.sections[sectionName].channels
+ * @param {object[]} channels - From fetchSlack().data.channels
  * @returns {Promise<object[]>} - Array of { channel, bullets }
  */
-export async function summarizeSlackSection(sectionName, channels) {
+export async function summarizeSlackChannels(channels) {
   const channelsWithMessages = channels.filter(ch => ch.messages.length > 0)
   if (channelsWithMessages.length === 0) return []
 
-  // Trim to 5 messages per channel before sending to Claude
   const input = channelsWithMessages.map(ch => ({
     name: ch.name,
     messages: ch.messages.slice(0, 5),
@@ -444,10 +604,10 @@ export async function summarizeSlackSection(sectionName, channels) {
   }))
 
   try {
-    const text = await callClaude(PROMPT_SLACK_SECTION, JSON.stringify(input))
-    return JSON.parse(text)
+    const text = await callClaude(PROMPT_SLACK_CHANNELS, JSON.stringify(input), { schema: SCHEMA_SLACK_CHANNELS })
+    return parseJSONResponse(text)
   } catch (err) {
-    console.error(`[ai] summarizeSlackSection (${sectionName}) failed:`, err.message)
+    console.error('[ai] summarizeSlackChannels failed:', err.message)
     return []
   }
 }
@@ -464,8 +624,8 @@ export async function summarizeSlackThreads(threadUpdates) {
   const input = threadUpdates.slice(0, 15)
 
   try {
-    const text = await callClaude(PROMPT_SLACK_THREADS, JSON.stringify(input))
-    return JSON.parse(text)
+    const text = await callClaude(PROMPT_SLACK_THREADS, JSON.stringify(input), { schema: SCHEMA_SLACK_THREADS })
+    return parseJSONResponse(text)
   } catch (err) {
     console.error('[ai] summarizeSlackThreads failed:', err.message)
     return []

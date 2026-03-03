@@ -1,4 +1,5 @@
 import fs from 'fs/promises'
+import { debug } from '../utils/flags.js'
 
 const BODY_MAX_CHARS = 500
 
@@ -226,6 +227,7 @@ async function enrichNotification(octokit, notification, filters) {
  * @returns {Promise<{ ok: boolean, data?: { instance: string, notifications: object[] }, error?: string }>}
  */
 export async function fetchGithubNotifications(octokit, instance, config, _since) {
+  const label = instance === 'github.com' ? '[github.com]' : '[github-corp]'
   const instanceConfig = config[instance] ?? {}
   const filters = instanceConfig.notifications ?? {
     prs_to_review: true, pr_activity: true, issues_assigned: true,
@@ -233,24 +235,24 @@ export async function fetchGithubNotifications(octokit, instance, config, _since
   }
   const allowedOrgs = instanceConfig.orgs ?? []
 
-  // Step 1: Fetch raw notifications (paginated).
-  // No `since` filter — GitHub's `since` filters by last-updated, not arrival time,
-  // so old unread notifications (e.g. a review request from last week) would be dropped.
-  // `all: false` (unread only) keeps the list manageable without a time filter.
+  debug(label, 'Fetching unread notifications...')
+  const t0 = Date.now()
   const rawNotifications = await octokit.paginate(
     octokit.activity.listNotificationsForAuthenticatedUser,
     { all: false, per_page: 100 }
   )
+  debug(label, `${rawNotifications.length} raw notifications fetched in ${Date.now() - t0}ms`)
 
-  // Step 2: Filter by org and config flags
   const filtered = rawNotifications
     .filter(n => allowedOrgs.length === 0 || allowedOrgs.includes(n.repository?.owner?.login))
     .filter(n => shouldInclude(n, filters))
+  debug(label, `${filtered.length} after filtering (${rawNotifications.length - filtered.length} excluded by config/org)`)
 
-  // Steps 3 + 4: Enrich with subject details and CI status
+  const t1 = Date.now()
   const notifications = []
   for (const n of filtered) {
     try {
+      debug(label, `Enriching ${n.subject?.type} "${n.subject?.title?.slice(0, 60)}"...`)
       const enriched = await enrichNotification(octokit, n, filters)
       if (enriched) notifications.push(enriched)
     } catch (err) {
@@ -258,6 +260,7 @@ export async function fetchGithubNotifications(octokit, instance, config, _since
       notifications.push(mapBasic(n))
     }
   }
+  debug(label, `${notifications.length} notifications enriched in ${Date.now() - t1}ms`)
 
   return { ok: true, data: { instance, notifications } }
 }

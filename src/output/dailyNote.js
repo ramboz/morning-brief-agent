@@ -182,27 +182,11 @@ export function renderSlackDMs(dms) {
 }
 
 /**
- * Renders all dynamic Slack sections as a markdown block (with anchors for smart merge).
- * Used for initial template build. Each section gets its own <!-- AGENT: --> anchor.
- * @param {object} sectionSummaries - { sectionName: channelSummaries[] }
+ * Renders priority channel summaries as a markdown block.
+ * @param {object[]} channels - From summarizeSlackChannels()
  * @returns {string}
  */
-export function renderSlackSections(sectionSummaries) {
-  const parts = []
-  for (const [sectionName, channels] of Object.entries(sectionSummaries)) {
-    const anchorKey = `slack_section_${sectionName}`
-    const content = renderSlackSection(channels)
-    parts.push(`### ${sectionName}\n<!-- AGENT:${anchorKey} -->\n${content}`)
-  }
-  return parts.join('\n\n')
-}
-
-/**
- * Renders a single Slack section's content (used for smart-merge anchor updates).
- * @param {object[]} channels - From summarizeSlackSection()
- * @returns {string}
- */
-export function renderSlackSection(channels) {
+export function renderSlackChannels(channels) {
   if (!channels || channels.length === 0) return '_Nothing to report._'
 
   const parts = channels.map(ch => {
@@ -282,7 +266,9 @@ _Nothing to report._
 <!-- AGENT:slack_dms -->
 {slack_dms}
 
-{slack_sections_dynamic}
+### Priority Channels
+<!-- AGENT:slack_channels -->
+{slack_channels}
 
 ### Other Channels
 <!-- AGENT:slack_other -->
@@ -340,7 +326,7 @@ function buildFromTemplate(rendered, meta) {
     .replace('{slack_mentions}', rendered.slack_mentions ?? '_Nothing to report._')
     .replace('{slack_threads}', rendered.slack_threads ?? '_Nothing to report._')
     .replace('{slack_dms}', rendered.slack_dms ?? '_Nothing to report._')
-    .replace('{slack_sections_dynamic}', rendered.slack_sections_dynamic ?? '')
+    .replace('{slack_channels}', rendered.slack_channels ?? '_Nothing to report._')
     .replace('{slack_other}', rendered.slack_other ?? '_No activity in other channels._')
     .replace('{jira_tickets}', rendered.jira_tickets ?? '_Nothing to report._')
     .replace('{jira_discussions}', rendered.jira_discussions ?? '_Nothing to report._')

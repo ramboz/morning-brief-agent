@@ -14,8 +14,8 @@ Always begin each session with: **"Read CLAUDE.md and specs/00-architecture.md b
 - `commitlint.config.js`
 - `.husky/commit-msg` hook
 - `.env.example` with all variables from CLAUDE.md
-- `.gitignore` (includes `.env`, `token.json`, `logs/`, `output/`, `tests/fixtures/`, `config/slack.json`)
-- `src/utils/flags.js` — `isDryRun`, `isMock`, `isSaveFixture` helpers
+- `.gitignore` (includes `.env`, `token.json`, `logs/`, `output/`, `tests/fixtures/`, `config/*.json`)
+- `src/utils/flags.js` — `isDryRun`, `isMock`, `isSaveFixture`, `isDebug`, `debug()`, `lookbackHours`, `aiModel` helpers
 - `src/auth/msalClient.js` — **stub only**: `acquireToken()` logs "MS Graph pending admin approval" and returns `null`. Full implementation deferred to Phase 6.
 - `src/index.js` — skeleton orchestrator (imports sources, calls `Promise.allSettled`, logs results, writes to log file)
 - `logs/` directory created (gitignored)
@@ -53,10 +53,11 @@ Scaffold the morning-briefing Node.js project:
 
 6. Create directory stubs (with .gitkeep): logs/, output/, tests/fixtures/
 
-7. Create slack-sections.example.json:
+7. Create config/slack.example.json:
    {
-     "Section Name": ["#channel-one", "#channel-two"],
-     "Another Section": ["#channel-three"]
+     "channels": [
+       "#channel-one", "#channel-two", "#channel-three"
+     ]
    }
 
 8. Create src/auth/msalClient.js as a stub:
@@ -182,10 +183,10 @@ Update src/index.js to:
 **Spec to write before this phase:** `specs/04-slack.md`
 
 **Deliverables:**
-- `config/slack.json` example file with placeholder section names
+- `config/slack.example.json` with flat priority channel list
 - `src/sources/slack.js`
-- `summarizeSlackMentions()`, `summarizeSlackDMs()`, `summarizeSlackSection()` in `src/ai/summarize.js`
-- Dynamic Slack sections rendered in daily note
+- `summarizeSlackMentions()`, `summarizeSlackDMs()`, `summarizeSlackThreads()`, `summarizeSlackChannels()` in `src/ai/summarize.js`
+- Priority Channels section rendered in daily note
 - Standalone runner works
 
 **Claude Code Prompt:**
@@ -194,28 +195,27 @@ Read CLAUDE.md, specs/00-architecture.md, and specs/04-slack.md before writing a
 
 Implement src/sources/slack.js with:
 
-1. loadSectionsConfig() — reads config/slack.json, resolves channel names to IDs via
-   conversations.list, returns { sectionName: [{ id, name }] }
+1. loadConfig(memberChannels) — reads config/slack.json (flat "channels" array),
+   resolves channel names to IDs using pre-fetched member channel list,
+   returns { ok: true, channels: [{ id, name }] }
 
 2. fetchSlack(since) — main function that:
    a. Calls auth.test() to get the authenticated user's ID
-   b. Fetches mentions via search.messages({ query: '<@userId>', count: 100 })
-   c. Fetches full history for priority channels only (from config/slack.json)
-      with 1200ms delay between conversations.history calls to respect rate limits
-   d. Fetches DM list and history for DMs with activity since `since`
-   e. Counts activity in non-priority channels (no full fetch — just metadata)
-   f. Resolves all user IDs to display names (in-memory Map cache)
-   g. Returns the full data shape defined in specs/04-slack.md
+   b. Fetches all member channels once via users.conversations (reused by loadConfig and countOtherChannelActivity)
+   c. Fetches mentions via search.messages({ query: '<@userId>', count: 100 })
+   d. Fetches thread updates (threads the user replied to that have new replies)
+   e. Fetches full history for priority channels only (from config/slack.json)
+   f. Fetches DM list and history for DMs with activity since `since` (pre-filtered by dm.latest.ts)
+   g. Counts activity in non-priority channels (no full fetch — just metadata)
+   h. Resolves all user IDs to display names (in-memory Map cache)
+   i. Returns the full data shape defined in specs/04-slack.md
 
 3. Standalone runner at bottom
 
-Add summarizeSlackMentions(), summarizeSlackDMs(), summarizeSlackSection() to
-src/ai/summarize.js following the prompt guidance in specs/04-slack.md.
+Add summarizeSlackMentions(), summarizeSlackDMs(), summarizeSlackThreads(),
+summarizeSlackChannels() to src/ai/summarize.js following the prompt guidance in specs/04-slack.md.
 
-Update src/output/dailyNote.js to handle dynamic Slack sections:
-- On first run: render all sections with their individual AGENT anchors
-- On re-run: smart merge each section by its anchor
-- Handle variable number of sections from config/slack.json
+Update src/output/dailyNote.js with a "Priority Channels" section for Slack.
 
 Update src/index.js to include Slack in the Promise.allSettled() call.
 ```
