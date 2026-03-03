@@ -122,21 +122,22 @@ See `specs/03-outlook.md` for full classification criteria and draft generation 
 See `specs/04-slack.md` for full prompt guidance.
 
 **Input:** array of mention objects (see spec 04 for shape)
-**Max input:** 100 — already enforced by search API
+**Max input:** 20; drop oldest first if over limit
 **Max tokens:** 1000
 
 **Prompt instructions:**
-- Produce a one-line summary per mention with enough context to understand what's being asked
-- Flag urgent items (P1 incidents, blockers, explicit deadlines)
+- For each mention, produce a one-line summary of what the user was asked or notified about
+- Flag whether a reply seems expected
 
 **Output shape:**
 ```js
 [
   {
     channelName: "eng-general",
-    text: "Alice Chen asked you to review PR #482",
-    urgent: false,
-    ts: "1709298180.000200"
+    user: "Alice Chen",
+    summary: "Asked you to review PR #482 before end of day",
+    needsReply: true,
+    permalink: "https://..."
   }
 ]
 ```
@@ -174,57 +175,81 @@ See `specs/04-slack.md` for full prompt guidance.
 
 See `specs/04-slack.md` for full prompt guidance.
 
-**Input:** section name (string) + array of channel objects with messages
-**Max input:** truncate each channel to its 100 most recent messages before sending
+**Input:** section name (string) + array of channel objects with messages (user's own messages already filtered out)
+**Max input:** 5 messages + 10 thread replies per channel before sending
 **Max tokens:** 1000
 
 **Prompt instructions:**
-- Key decisions or announcements worth knowing
-- Action items involving the user (flag with 🔴)
-- Significant discussions worth being aware of (flag with ℹ️)
-- Skip: automated bot messages (unless incident/failure), emoji-only messages, trivial chatter
-- Max 5 bullet points per channel; summarize at a higher level if more happened
+- Identify discussions where the user should consider engaging: open questions, architecture/technical decisions in progress, customer feedback or incidents, decisions affecting the user's work, announcements worth knowing
+- Skip: trivial chatter, fully resolved discussions, status updates requiring no action, bot messages unless incident/alert/error
+- Up to 5 concise bullets per channel framed as "what's happening and why it might need you"
+- Omit channels where nothing warrants the user's attention
 
 **Output shape:**
 ```js
-{
-  sectionName: "Engineering",
-  channels: [
-    {
-      name: "eng-general",
-      bullets: [
-        "Deployed v2.4.1 to production (Alice Chen)",
-        "Discussion on Postgres 16 migration — no decision yet"
-      ]
-    }
-  ]
-}
+[
+  {
+    channel: "eng-general",
+    bullets: [
+      "Open debate on moving to Postgres 16 — no decision yet, Alice asked for input",
+      "Bob raised a concern about the auth token refresh edge case in the new flow"
+    ]
+  }
+]
 ```
 
-**Safe default:** `{ sectionName, channels: [] }`
+**Safe default:** `[]`
+
+---
+
+### summarizeSlackThreads(threadUpdates)
+
+**Input:** array of thread update objects — threads the user previously replied to that have new replies from others
+**Max input:** 15 thread updates
+**Max tokens:** 1000
+
+**Prompt instructions:**
+- Each thread shows new replies from others after the user's last reply
+- Determine whether the user should follow up
+- Write one concise line per thread describing what happened and whether a response seems expected
+
+**Output shape:**
+```js
+[
+  {
+    channelName: "eng-backend",
+    parentText: "Should we use optimistic locking here?",
+    summary: "Alice and Bob pushed back on the approach — waiting for your thoughts",
+    needsReply: true
+  }
+]
+```
+
+**Safe default:** `[]`
 
 ---
 
 ### summarizeJira(issues)
 
-**Input:** array of JIRA issue objects (see spec 06 for shape — to be written)
+**Input:** array of JIRA issue objects (see spec 06 for shape)
 **Max input:** 30 issues; drop oldest-updated first if over limit
 **Max tokens:** 1000
 
 **Prompt instructions:**
-- Separate into two groups: tickets needing user action, and informational updates
-- For action items: ticket key, one-line description of what action is needed
-- For updates: ticket key, one line of what changed
-- Skip issues with no meaningful activity (pure metadata changes, field updates with no comments)
+- Separate into two groups framed around what the user should do today:
+  - `actionRequired`: tickets where the user must act today (blocked on them, review requested, direct question, needs their decision or approval)
+  - `updates`: tickets with open discussions, unresolved questions, or decisions in progress where the user's input could add value — even if not explicitly asked
+- Write each summary as "why this might need you today", not just what changed
+- Skip issues where: nothing new happened, only metadata changed, or the user already has the last word and no one has responded
 
 **Output shape:**
 ```js
 {
   actionRequired: [
-    { key: "ENG-482", summary: "Review PR — blocking release, assignee waiting on you" }
+    { key: "ENG-482", summary: "Alice is blocked on token refresh edge case — needs your review" }
   ],
   updates: [
-    { key: "ENG-410", summary: "Status changed to In Review by Alice" }
+    { key: "ENG-410", summary: "Debate on caching strategy — no decision yet, your input on trade-offs would help" }
   ]
 }
 ```
@@ -235,14 +260,15 @@ See `specs/04-slack.md` for full prompt guidance.
 
 ### summarizeConfluence(pages)
 
-**Input:** array of recently modified Confluence page objects (see spec 07 for shape — to be written)
+**Input:** array of recently modified Confluence page objects (see spec 07 for shape)
 **Max input:** 20 pages
 **Max tokens:** 1000
 
 **Prompt instructions:**
-- One-line summary per page: what changed and who changed it
-- Flag if the page is in a space the user owns or was recently active in (use space key from input)
-- Skip trivial edits if the excerpt doesn't show meaningful content change
+- Assess whether the user should review, comment, or respond to each page — not just that something changed
+- Include pages where: the user was mentioned, there's an open question or RFC, significant decisions were added in the user's area, or being unaware could affect their work
+- Skip pages where: the user made the last edit with no new replies, the edit is trivial (formatting, typos, version bump), or the content is purely informational with no engagement opportunity
+- Write each summary as "why this might need your attention" rather than just what changed
 
 **Output shape:**
 ```js
@@ -251,11 +277,13 @@ See `specs/04-slack.md` for full prompt guidance.
     title: "Q1 Engineering Roadmap",
     space: "ENG",
     url: "https://...",
-    summary: "Updated by Alice Chen — added mobile section to Q2 priorities",
+    summary: "Alice added mobile-first section to Q2 priorities — may affect your team's roadmap",
     needsAttention: false
   }
 ]
 ```
+
+`needsAttention: true` if the user was mentioned or the change directly affects their work or decisions.
 
 **Safe default:** `[]`
 
@@ -265,31 +293,32 @@ See `specs/04-slack.md` for full prompt guidance.
 
 `label` is `'github.com'` or `'Corporate GitHub'` — included in action item attribution.
 
-**Input:** array of notification objects (see spec 08 for shape — to be written)
-**Max input:** 50 notifications per instance; drop oldest first if over limit
+**Input:** array of enriched notification objects (see spec 08 for shape)
+**Max input:** 30 notifications; pass all (already filtered by source)
 **Max tokens:** 1000
 
 **Prompt instructions:**
-- Group by type: PRs awaiting review, mentions/comments needing response, CI failures, other
-- Flag PRs where the user is a requested reviewer
-- Skip purely informational notifications (merged PRs, closed issues) unless follow-up is likely needed
+- Assess whether the user should act or engage with each notification — not just that something happened
+- `needsAction: true` for: review_requested, assigned issues, CI failing on user's PR, direct mention/team_mention
+- `needsAction: false` but still include if: PR they authored has unresolved comments or questions, open debate on a PR/issue they're watching, new unresolved info on assigned issues
+- Skip: merged/resolved items with no open questions, bot/automated comments with no human discussion, pure status updates with no engagement opportunity
+- Write each summary as "why this matters today", not just what happened
 
 **Output shape:**
 ```js
-{
-  reviewRequested: [
-    { repo: "org/api-service", title: "Add rate limiting middleware", url: "https://..." }
-  ],
-  mentioned: [
-    { repo: "org/frontend", title: "Bug: login redirect loop", url: "https://..." }
-  ],
-  other: [
-    { repo: "org/infra", title: "Dependabot: bump lodash to 4.17.21", url: "https://..." }
-  ]
-}
+[
+  {
+    id: "12345678",
+    repo: "myorg/my-repo",
+    title: "feat: add OAuth2 support",
+    url: "https://...",
+    summary: "Review requested — adds OAuth2 support to auth flow",
+    needsAction: true
+  }
+]
 ```
 
-**Safe default:** `{ reviewRequested: [], mentioned: [], other: [] }`
+**Safe default:** `[]`
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Fetch recently modified Confluence pages from watched spaces defined in `config/confluence.json`. The script identifies pages that have been created or updated in the lookback window, fetches a short excerpt, and flags pages where the current user was mentioned in a comment or inline comment. Results are structured for summarization and rendered in the daily note.
+Fetch recently modified Confluence pages from watched spaces defined in `config/confluence.json`. The script identifies pages that were created or updated in the lookback window, fetches a short excerpt, and flags pages where the current user was mentioned. Results are passed to Claude for engagement assessment — the goal is not a list of changes but an answer to "which pages need my attention today?"
 
 Read-only. The script never creates or modifies pages.
 
@@ -185,17 +185,17 @@ for (const page of mentionPages) {
 ```markdown
 ## 📖 Confluence
 
-### Recent Changes
-- 📝 **Auth Service Architecture** — `ENG`  
-  Alice updated: "Added section on token refresh edge cases and..."  
+### Pages Needing Attention
+- 📝 **Auth Service Architecture** — `ENG`
+  Alice added a token refresh edge case section — may affect your area
   *(Engineering > Backend · v14 · 2h ago)*
 
-- 📝 **Q1 Roadmap** — `PRODUCT`  
-  Bob updated: "Moved OAuth2 epic to Q2, added new data pipeline..."  
+- 📝 **Q1 Roadmap** — `PRODUCT`
+  OAuth2 epic moved to Q2 — check if this affects your team's timeline
   *(Product > Planning · v7 · 5h ago)*
 
-- 🔔 **Deployment Runbook** — `OPS` *(you were mentioned)*  
-  Comment: "Can @you review the rollback section before we publish?"  
+- 🔔 **Deployment Runbook** — `OPS` *(you were mentioned)*
+  Comment: "Can @you review the rollback section before we publish?"
   *(Operations · v3 · 3h ago)*
 ```
 

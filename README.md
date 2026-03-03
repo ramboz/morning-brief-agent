@@ -9,12 +9,12 @@ A personal productivity agent that runs every morning and produces an [Obsidian]
 Each morning, the agent:
 
 - 📬 **Email** — Summarizes unread Outlook mail, classifies action items vs. FYI, saves draft replies for emails needing a response, and auto-archives newsletters and automated alerts
-- 💬 **Slack** — Highlights mentions and threads requiring your attention, summarizes DMs, and gives channel-by-channel digests for your priority sections
+- 💬 **Slack** — Highlights direct @mentions, thread updates (replies to threads you were part of), DMs awaiting a response, and surfaces open discussions in priority channels where your input would be valuable
 - 💬 **Yesterday's Meetings** — Fetches Teams meeting transcripts and summarizes key decisions, action items, and context from meetings you attended or need to catch up on
 - 💬 **Teams Activity** — Surfaces @mentions from customer-facing Teams chats
-- 🎫 **JIRA** — Shows ticket activity from the last 24h and flags discussions you should weigh in on
-- 📖 **Confluence** — Lists recently modified pages in your watched spaces
-- 💻 **GitHub** — Consolidates notifications from both github.com and your corporate GitHub instance
+- 🎫 **JIRA** — Identifies tickets where your review, decision, or input is needed today — and open discussions worth joining, not just what changed
+- 📖 **Confluence** — Surfaces pages with open discussions, active RFCs, or direct mentions that deserve your attention — not just a list of recent edits
+- 💻 **GitHub** — Highlights PRs awaiting your review, issues assigned to you, and open discussions across github.com and your corporate instance where your engagement matters
 
 Everything is written into a single Obsidian daily note. Re-running during the day **smart-merges** new content without overwriting anything you've already written or checked off.
 
@@ -64,6 +64,7 @@ All sources are fault-tolerant — if JIRA is down or GitHub is unreachable, the
 
 ## 💬 Slack
 ### 🔴 Mentions & Threads
+### Thread Updates
 ### Direct Messages
 ### Engineering
 ### Product
@@ -76,11 +77,11 @@ All sources are fault-tolerant — if JIRA is down or GitHub is unreachable, the
 ### Customer Mentions
 
 ## 🎫 JIRA
-### Updated Tickets
+### Needs Your Input
 ### Discussions to Join
 
 ## 📖 Confluence
-### Recent Changes
+### Pages Needing Attention
 
 ## 💻 GitHub
 ### github.com
@@ -96,7 +97,7 @@ All sources are fault-tolerant — if JIRA is down or GitHub is unreachable, the
 - **An Obsidian vault** synced via Google Drive (or any local/synced folder)
 - **A Claude subscription** (for the Claude API key — uses `claude-sonnet-4` model)
 - **Microsoft work account** with access to Outlook and Teams
-- **Slack workspace** membership (user token, no admin required in most workspaces)
+- **Slack workspace** membership (user token — requires workspace admin approval to install the app)
 - **JIRA + Confluence** personal API token (self-hosted)
 - **GitHub personal access tokens** (one per GitHub instance)
 

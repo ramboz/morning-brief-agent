@@ -2,7 +2,9 @@
 
 ## Overview
 
-Fetch Slack activity from the last 24h across the user's priority channels (defined in a config file), direct messages, and any channel where the user was mentioned. Summarize using Claude and render into the Obsidian daily note. Read-only — the script never posts to Slack.
+Fetch Slack activity from the last 24h across the user's priority channels (defined in a config file), direct messages, any channel where the user was mentioned, and threads the user participated in that have new replies. Summarize using Claude and render into the Obsidian daily note. Read-only — the script never posts to Slack.
+
+The guiding philosophy: surface **where the user needs to show up today**, not just what happened. User's own messages are filtered from channel summaries — the sections show what the organization is discussing, not what the user already said.
 
 ---
 
@@ -111,7 +113,7 @@ search.messages({ query: '<@{userId}>', count: 100 })
 This is a single API call covering all channels. Requires the user token.
 
 ### Step 3: Fetch full history only for priority channels
-For each channel in `slack-sections.json`, fetch messages since `since`:
+For each channel in `slack-sections.json`, fetch messages since `since`. Filter out the user's own messages before returning — sections show what the org is discussing, not what the user already said:
 ```
 conversations.history({ channel: channelId, oldest: since.unix(), limit: 200 })
 ```
@@ -119,6 +121,13 @@ Also fetch thread replies for any threads with activity:
 ```
 conversations.replies({ channel: channelId, ts: threadTs, oldest: since.unix() })
 ```
+
+### Step 3b: Fetch thread updates
+Find threads the user previously replied to that have new replies from others:
+1. Search `from:<@userId>` to find messages the user posted in threads
+2. For each that was a thread reply (thread_ts ≠ ts), fetch `conversations.replies` for that thread
+3. Find replies from others that came after the user's last reply in that thread
+4. Skip threads where the user has the last word (nothing new to catch up on)
 
 ### Step 4: Fetch DMs
 ```
@@ -164,8 +173,24 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
         ts: "1709298180.000200",
         user: { id: "U012AB3CD", name: "Alice Chen" },
         text: "hey <@UXXXXXXXX> can you review PR #482?",
-        threadTs: "1709298180.000200", // null if not in a thread
+        threadTs: null,   // null if not in a thread
         permalink: "https://yourworkspace.slack.com/archives/C012AB3CD/p1709298180000200"
+      }
+    ],
+    threadUpdates: [
+      {
+        channelId: "C012AB3CD",
+        channelName: "eng-backend",
+        threadTs: "1709200000.000100",
+        parentText: "Should we use optimistic locking for the cart update endpoint?",
+        newReplies: [
+          {
+            ts: "1709298100.000300",
+            user: { id: "U012AB3CD", name: "Alice Chen" },
+            text: "I think we need to revisit this — had a production issue with it last month"
+          }
+        ],
+        totalNewReplies: 2
       }
     ],
     directMessages: [
@@ -175,8 +200,9 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
         messages: [
           {
             ts: "1709298180.000200",
-            text: "Hey, can we sync tomorrow?",
-            isUnread: true
+            isFromMe: false,
+            user: { id: "U012AB3CD", name: "Bob Smith" },
+            text: "Hey, can we sync tomorrow?"
           }
         ]
       }
@@ -188,6 +214,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
             id: "C012AB3CD",
             name: "eng-general",
             messages: [
+              // User's own messages are excluded — only others' messages
               {
                 ts: "1709298180.000200",
                 user: { id: "U012AB3CD", name: "Alice Chen" },
@@ -215,24 +242,25 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 ## Summarization (in src/ai/summarize.js)
 
 ### summarizeSlackMentions(mentions)
-Produces a concise list of things requiring the user's attention. Each mention gets a one-line summary with context.
+For each @mention, produce a one-line summary of what was asked or notified and whether a reply seems expected.
 
 ### summarizeSlackDMs(directMessages)
-For each DM thread with unread messages, produce a 1-2 sentence summary and flag if a reply seems expected.
+For each DM thread, produce a 1-2 sentence summary and flag if a reply from the user seems expected.
+
+### summarizeSlackThreads(threadUpdates)
+For each thread the user was part of, summarize the new replies from others and determine whether a follow-up is expected. Only threads where others have replied after the user's last message are included — the user already has the last word is not surfaced.
 
 ### summarizeSlackSection(sectionName, channels)
-For each priority section, produce:
-- Key decisions or announcements
-- Action items involving the user
-- Significant discussions worth being aware of
-- Skip noise (automated messages, emoji-only messages, trivial chatter)
+For each priority section, identify discussions where the user should consider engaging today:
+- Open questions or debates where their expertise or opinion would be valuable
+- Architecture or technical decisions being made without a clear conclusion
+- Customer feedback or incidents being discussed
+- Decisions in progress that affect the user's work
+- Announcements they should be aware of
 
-Prompt guidance for Claude:
-- Be concise — this is a brief, not a transcript
-- Flag items needing the user's attention with 🔴
-- Flag informational items with ℹ️
-- Skip automated bot messages unless they indicate an incident or failure
-- Max 5 bullet points per channel; if more happened, summarize at a higher level
+Skip: trivial chatter, fully resolved discussions, status updates requiring no action, bot messages unless incident/alert/error.
+
+Note: user's own messages are already filtered from channel data before this function is called — summaries reflect what the org is discussing, not the user's own contributions.
 
 ---
 
@@ -244,21 +272,25 @@ Prompt guidance for Claude:
 - 🔴 **#eng-general** — Alice Chen asked you to review PR #482 *(2h ago)*
 - 🔴 **#incidents** — You were tagged in the P1 incident thread *(5h ago)*
 
+### Thread Updates
+- ℹ️ **#eng-backend** — Should we use optimistic locking?
+  Alice and Bob pushed back on the approach — waiting for your thoughts.
+
 ### Direct Messages
 - **Bob Smith** — Wants to sync tomorrow. Reply expected. *(3h ago)*
 - **Carol Wu** — Sent the Q1 budget doc for your review. *(7h ago)*
 
 ### Engineering
 #### #eng-general
-- Deployed v2.4.1 to production ✅ (Alice Chen)
-- Discussion on migrating to Postgres 16 — no decision yet
+- Discussion on migrating to Postgres 16 — no decision yet, Alice asked for input
+- Increased latency on checkout API flagged — may be the new caching layer
 
 #### #incidents
 - P1 incident resolved after 2h. Post-mortem scheduled for Thursday.
 
 ### Product
 #### #roadmap
-- Q2 priorities finalized. Mobile feature pushed to Q3.
+- Q2 priorities under discussion — mobile feature timeline unclear, decision pending
 
 ### Other Channels
 _12 channels had activity. No mentions._
@@ -267,6 +299,7 @@ _12 channels had activity. No mentions._
 Anchor comments for smart merge:
 ```
 <!-- AGENT:slack_mentions -->
+<!-- AGENT:slack_threads -->
 <!-- AGENT:slack_dms -->
 <!-- AGENT:slack_section_Engineering -->
 <!-- AGENT:slack_section_Product -->

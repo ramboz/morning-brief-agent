@@ -6,7 +6,9 @@ This is the project bible. Read this before writing any code. Follow these conve
 
 ## What This Project Does
 
-A personal productivity agent that runs every morning and produces an Obsidian daily note summarizing the last 24h across email, meetings, Teams activity, JIRA, Confluence, and GitHub. It saves email draft responses to Outlook Drafts and auto-triages obvious junk mail.
+A personal productivity agent that runs every morning and produces an Obsidian daily note helping you decide where to show up and what to act on today — across email, meetings, Teams activity, JIRA, Confluence, GitHub, and Slack. It saves email draft responses to Outlook Drafts and auto-triages obvious junk mail.
+
+The core philosophy: **not what happened yesterday, but where you need to show up today.** Every source is filtered through the question "does this need my attention?" rather than "what changed?"
 
 ---
 
@@ -255,16 +257,17 @@ The Obsidian daily note follows this exact markdown structure (section headers m
 ## 💬 Yesterday's Meetings
 ## 💬 Slack
 ### 🔴 Mentions & Threads
+### Thread Updates
 ### Direct Messages
 <!-- dynamic sections from slack-sections.json -->
 ### Other Channels
 ## 💬 Teams Activity
 ### Customer Mentions
 ## 🎫 JIRA
-### Updated Tickets
+### Needs Your Input
 ### Discussions to Join
 ## 📖 Confluence
-### Recent Changes
+### Pages Needing Attention
 ## 💻 GitHub
 ### github.com
 ### Corporate GitHub

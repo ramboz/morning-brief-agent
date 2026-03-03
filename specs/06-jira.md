@@ -218,20 +218,19 @@ const results = await jiraFetch('/rest/api/2/search', {
 ```markdown
 ## 🎫 JIRA
 
-### Needs Your Attention
-- 🔴 **ENG-482** In Progress — Add OAuth2 support to auth service  
-  Alice: "Blocked on the token refresh edge case — can you take a look?"  
+### Needs Your Input
+- 🔴 **[ENG-482](https://jira.yourcompany.com/browse/ENG-482)** In Progress — Alice is blocked on token refresh edge case — needs your review
   *(High · backend, auth · updated 2h ago)*
 
-### You Commented / Were Mentioned  
-- ℹ️ **OPS-91** Review — Database migration runbook  
-  You were mentioned: "LGTM from @you, waiting on @bob"  
+### Discussions to Join
+- ℹ️ **[OPS-91](https://jira.yourcompany.com/browse/OPS-91)** — Debate on caching strategy — no decision yet, your input on trade-offs would help
   *(Medium · updated 5h ago)*
 ```
 
 Anchor comments:
 ```
-<!-- AGENT:jira -->
+<!-- AGENT:jira_tickets -->
+<!-- AGENT:jira_discussions -->
 ```
 
 Items identified by issue key (e.g. `ENG-482`) for smart merge deduplication.

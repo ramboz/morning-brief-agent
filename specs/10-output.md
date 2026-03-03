@@ -49,6 +49,9 @@ Every daily note starts from this exact template on first run. Section headers m
 ### 🔴 Mentions & Threads
 <!-- AGENT:slack_mentions -->
 
+### Thread Updates
+<!-- AGENT:slack_threads -->
+
 ### Direct Messages
 <!-- AGENT:slack_dms -->
 
@@ -65,14 +68,14 @@ Every daily note starts from this exact template on first run. Section headers m
 <!-- AGENT:teams_activity -->
 
 ## 🎫 JIRA
-### Updated Tickets
+### Needs Your Input
 <!-- AGENT:jira_tickets -->
 
 ### Discussions to Join
 <!-- AGENT:jira_discussions -->
 
 ## 📖 Confluence
-### Recent Changes
+### Pages Needing Attention
 <!-- AGENT:confluence -->
 
 ## 💻 GitHub
@@ -168,8 +171,8 @@ The merge strategy preserves user edits while adding new information from the la
 - New mentions/replies prepended
 - Existing items preserved
 
-#### JIRA, Confluence, GitHub sections
-- Items identified by ticket key (JIRA), page title (Confluence), or notification title + repo (GitHub)
+#### JIRA, Confluence, GitHub, and Slack Thread sections
+- Items identified by ticket key (JIRA), page title (Confluence), notification title + repo (GitHub), or thread timestamp (Slack threads)
 - New items prepended
 - Existing items updated in place if same key is found
 - User annotations on existing items (lines the user added below an item) are preserved

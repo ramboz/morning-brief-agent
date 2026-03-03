@@ -67,7 +67,7 @@ export function getDailyNotePath(dryRun = isDryRun) {
 // ---------------------------------------------------------------------------
 
 /**
- * Renders the JIRA "Updated Tickets" section content (actionRequired items).
+ * Renders the JIRA "Needs Your Input" section content (actionRequired items).
  * @param {object[]} actionRequired - From summarizeJira()
  * @param {Map<string, object>} issueMap - Original issue data keyed by JIRA key
  * @returns {string}
@@ -115,7 +115,7 @@ export function renderJiraDiscussions(updates, issueMap) {
 }
 
 /**
- * Renders the Confluence "Recent Changes" section content.
+ * Renders the Confluence "Pages Needing Attention" section content.
  * @param {object[]} pages - From summarizeConfluence()
  * @returns {string}
  */
@@ -298,7 +298,7 @@ _Nothing to report._
 _Nothing to report._
 
 ## 🎫 JIRA
-### Updated Tickets
+### Needs Your Input
 <!-- AGENT:jira_tickets -->
 {jira_tickets}
 
@@ -307,7 +307,7 @@ _Nothing to report._
 {jira_discussions}
 
 ## 📖 Confluence
-### Recent Changes
+### Pages Needing Attention
 <!-- AGENT:confluence -->
 {confluence}
 
