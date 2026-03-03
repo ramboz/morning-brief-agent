@@ -1,9 +1,6 @@
 import 'dotenv/config'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+import { spawn } from 'child_process'
 import { debug } from '../utils/flags.js'
-
-const execFileAsync = promisify(execFile)
 
 // ---------------------------------------------------------------------------
 // AI Backend configuration
@@ -103,17 +100,44 @@ async function callClaude(prompt, userContent, maxTokens = 1000) {
  * @param {string} userContent - Data to summarize
  * @returns {Promise<string>}
  */
-async function callClaudeCLI(prompt, userContent) {
+function callClaudeCLI(prompt, userContent) {
   const fullPrompt = `${prompt}\n\n${userContent}`
   debug('[ai]', `callClaudeCLI — prompt ${fullPrompt.length} chars`)
   const t0 = Date.now()
-  const { stdout } = await execFileAsync('claude', ['-p', fullPrompt], {
-    maxBuffer: 2 * 1024 * 1024, // 2 MB
-    timeout: 120_000,           // 2 minute hard timeout
+
+  return new Promise((resolve, reject) => {
+    // stdin: 'ignore' is critical — without it the subprocess blocks waiting
+    // on an open stdin pipe (execFile/execFileAsync leave stdin open by default)
+    const child = spawn('claude', ['-p', fullPrompt], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', d => { stdout += d })
+    child.stderr.on('data', d => { stderr += d })
+
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error('claude CLI timed out after 120s'))
+    }, 120_000)
+
+    child.on('error', err => {
+      clearTimeout(timer)
+      reject(err)
+    })
+
+    child.on('close', code => {
+      clearTimeout(timer)
+      if (code !== 0) {
+        reject(new Error(`claude CLI exited ${code}: ${stderr.slice(0, 300)}`))
+        return
+      }
+      const response = stdout.trim()
+      debug('[ai]', `callClaudeCLI — done in ${Date.now() - t0}ms, response ${response.length} chars`)
+      resolve(response)
+    })
   })
-  const response = stdout.trim()
-  debug('[ai]', `callClaudeCLI — done in ${Date.now() - t0}ms, response ${response.length} chars`)
-  return response
 }
 
 /**
