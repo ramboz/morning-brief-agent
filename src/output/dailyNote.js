@@ -138,6 +138,82 @@ export function renderConfluence(pages) {
 }
 
 /**
+ * Renders the Slack "Mentions & Threads" section content.
+ * @param {object[]} mentions - From summarizeSlackMentions()
+ * @returns {string}
+ */
+export function renderSlackMentions(mentions) {
+  if (!mentions || mentions.length === 0) return '_Nothing to report._'
+
+  return mentions.map(m => {
+    const icon = m.needsReply ? '🔴' : 'ℹ️'
+    const link = m.permalink ? `[#${m.channelName}](${m.permalink})` : `#${m.channelName}`
+    return `- ${icon} **${link}** — ${m.user}: ${m.summary}`
+  }).join('\n')
+}
+
+/**
+ * Renders the Slack "Direct Messages" section content.
+ * @param {object[]} dms - From summarizeSlackDMs()
+ * @returns {string}
+ */
+export function renderSlackDMs(dms) {
+  if (!dms || dms.length === 0) return '_Nothing to report._'
+
+  return dms.map(dm => {
+    const icon = dm.replyExpected ? '🔴' : 'ℹ️'
+    return `- ${icon} **${dm.withUser}** — ${dm.summary}`
+  }).join('\n')
+}
+
+/**
+ * Renders all dynamic Slack sections as a markdown block (with anchors for smart merge).
+ * Used for initial template build. Each section gets its own <!-- AGENT: --> anchor.
+ * @param {object} sectionSummaries - { sectionName: channelSummaries[] }
+ * @returns {string}
+ */
+export function renderSlackSections(sectionSummaries) {
+  const parts = []
+  for (const [sectionName, channels] of Object.entries(sectionSummaries)) {
+    const anchorKey = `slack_section_${sectionName}`
+    const content = renderSlackSection(channels)
+    parts.push(`### ${sectionName}\n<!-- AGENT:${anchorKey} -->\n${content}`)
+  }
+  return parts.join('\n\n')
+}
+
+/**
+ * Renders a single Slack section's content (used for smart-merge anchor updates).
+ * @param {object[]} channels - From summarizeSlackSection()
+ * @returns {string}
+ */
+export function renderSlackSection(channels) {
+  if (!channels || channels.length === 0) return '_Nothing to report._'
+
+  const parts = channels.map(ch => {
+    const bullets = (ch.bullets ?? []).map(b => `- ${b}`).join('\n')
+    return bullets ? `#### #${ch.channel}\n${bullets}` : null
+  }).filter(Boolean)
+
+  return parts.length > 0 ? parts.join('\n\n') : '_Nothing to report._'
+}
+
+/**
+ * Renders the Slack "Other Channels" section content.
+ * @param {{ totalChannelsWithActivity: number, mentionCount: number }} activity
+ * @returns {string}
+ */
+export function renderSlackOther(activity) {
+  if (!activity || activity.totalChannelsWithActivity === 0) return '_No activity in other channels._'
+
+  const mentionNote = activity.mentionCount > 0
+    ? ` ${activity.mentionCount} mention(s) already listed above.`
+    : ' No mentions.'
+
+  return `_${activity.totalChannelsWithActivity} other channel(s) had activity.${mentionNote}_`
+}
+
+/**
  * Renders a GitHub section (github.com or Corporate GitHub).
  * @param {object[]} notifications - From summarizeGithub()
  * @returns {string}
@@ -181,17 +257,17 @@ _Nothing to report._
 ## 💬 Slack
 ### 🔴 Mentions & Threads
 <!-- AGENT:slack_mentions -->
-_Nothing to report._
+{slack_mentions}
 
 ### Direct Messages
 <!-- AGENT:slack_dms -->
-_Nothing to report._
+{slack_dms}
 
-<!-- AGENT:slack_sections_dynamic -->
+{slack_sections_dynamic}
 
 ### Other Channels
 <!-- AGENT:slack_other -->
-_Nothing to report._
+{slack_other}
 
 ## 💬 Yesterday's Meetings
 <!-- AGENT:meetings -->
@@ -242,6 +318,10 @@ function buildFromTemplate(rendered, meta) {
     .replace('{SOURCES}', String(meta.sources ?? 0))
     .replace('{ITEMS}', String(meta.items ?? 0))
     .replace('{action_items}', rendered.action_items ?? '_Nothing to report._')
+    .replace('{slack_mentions}', rendered.slack_mentions ?? '_Nothing to report._')
+    .replace('{slack_dms}', rendered.slack_dms ?? '_Nothing to report._')
+    .replace('{slack_sections_dynamic}', rendered.slack_sections_dynamic ?? '')
+    .replace('{slack_other}', rendered.slack_other ?? '_No activity in other channels._')
     .replace('{jira_tickets}', rendered.jira_tickets ?? '_Nothing to report._')
     .replace('{jira_discussions}', rendered.jira_discussions ?? '_Nothing to report._')
     .replace('{confluence}', rendered.confluence ?? '_Nothing to report._')

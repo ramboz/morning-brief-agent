@@ -4,13 +4,19 @@ import { fetchJira } from './sources/jira.js'
 import { fetchConfluence } from './sources/confluence.js'
 import { fetchGithubDotCom } from './sources/githubDotCom.js'
 import { fetchGithubCorp } from './sources/githubCorp.js'
-import { summarizeJira, summarizeConfluence, summarizeGithub } from './ai/summarize.js'
+import { fetchSlack } from './sources/slack.js'
+import { summarizeJira, summarizeConfluence, summarizeGithub, summarizeSlackMentions, summarizeSlackDMs, summarizeSlackSection } from './ai/summarize.js'
 import {
   writeDailyNote,
   renderJiraTickets,
   renderJiraDiscussions,
   renderConfluence,
   renderGithub,
+  renderSlackMentions,
+  renderSlackDMs,
+  renderSlackSections,
+  renderSlackSection,
+  renderSlackOther,
 } from './output/dailyNote.js'
 
 const startTime = Date.now()
@@ -32,14 +38,15 @@ const [
   confluenceResult,
   githubComResult,
   githubCorpResult,
+  slackResult,
   // TODO: fetchOutlook — Phase 2 (pending MS Graph admin approval)
-  // TODO: fetchSlack   — Phase 4
   // TODO: fetchTeams   — Phase 7 (pending MS Graph admin approval)
 ] = await Promise.allSettled([
   fetchJira(since),
   fetchConfluence(since),
   fetchGithubDotCom(since),
   fetchGithubCorp(since),
+  fetchSlack(since),
 ])
 
 /**
@@ -64,6 +71,7 @@ const jira = getValue(jiraResult, 'JIRA')
 const confluence = getValue(confluenceResult, 'Confluence')
 const githubCom = getValue(githubComResult, 'GitHub.com')
 const githubCorp = getValue(githubCorpResult, 'Corporate GitHub')
+const slack = getValue(slackResult, 'Slack')
 
 // ---------------------------------------------------------------------------
 // Step 2: Summarize with Claude API
@@ -73,6 +81,9 @@ let jiraSummary = { actionRequired: [], updates: [] }
 let confluenceSummary = []
 let githubComSummary = []
 let githubCorpSummary = []
+let slackMentionsSummary = []
+let slackDMsSummary = []
+const slackSectionSummaries = {} // { sectionName: channelSummaries[] }
 
 if (jira.ok && jira.data.issues.length > 0) {
   console.log(`[index] Summarizing ${jira.data.issues.length} JIRA issues...`)
@@ -100,6 +111,24 @@ if (githubCorp.ok && githubCorp.data.notifications.length > 0) {
   githubCorpSummary = await summarizeGithub(githubCorp.data.notifications, 'Corporate GitHub')
 } else if (githubCorp.ok) {
   console.log('[index] Corporate GitHub: no notifications in lookback window')
+}
+
+if (slack.ok) {
+  if (slack.data.mentions.length > 0) {
+    console.log(`[index] Summarizing ${slack.data.mentions.length} Slack mentions...`)
+    slackMentionsSummary = await summarizeSlackMentions(slack.data.mentions)
+  }
+  if (slack.data.directMessages.length > 0) {
+    console.log(`[index] Summarizing ${slack.data.directMessages.length} Slack DMs...`)
+    slackDMsSummary = await summarizeSlackDMs(slack.data.directMessages)
+  }
+  for (const [sectionName, sectionData] of Object.entries(slack.data.sections)) {
+    const channelsWithMessages = sectionData.channels.filter(ch => ch.messages.length > 0)
+    if (channelsWithMessages.length > 0) {
+      console.log(`[index] Summarizing Slack section: ${sectionName}...`)
+      slackSectionSummaries[sectionName] = await summarizeSlackSection(sectionName, sectionData.channels)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +182,23 @@ if (!githubCorp.ok) {
   rendered.github_corp = renderGithub(githubCorpSummary)
 }
 
+// Slack
+if (!slack.ok) {
+  rendered.slack_mentions = `_Slack unavailable: ${slack.error}_`
+  rendered.slack_dms = ''
+  rendered.slack_sections_dynamic = ''
+  rendered.slack_other = ''
+} else {
+  rendered.slack_mentions = renderSlackMentions(slackMentionsSummary)
+  rendered.slack_dms = renderSlackDMs(slackDMsSummary)
+  rendered.slack_sections_dynamic = renderSlackSections(slackSectionSummaries)
+  rendered.slack_other = renderSlackOther(slack.data.otherChannelsActivity)
+  // Add individual section keys for smart-merge on re-runs
+  for (const [sectionName, channels] of Object.entries(slackSectionSummaries)) {
+    rendered[`slack_section_${sectionName}`] = renderSlackSection(channels)
+  }
+}
+
 // Action items: JIRA actionRequired + GitHub items needing action
 // TODO: Phase 8 will add synthesizeActionItems() for cross-source synthesis
 const actionItems = [
@@ -167,6 +213,12 @@ const actionItems = [
   ...githubCorpSummary.filter(n => n.needsAction).map(n =>
     `- [ ] [GitHub Corp] [${n.title}](${n.url}) — ${n.summary}`
   ),
+  ...slackMentionsSummary.filter(m => m.needsReply).map(m =>
+    `- [ ] [Slack #${m.channelName}] ${m.user}: ${m.summary}`
+  ),
+  ...slackDMsSummary.filter(dm => dm.replyExpected).map(dm =>
+    `- [ ] [Slack DM] ${dm.withUser}: ${dm.summary}`
+  ),
 ]
 rendered.action_items = actionItems.length > 0 ? actionItems.join('\n') : '_Nothing to report._'
 
@@ -174,7 +226,7 @@ rendered.action_items = actionItems.length > 0 ? actionItems.join('\n') : '_Noth
 // Step 5: Write the daily note
 // ---------------------------------------------------------------------------
 
-const sources = [jira, confluence, githubCom, githubCorp].filter(r => r.ok).length
+const sources = [jira, confluence, githubCom, githubCorp, slack].filter(r => r.ok).length
 const items = actionItems.length
 
 const result = await writeDailyNote(rendered, { sources, items })

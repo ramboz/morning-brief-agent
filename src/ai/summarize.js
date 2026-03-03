@@ -193,8 +193,136 @@ export async function summarizeGithub(notifications, label) {
 }
 
 // ---------------------------------------------------------------------------
+// Slack
+// ---------------------------------------------------------------------------
+
+const PROMPT_SLACK_MENTIONS = `You are summarizing Slack mentions for a morning briefing.
+
+You will receive a JSON array of messages where the user was mentioned. For each mention, write one concise line describing what they were asked or notified about. Note if a reply seems expected.
+
+Return JSON only. No markdown, no explanation, no preamble.
+
+Output shape:
+[
+  {
+    "channelName": "eng-general",
+    "user": "Alice Chen",
+    "summary": "Asked you to review PR #482 before end of day",
+    "needsReply": true,
+    "permalink": "https://..."
+  }
+]`
+
+const PROMPT_SLACK_DMS = `You are summarizing Slack direct messages for a morning briefing.
+
+You will receive a JSON array of DM threads with unread messages. For each thread, write 1-2 sentences summarizing what was said. Flag if a reply from the user seems expected.
+
+Return JSON only. No markdown, no explanation, no preamble.
+
+Output shape:
+[
+  {
+    "withUser": "Bob Smith",
+    "summary": "Wants to sync tomorrow about the Q2 roadmap.",
+    "replyExpected": true
+  }
+]`
+
+const PROMPT_SLACK_SECTION = `You are summarizing Slack channel activity for a morning briefing.
+
+You will receive the name of a section and an array of channels, each with recent messages. For each channel that had meaningful activity, produce up to 5 bullet points covering:
+- Key decisions or announcements
+- Action items involving the user
+- Significant discussions worth being aware of
+
+Skip: automated bot messages (unless incident/alert/error), emoji-only messages, trivial chatter, channels with no meaningful messages.
+
+Be concise — this is a brief, not a transcript.
+
+Return JSON only. No markdown, no explanation, no preamble.
+
+Output shape:
+[
+  {
+    "channel": "eng-general",
+    "bullets": [
+      "Deployed v2.4.1 to production ✅ (Alice Chen)",
+      "Discussion on migrating to Postgres 16 — no decision yet"
+    ]
+  }
+]
+
+Only include channels that had meaningful activity. Return [] if nothing is worth reporting.`
+
+/**
+ * Summarizes Slack mentions using the Claude API.
+ * @param {object[]} mentions - From fetchSlack().data.mentions
+ * @returns {Promise<object[]>}
+ */
+export async function summarizeSlackMentions(mentions) {
+  if (!mentions || mentions.length === 0) return []
+
+  const input = mentions.slice(0, 20)
+
+  try {
+    const text = await callClaude(PROMPT_SLACK_MENTIONS, JSON.stringify(input))
+    return JSON.parse(text)
+  } catch (err) {
+    console.error('[ai] summarizeSlackMentions failed:', err.message)
+    return []
+  }
+}
+
+/**
+ * Summarizes Slack direct messages using the Claude API.
+ * @param {object[]} directMessages - From fetchSlack().data.directMessages
+ * @returns {Promise<object[]>}
+ */
+export async function summarizeSlackDMs(directMessages) {
+  if (!directMessages || directMessages.length === 0) return []
+
+  const input = directMessages.slice(0, 10)
+
+  try {
+    const text = await callClaude(PROMPT_SLACK_DMS, JSON.stringify(input))
+    return JSON.parse(text)
+  } catch (err) {
+    console.error('[ai] summarizeSlackDMs failed:', err.message)
+    return []
+  }
+}
+
+/**
+ * Summarizes one Slack section's channel activity using the Claude API.
+ * @param {string} sectionName - Section label (e.g. 'Engineering')
+ * @param {object[]} channels - From fetchSlack().data.sections[sectionName].channels
+ * @returns {Promise<object[]>} - Array of { channel, bullets }
+ */
+export async function summarizeSlackSection(sectionName, channels) {
+  const channelsWithMessages = channels.filter(ch => ch.messages.length > 0)
+  if (channelsWithMessages.length === 0) return []
+
+  // Trim to 5 messages per channel before sending to Claude
+  const input = {
+    section: sectionName,
+    channels: channelsWithMessages.map(ch => ({
+      name: ch.name,
+      messages: ch.messages.slice(0, 5),
+      threadReplies: ch.threadReplies.slice(0, 10),
+    })),
+  }
+
+  try {
+    const text = await callClaude(PROMPT_SLACK_SECTION, JSON.stringify(input))
+    return JSON.parse(text)
+  } catch (err) {
+    console.error(`[ai] summarizeSlackSection (${sectionName}) failed:`, err.message)
+    return []
+  }
+}
+
+// ---------------------------------------------------------------------------
 // TODO: Add summarizeEmails() — Phase 3
-// TODO: Add summarizeSlackMentions(), summarizeSlackDMs(), summarizeSlackSection() — Phase 4
 // TODO: Add summarizeTeamsActivity(), summarizeMeetings() — Phase 7
 // TODO: Add synthesizeActionItems() — Phase 8
 // ---------------------------------------------------------------------------

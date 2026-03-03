@@ -1,0 +1,5 @@
+{
+  "Engineering": ["#eng-general", "#eng-backend", "#incidents", "#deployments"],
+  "Product": ["#product", "#roadmap", "#design-feedback"],
+  "Company": ["#general", "#announcements"]
+}
