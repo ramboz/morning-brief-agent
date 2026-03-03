@@ -12,32 +12,43 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 // Prompt constants
 // ---------------------------------------------------------------------------
 
-const PROMPT_JIRA = `You are summarizing JIRA ticket activity for a morning briefing.
+const PROMPT_JIRA = `You are helping an engineer decide where to focus their attention today based on JIRA activity.
 
 You will receive a JSON array of JIRA issues the user is involved with. Separate them into two groups:
-- "actionRequired": tickets where the user needs to take action today (blocked, review requested, question directed at them, status change needing response)
-- "updates": tickets with activity worth knowing about but no immediate action needed
+- "actionRequired": tickets where the user needs to take action today (blocked on them, review requested, direct question, needs their decision or approval)
+- "updates": tickets with open discussions, unresolved questions, or decisions in progress where the user's input could add value — even if not explicitly asked
 
-For each ticket, write one concise line describing what happened or what action is needed.
-Skip issues with no meaningful activity (pure metadata changes, no comments, no status change).
+For each ticket, write one concise line framed as "why this might need you today" rather than just what happened.
+Skip issues where: nothing new happened, only metadata changed, or the user already has the last word and no one has responded.
 
 Return JSON only. No markdown, no explanation, no preamble.
 
 Output shape:
 {
   "actionRequired": [
-    { "key": "ENG-482", "summary": "Review PR — Alice blocked on token refresh edge case" }
+    { "key": "ENG-482", "summary": "Alice is blocked on token refresh edge case — needs your review" }
   ],
   "updates": [
-    { "key": "ENG-410", "summary": "Status changed to In Review by Alice" }
+    { "key": "ENG-410", "summary": "Debate on caching strategy — no decision yet, your input on trade-offs would help" }
   ]
 }`
 
-const PROMPT_CONFLUENCE = `You are summarizing Confluence page activity for a morning briefing.
+const PROMPT_CONFLUENCE = `You are helping an engineer decide which Confluence pages deserve their attention today.
 
-You will receive a JSON array of recently modified Confluence pages. For each page, write one concise line describing what changed and who changed it. If the user was mentioned ("reason": "mentioned"), note that explicitly.
+You will receive a JSON array of recently modified Confluence pages. For each page, assess whether the user should review, comment, or respond — not just that something changed.
 
-Skip pages where the excerpt shows only trivial edits (formatting only, single word change, version bump with no content change).
+Include a page if:
+- The user was explicitly mentioned ("reason": "mentioned")
+- The page covers an area the user likely owns or is responsible for, and a significant decision or direction was added
+- There's an open question, RFC, or proposal that hasn't been resolved
+- The change is substantial enough that being unaware of it could affect the user's work
+
+Skip pages where:
+- The user made the last edit and no one has replied or changed it since
+- The edit is trivial (formatting, typos, version bump, minor wording)
+- The content is purely informational with no action or engagement opportunity
+
+Write one concise line framed as "why this might need your attention" rather than just what changed.
 
 Return JSON only. No markdown, no explanation, no preamble.
 
@@ -47,12 +58,12 @@ Output shape:
     "title": "Q1 Engineering Roadmap",
     "space": "ENG",
     "url": "https://...",
-    "summary": "Alice added mobile section to Q2 priorities",
+    "summary": "Alice added a mobile-first section to Q2 priorities — may affect your team's roadmap",
     "needsAttention": false
   }
 ]
 
-Set "needsAttention": true if the user was mentioned or the page is directly relevant to their work.`
+Set "needsAttention": true if the user was mentioned or the change directly affects their work or decisions.`
 
 // ---------------------------------------------------------------------------
 // Shared call wrapper
@@ -139,23 +150,31 @@ export async function summarizeConfluence(pages) {
 // GitHub
 // ---------------------------------------------------------------------------
 
-const PROMPT_GITHUB = `You are summarizing GitHub notification activity for a morning briefing.
+const PROMPT_GITHUB = `You are helping an engineer decide where to focus their attention today based on GitHub notifications.
 
-You will receive a JSON array of GitHub notifications (PRs, issues, CI failures, mentions). For each notification, write one concise line describing what happened or what action is needed.
+You will receive a JSON array of GitHub notifications (PRs, issues, CI failures, mentions). For each, assess whether the user should act or engage — not just that something happened.
 
-Set "needsAction": true for items that require immediate attention:
+Set "needsAction": true for items requiring immediate attention:
 - review_requested: a PR review is waiting on you
 - assign: you were assigned to an issue
 - ci_activity with failures: CI is broken on your PR
-- mention or team_mention: someone is asking for your input
+- mention or team_mention: someone is directly asking for your input
 
-Set "needsAction": false for informational items (your PR has new comments, a PR you're watching was updated, etc.).
+Set "needsAction": false but still include if there's an open discussion where the user's input would be valuable:
+- A PR they authored has unresolved comments or questions that need a response
+- A PR or issue they're watching has an unresolved debate or design question
+- An issue they're assigned to or watching has new, unresolved information
 
-Keep summaries short and action-oriented. Examples:
+Skip notifications where nothing needs engagement:
+- A PR they're watching was merged with no open questions
+- A resolved or closed item with no follow-up needed
+- Bot comments or automated status updates with no human discussion
+
+Keep summaries concise and framed around why the user should care today. Examples:
 - "Review requested — adds OAuth2 support to auth flow"
-- "Your PR has new comments from alice"
-- "CI failing: build and test steps failed"
-- "Assigned to bug: login fails on Safari"
+- "Alice left unresolved questions on your PR about error handling"
+- "CI failing on your feature branch: build step failing"
+- "Open debate on API versioning approach — no decision yet"
 
 Return JSON only. No markdown, no explanation, no preamble.
 
