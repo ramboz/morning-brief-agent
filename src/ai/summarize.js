@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { debug } from '../utils/flags.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -104,10 +105,15 @@ async function callClaude(prompt, userContent, maxTokens = 1000) {
  */
 async function callClaudeCLI(prompt, userContent) {
   const fullPrompt = `${prompt}\n\n${userContent}`
+  debug('[ai]', `callClaudeCLI — prompt ${fullPrompt.length} chars`)
+  const t0 = Date.now()
   const { stdout } = await execFileAsync('claude', ['-p', fullPrompt], {
     maxBuffer: 2 * 1024 * 1024, // 2 MB
+    timeout: 120_000,           // 2 minute hard timeout
   })
-  return stdout.trim()
+  const response = stdout.trim()
+  debug('[ai]', `callClaudeCLI — done in ${Date.now() - t0}ms, response ${response.length} chars`)
+  return response
 }
 
 /**
@@ -121,6 +127,8 @@ async function callClaudeCLI(prompt, userContent) {
 async function callOpenAI(prompt, userContent, maxTokens) {
   const baseUrl = (process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/$/, '')
   const model = process.env.OPENAI_MODEL ?? 'gpt-4o'
+  debug('[ai]', `callOpenAI — model=${model}, endpoint=${baseUrl}, prompt ${(prompt + userContent).length} chars`)
+  const t0 = Date.now()
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -143,7 +151,9 @@ async function callOpenAI(prompt, userContent, maxTokens) {
   }
 
   const data = await response.json()
-  return data.choices[0].message.content
+  const text = data.choices[0].message.content
+  debug('[ai]', `callOpenAI — done in ${Date.now() - t0}ms, response ${text.length} chars`)
+  return text
 }
 
 // ---------------------------------------------------------------------------

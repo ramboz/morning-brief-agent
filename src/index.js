@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { isDryRun, isMock } from './utils/flags.js'
+import { isDryRun, isMock, isDebug, debug } from './utils/flags.js'
 import { fetchJira } from './sources/jira.js'
 import { fetchConfluence } from './sources/confluence.js'
 import { fetchGithubDotCom } from './sources/githubDotCom.js'
@@ -29,10 +29,14 @@ const since = new Date(
 console.log(`[index] Morning briefing started (lookback: ${process.env.LOOKBACK_HOURS ?? 24}h)`)
 if (isDryRun) console.log('[index] DRY RUN — output goes to ./output/, no vault writes')
 if (isMock) console.log('[index] MOCK — reading from tests/fixtures/ instead of live APIs')
+if (isDebug) console.log('[index]:debug Debug logging enabled')
 
 // ---------------------------------------------------------------------------
 // Step 1: Fetch all sources in parallel
 // ---------------------------------------------------------------------------
+
+debug('[index]', 'Fetching all sources in parallel...')
+const fetchStart = Date.now()
 
 const [
   jiraResult,
@@ -49,6 +53,8 @@ const [
   fetchGithubCorp(since),
   fetchSlack(since),
 ])
+
+debug('[index]', `All sources fetched in ${Date.now() - fetchStart}ms`)
 
 /**
  * Extracts a settled result value, logging errors for rejected promises.
@@ -89,28 +95,36 @@ const slackSectionSummaries = {} // { sectionName: channelSummaries[] }
 
 if (jira.ok && jira.data.issues.length > 0) {
   console.log(`[index] Summarizing ${jira.data.issues.length} JIRA issues...`)
+  const t = Date.now()
   jiraSummary = await summarizeJira(jira.data.issues)
+  debug('[index]', `JIRA summarization done in ${Date.now() - t}ms`)
 } else if (jira.ok) {
   console.log('[index] JIRA: no issues in lookback window')
 }
 
 if (confluence.ok && confluence.data.pages.length > 0) {
   console.log(`[index] Summarizing ${confluence.data.pages.length} Confluence pages...`)
+  const t = Date.now()
   confluenceSummary = await summarizeConfluence(confluence.data.pages)
+  debug('[index]', `Confluence summarization done in ${Date.now() - t}ms`)
 } else if (confluence.ok) {
   console.log('[index] Confluence: no pages in lookback window')
 }
 
 if (githubCom.ok && githubCom.data.notifications.length > 0) {
   console.log(`[index] Summarizing ${githubCom.data.notifications.length} GitHub.com notifications...`)
+  const t = Date.now()
   githubComSummary = await summarizeGithub(githubCom.data.notifications, 'github.com')
+  debug('[index]', `GitHub.com summarization done in ${Date.now() - t}ms`)
 } else if (githubCom.ok) {
   console.log('[index] GitHub.com: no notifications in lookback window')
 }
 
 if (githubCorp.ok && githubCorp.data.notifications.length > 0) {
   console.log(`[index] Summarizing ${githubCorp.data.notifications.length} Corporate GitHub notifications...`)
+  const t = Date.now()
   githubCorpSummary = await summarizeGithub(githubCorp.data.notifications, 'Corporate GitHub')
+  debug('[index]', `Corporate GitHub summarization done in ${Date.now() - t}ms`)
 } else if (githubCorp.ok) {
   console.log('[index] Corporate GitHub: no notifications in lookback window')
 }
@@ -118,21 +132,29 @@ if (githubCorp.ok && githubCorp.data.notifications.length > 0) {
 if (slack.ok) {
   if (slack.data.mentions.length > 0) {
     console.log(`[index] Summarizing ${slack.data.mentions.length} Slack mentions...`)
+    const t = Date.now()
     slackMentionsSummary = await summarizeSlackMentions(slack.data.mentions)
+    debug('[index]', `Slack mentions summarization done in ${Date.now() - t}ms`)
   }
   if (slack.data.threadUpdates.length > 0) {
     console.log(`[index] Summarizing ${slack.data.threadUpdates.length} Slack thread updates...`)
+    const t = Date.now()
     slackThreadsSummary = await summarizeSlackThreads(slack.data.threadUpdates)
+    debug('[index]', `Slack threads summarization done in ${Date.now() - t}ms`)
   }
   if (slack.data.directMessages.length > 0) {
     console.log(`[index] Summarizing ${slack.data.directMessages.length} Slack DMs...`)
+    const t = Date.now()
     slackDMsSummary = await summarizeSlackDMs(slack.data.directMessages)
+    debug('[index]', `Slack DMs summarization done in ${Date.now() - t}ms`)
   }
   for (const [sectionName, sectionData] of Object.entries(slack.data.sections)) {
     const channelsWithMessages = sectionData.channels.filter(ch => ch.messages.length > 0)
     if (channelsWithMessages.length > 0) {
       console.log(`[index] Summarizing Slack section: ${sectionName}...`)
+      const t = Date.now()
       slackSectionSummaries[sectionName] = await summarizeSlackSection(sectionName, sectionData.channels)
+      debug('[index]', `Slack section "${sectionName}" summarization done in ${Date.now() - t}ms`)
     }
   }
 }
