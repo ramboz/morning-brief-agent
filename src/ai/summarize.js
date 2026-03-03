@@ -1,12 +1,23 @@
 import 'dotenv/config'
-import Anthropic from '@anthropic-ai/sdk'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.error('[ai] ANTHROPIC_API_KEY not set — summarization will fail')
+const execFileAsync = promisify(execFile)
+
+// ---------------------------------------------------------------------------
+// AI Backend configuration
+// AI_BACKEND=claude-cli  — uses Claude Code CLI (claude -p), no API key needed
+// AI_BACKEND=openai      — uses OpenAI-compatible API (ChatGPT Enterprise, etc.)
+// ---------------------------------------------------------------------------
+
+const AI_BACKEND = process.env.AI_BACKEND ?? 'claude-cli'
+
+if (!['claude-cli', 'openai'].includes(AI_BACKEND)) {
+  console.error(`[ai] Unknown AI_BACKEND "${AI_BACKEND}" — expected "claude-cli" or "openai"`)
 }
-
-const MODEL = 'claude-sonnet-4-20250514'
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+if (AI_BACKEND === 'openai' && !process.env.OPENAI_API_KEY) {
+  console.error('[ai] OPENAI_API_KEY not set — summarization will fail')
+}
 
 // ---------------------------------------------------------------------------
 // Prompt constants
@@ -70,20 +81,69 @@ Set "needsAttention": true if the user was mentioned or the change directly affe
 // ---------------------------------------------------------------------------
 
 /**
- * Calls the Claude API with a system prompt and user content.
+ * Calls the configured AI backend with a system prompt and user content.
+ * Backend is selected via AI_BACKEND env var ("claude-cli" or "openai").
  * @param {string} prompt - System prompt
  * @param {string} userContent - User message content
- * @param {number} [maxTokens]
+ * @param {number} [maxTokens] - Used by the OpenAI backend; ignored by claude-cli
  * @returns {Promise<string>} Raw text response
  */
 async function callClaude(prompt, userContent, maxTokens = 1000) {
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: maxTokens,
-    system: prompt,
-    messages: [{ role: 'user', content: userContent }],
+  if (AI_BACKEND === 'openai') {
+    return callOpenAI(prompt, userContent, maxTokens)
+  }
+  return callClaudeCLI(prompt, userContent)
+}
+
+/**
+ * Invokes Claude Code CLI in print mode as a subprocess.
+ * Requires `claude` to be installed and authenticated in the current shell.
+ * @param {string} prompt - System prompt (prepended to user content)
+ * @param {string} userContent - Data to summarize
+ * @returns {Promise<string>}
+ */
+async function callClaudeCLI(prompt, userContent) {
+  const fullPrompt = `${prompt}\n\n${userContent}`
+  const { stdout } = await execFileAsync('claude', ['-p', fullPrompt], {
+    maxBuffer: 2 * 1024 * 1024, // 2 MB
   })
-  return response.content[0].text
+  return stdout.trim()
+}
+
+/**
+ * Calls an OpenAI-compatible chat completions API.
+ * Works with api.openai.com and ChatGPT Enterprise endpoints.
+ * @param {string} prompt - System prompt
+ * @param {string} userContent - User message content
+ * @param {number} maxTokens
+ * @returns {Promise<string>}
+ */
+async function callOpenAI(prompt, userContent, maxTokens) {
+  const baseUrl = (process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/$/, '')
+  const model = process.env.OPENAI_MODEL ?? 'gpt-4o'
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: userContent },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return data.choices[0].message.content
 }
 
 // ---------------------------------------------------------------------------

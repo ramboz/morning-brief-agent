@@ -216,8 +216,13 @@ SLACK_USER_TOKEN=xoxp-...
 SLACK_CONFIG_PATH=./config/slack.json
 SLACK_SECTIONS_CONFIG=./slack-sections.json
 
-# Anthropic
-ANTHROPIC_API_KEY=
+# AI Backend: "claude-cli" (uses Claude Code CLI, no API key) or "openai"
+AI_BACKEND=claude-cli
+
+# OpenAI / ChatGPT Enterprise (only needed if AI_BACKEND=openai)
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o
 
 # Obsidian vault path
 OBSIDIAN_VAULT_PATH=C:/Users/yourname/Google Drive/MyVault
@@ -231,13 +236,20 @@ LOG_DIR=./logs
 
 ---
 
-## Claude API Usage
+## AI Summarization
 
-- Model: `claude-sonnet-4-20250514`
-- All Claude API calls are centralized in `src/ai/summarize.js` — no other file calls the API directly
-- Each source gets its own summarization function with a tailored prompt
-- Keep prompts in the summarize.js file as named constants, not inline strings
-- Max tokens per call: 1000 (enough for a focused summary)
+All summarization calls are centralized in `src/ai/summarize.js` — no other file calls the AI directly. Two backends are supported, selected via `AI_BACKEND` env var:
+
+### `claude-cli` (default)
+Invokes `claude -p "<prompt>"` as a subprocess. Requires Claude Code to be installed and authenticated. No API key or billing needed — uses your existing Claude subscription. System prompt and user content are combined into a single string passed to `-p`.
+
+### `openai`
+Calls an OpenAI-compatible chat completions API. Works with `api.openai.com` and ChatGPT Enterprise endpoints (`OPENAI_BASE_URL`). Requires `OPENAI_API_KEY`.
+
+### Shared conventions
+- Each source has its own summarization function with a named prompt constant
+- Prompts live at the top of `summarize.js` as `const PROMPT_X = ...` — never inline
+- Max tokens per call: 1000 (ignored by `claude-cli` backend)
 - The final "Action Items" synthesis gets a separate call with all source summaries as input
 
 ---
