@@ -162,6 +162,87 @@ async function fetchMentions(slack, userCache, userId, since) {
 }
 
 /**
+ * Fetches threads the user has participated in that have new replies from others
+ * since the user's last reply. Mirrors Slack's "Threads" sidebar.
+ * @param {WebClient} slack
+ * @param {Map} userCache
+ * @param {string} userId
+ * @param {Date} since
+ * @returns {Promise<object[]>}
+ */
+async function fetchThreadUpdates(slack, userCache, userId, since) {
+  // Find messages the user sent recently — those in threads are threads they participated in
+  let userMessages
+  try {
+    const resp = await slack.search.messages({
+      query: `from:<@${userId}>`,
+      count: 100,
+      sort: 'timestamp',
+      sort_dir: 'desc',
+    })
+    userMessages = resp.messages?.matches ?? []
+  } catch (err) {
+    console.warn('[slack] thread updates search failed:', err.message)
+    return []
+  }
+
+  // Collect unique threads the user participated in (replied to, not started)
+  const sinceTs = since.getTime() / 1000
+  const threadKeys = new Map() // `channelId:threadTs` → { channelId, channelName, threadTs }
+  for (const msg of userMessages) {
+    if (parseFloat(msg.ts) < sinceTs) continue
+    // A thread reply has thread_ts set and different from its own ts
+    if (!msg.thread_ts || msg.thread_ts === msg.ts) continue
+    const key = `${msg.channel.id}:${msg.thread_ts}`
+    if (!threadKeys.has(key)) {
+      threadKeys.set(key, { channelId: msg.channel.id, channelName: msg.channel.name, threadTs: msg.thread_ts })
+    }
+  }
+
+  const threadUpdates = []
+  for (const { channelId, channelName, threadTs } of threadKeys.values()) {
+    try {
+      const resp = await slack.conversations.replies({ channel: channelId, ts: threadTs, limit: 50 })
+      const allReplies = (resp.messages ?? []).slice(1) // skip parent message
+
+      // Find the user's last reply in this thread
+      const userReplies = allReplies.filter(m => m.user === userId)
+      if (userReplies.length === 0) continue
+      const lastUserReplyTs = Math.max(...userReplies.map(m => parseFloat(m.ts)))
+
+      // Find replies from others AFTER the user's last reply
+      const newReplies = allReplies.filter(
+        m => m.user !== userId && parseFloat(m.ts) > lastUserReplyTs && !m.subtype
+      )
+      if (newReplies.length === 0) continue // user has the last word — nothing new to see
+
+      const parentMsg = resp.messages?.[0]
+      const parentText = await resolveText(slack, userCache, parentMsg?.text ?? '')
+
+      const resolvedReplies = []
+      for (const reply of newReplies.slice(0, 5)) {
+        const user = await resolveUser(slack, userCache, reply.user)
+        const text = await resolveText(slack, userCache, reply.text)
+        resolvedReplies.push({ ts: reply.ts, user, text: text.slice(0, 200) })
+      }
+
+      threadUpdates.push({
+        channelId,
+        channelName,
+        threadTs,
+        parentText: parentText.slice(0, 200),
+        newReplies: resolvedReplies,
+        totalNewReplies: newReplies.length,
+      })
+    } catch (err) {
+      console.warn(`[slack] thread fetch failed ${channelId}/${threadTs}:`, err.message)
+    }
+  }
+
+  return threadUpdates
+}
+
+/**
  * Fetches direct messages (1:1 and group DMs) with activity since `since`.
  * @param {WebClient} slack
  * @param {Map} userCache
@@ -195,7 +276,8 @@ async function fetchDirectMessages(slack, userCache, myUserId, since) {
     try {
       const resp = await slack.conversations.history({ channel: dm.id, oldest: sinceTs, limit: 50 })
       const messages = (resp.messages ?? []).filter(m => !m.subtype || m.subtype === 'bot_message')
-      if (messages.length === 0) continue
+      // Only include DMs where someone else sent a message (they reached out)
+      if (!messages.some(m => m.user !== myUserId)) continue
 
       let withUser = { id: 'group', name: 'Group DM' }
       if (dm.user && dm.user !== myUserId) {
@@ -207,6 +289,7 @@ async function fetchDirectMessages(slack, userCache, myUserId, since) {
         const text = await resolveText(slack, userCache, msg.text)
         resolvedMessages.push({
           ts: msg.ts,
+          isFromMe: msg.user === myUserId,
           user: msg.user ? await resolveUser(slack, userCache, msg.user) : null,
           text: text.slice(0, 200),
         })
@@ -234,13 +317,16 @@ function isBotMessageWorthIncluding(msg) {
 
 /**
  * Fetches full history for a single priority channel.
+ * Filters out the authenticated user's own messages — sections are for awareness
+ * of what's happening in the org, not a log of what the user already did.
  * @param {WebClient} slack
  * @param {Map} userCache
  * @param {{ id: string, name: string }} channel
+ * @param {string} myUserId
  * @param {Date} since
  * @returns {Promise<object>}
  */
-async function fetchChannelHistory(slack, userCache, channel, since) {
+async function fetchChannelHistory(slack, userCache, channel, myUserId, since) {
   const sinceTs = String(since.getTime() / 1000)
   const messages = []
   const threadReplies = []
@@ -255,6 +341,9 @@ async function fetchChannelHistory(slack, userCache, channel, since) {
       } else if (msg.subtype) {
         continue // skip channel_join, channel_leave, etc.
       }
+
+      // Skip the user's own messages — they know what they said
+      if (msg.user === myUserId) continue
 
       const user = msg.user
         ? await resolveUser(slack, userCache, msg.user)
@@ -272,7 +361,7 @@ async function fetchChannelHistory(slack, userCache, channel, since) {
       if ((msg.reply_count ?? 0) > 0 && msg.thread_ts) threads.add(msg.thread_ts)
     }
 
-    // Fetch replies for active threads
+    // Fetch replies for active threads (from others only)
     for (const threadTs of threads) {
       try {
         const threadResp = await slack.conversations.replies({
@@ -282,7 +371,7 @@ async function fetchChannelHistory(slack, userCache, channel, since) {
           limit: 20,
         })
         for (const reply of (threadResp.messages ?? []).slice(1)) {
-          if (reply.subtype) continue
+          if (reply.subtype || reply.user === myUserId) continue
           const user = await resolveUser(slack, userCache, reply.user)
           const text = await resolveText(slack, userCache, reply.text)
           threadReplies.push({ ts: reply.ts, threadTs, user, text: text.slice(0, 200) })
@@ -308,15 +397,16 @@ async function fetchChannelHistory(slack, userCache, channel, since) {
  * @param {WebClient} slack
  * @param {Map} userCache
  * @param {object} sections - { sectionName: [{ id, name }] }
+ * @param {string} myUserId
  * @param {Date} since
  * @returns {Promise<object>} - { sectionName: { channels: [...] } }
  */
-async function fetchSections(slack, userCache, sections, since) {
+async function fetchSections(slack, userCache, sections, myUserId, since) {
   const result = {}
   for (const [sectionName, channels] of Object.entries(sections)) {
     result[sectionName] = { channels: [] }
     for (const channel of channels) {
-      const channelData = await fetchChannelHistory(slack, userCache, channel, since)
+      const channelData = await fetchChannelHistory(slack, userCache, channel, myUserId, since)
       result[sectionName].channels.push(channelData)
       await sleep(1200) // Tier 3 rate limit: ~50 req/min
     }
@@ -358,7 +448,8 @@ async function countOtherChannelActivity(slack, priorityChannelIds) {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetches Slack activity: mentions, DMs, priority section channels, and other channel summary.
+ * Fetches Slack activity: mentions, thread updates, DMs, priority section channels,
+ * and other channel summary.
  * @param {Date} since - Lookback start time
  * @returns {Promise<{ ok: boolean, data?: object, error?: string }>}
  */
@@ -393,11 +484,12 @@ export async function fetchSlack(since) {
   const priorityChannelIds = new Set(Object.values(sections).flatMap(chs => chs.map(ch => ch.id)))
 
   const mentions = await fetchMentions(slack, userCache, userId, since)
+  const threadUpdates = await fetchThreadUpdates(slack, userCache, userId, since)
   const directMessages = await fetchDirectMessages(slack, userCache, userId, since)
-  const sectionData = await fetchSections(slack, userCache, sections, since)
+  const sectionData = await fetchSections(slack, userCache, sections, userId, since)
   const otherChannelsActivity = await countOtherChannelActivity(slack, priorityChannelIds)
 
-  return { ok: true, data: { mentions, directMessages, sections: sectionData, otherChannelsActivity } }
+  return { ok: true, data: { mentions, threadUpdates, directMessages, sections: sectionData, otherChannelsActivity } }
 }
 
 // Standalone runner

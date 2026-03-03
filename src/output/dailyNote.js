@@ -153,6 +153,21 @@ export function renderSlackMentions(mentions) {
 }
 
 /**
+ * Renders the Slack "Thread Updates" section content.
+ * These are threads the user participated in that have new replies from others.
+ * @param {object[]} threads - From summarizeSlackThreads()
+ * @returns {string}
+ */
+export function renderSlackThreads(threads) {
+  if (!threads || threads.length === 0) return '_Nothing to report._'
+
+  return threads.map(t => {
+    const icon = t.needsReply ? '🔴' : 'ℹ️'
+    return `- ${icon} **#${t.channelName}** _(re: ${t.parentText})_ — ${t.summary}`
+  }).join('\n')
+}
+
+/**
  * Renders the Slack "Direct Messages" section content.
  * @param {object[]} dms - From summarizeSlackDMs()
  * @returns {string}
@@ -259,6 +274,10 @@ _Nothing to report._
 <!-- AGENT:slack_mentions -->
 {slack_mentions}
 
+### Thread Updates
+<!-- AGENT:slack_threads -->
+{slack_threads}
+
 ### Direct Messages
 <!-- AGENT:slack_dms -->
 {slack_dms}
@@ -319,6 +338,7 @@ function buildFromTemplate(rendered, meta) {
     .replace('{ITEMS}', String(meta.items ?? 0))
     .replace('{action_items}', rendered.action_items ?? '_Nothing to report._')
     .replace('{slack_mentions}', rendered.slack_mentions ?? '_Nothing to report._')
+    .replace('{slack_threads}', rendered.slack_threads ?? '_Nothing to report._')
     .replace('{slack_dms}', rendered.slack_dms ?? '_Nothing to report._')
     .replace('{slack_sections_dynamic}', rendered.slack_sections_dynamic ?? '')
     .replace('{slack_other}', rendered.slack_other ?? '_No activity in other channels._')

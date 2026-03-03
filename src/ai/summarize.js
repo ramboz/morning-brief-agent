@@ -228,16 +228,18 @@ Output shape:
   }
 ]`
 
-const PROMPT_SLACK_SECTION = `You are summarizing Slack channel activity for a morning briefing.
+const PROMPT_SLACK_SECTION = `You are helping someone decide where to focus their attention today based on Slack channel activity.
 
-You will receive the name of a section and an array of channels, each with recent messages. For each channel that had meaningful activity, produce up to 5 bullet points covering:
-- Key decisions or announcements
-- Action items involving the user
-- Significant discussions worth being aware of
+You will receive an array of channels with recent messages from others (the user's own messages are already excluded). For each channel, identify discussions where the user should consider engaging:
+- Open questions or debates where their expertise or opinion would be valuable
+- Architecture or technical decisions being made without a clear conclusion
+- Customer feedback or incidents being discussed
+- Decisions in progress that affect the user's work
+- Announcements they should be aware of
 
-Skip: automated bot messages (unless incident/alert/error), emoji-only messages, trivial chatter, channels with no meaningful messages.
+Skip: trivial chatter, fully resolved discussions, status updates requiring no action, bot messages unless incident/alert/error.
 
-Be concise — this is a brief, not a transcript.
+For each relevant channel, write up to 5 concise bullets framed as "what's happening and why it might need you." Omit channels where there's nothing worth the user's attention.
 
 Return JSON only. No markdown, no explanation, no preamble.
 
@@ -246,13 +248,31 @@ Output shape:
   {
     "channel": "eng-general",
     "bullets": [
-      "Deployed v2.4.1 to production ✅ (Alice Chen)",
-      "Discussion on migrating to Postgres 16 — no decision yet"
+      "Open debate on moving to Postgres 16 — no decision yet, Alice asked for input",
+      "Bob raised a concern about the auth token refresh edge case in the new flow"
     ]
   }
 ]
 
-Only include channels that had meaningful activity. Return [] if nothing is worth reporting.`
+Return [] if nothing warrants the user's attention.`
+
+const PROMPT_SLACK_THREADS = `You are summarizing thread updates for a morning briefing.
+
+You will receive an array of Slack threads where the user previously replied. Each thread shows the new replies from others that appeared after the user's last reply. Determine whether the user should follow up.
+
+For each thread, write one concise line describing what happened and whether a response seems expected.
+
+Return JSON only. No markdown, no explanation, no preamble.
+
+Output shape:
+[
+  {
+    "channelName": "eng-backend",
+    "parentText": "Should we use optimistic locking here?",
+    "summary": "Alice and Bob pushed back on the approach — waiting for your thoughts",
+    "needsReply": true
+  }
+]`
 
 /**
  * Summarizes Slack mentions using the Claude API.
@@ -294,6 +314,7 @@ export async function summarizeSlackDMs(directMessages) {
 
 /**
  * Summarizes one Slack section's channel activity using the Claude API.
+ * Identifies discussions where the user should consider engaging.
  * @param {string} sectionName - Section label (e.g. 'Engineering')
  * @param {object[]} channels - From fetchSlack().data.sections[sectionName].channels
  * @returns {Promise<object[]>} - Array of { channel, bullets }
@@ -303,20 +324,37 @@ export async function summarizeSlackSection(sectionName, channels) {
   if (channelsWithMessages.length === 0) return []
 
   // Trim to 5 messages per channel before sending to Claude
-  const input = {
-    section: sectionName,
-    channels: channelsWithMessages.map(ch => ({
-      name: ch.name,
-      messages: ch.messages.slice(0, 5),
-      threadReplies: ch.threadReplies.slice(0, 10),
-    })),
-  }
+  const input = channelsWithMessages.map(ch => ({
+    name: ch.name,
+    messages: ch.messages.slice(0, 5),
+    threadReplies: ch.threadReplies.slice(0, 10),
+  }))
 
   try {
     const text = await callClaude(PROMPT_SLACK_SECTION, JSON.stringify(input))
     return JSON.parse(text)
   } catch (err) {
     console.error(`[ai] summarizeSlackSection (${sectionName}) failed:`, err.message)
+    return []
+  }
+}
+
+/**
+ * Summarizes Slack thread updates using the Claude API.
+ * These are threads the user participated in that have new replies from others.
+ * @param {object[]} threadUpdates - From fetchSlack().data.threadUpdates
+ * @returns {Promise<object[]>}
+ */
+export async function summarizeSlackThreads(threadUpdates) {
+  if (!threadUpdates || threadUpdates.length === 0) return []
+
+  const input = threadUpdates.slice(0, 15)
+
+  try {
+    const text = await callClaude(PROMPT_SLACK_THREADS, JSON.stringify(input))
+    return JSON.parse(text)
+  } catch (err) {
+    console.error('[ai] summarizeSlackThreads failed:', err.message)
     return []
   }
 }

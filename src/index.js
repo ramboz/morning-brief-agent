@@ -5,7 +5,7 @@ import { fetchConfluence } from './sources/confluence.js'
 import { fetchGithubDotCom } from './sources/githubDotCom.js'
 import { fetchGithubCorp } from './sources/githubCorp.js'
 import { fetchSlack } from './sources/slack.js'
-import { summarizeJira, summarizeConfluence, summarizeGithub, summarizeSlackMentions, summarizeSlackDMs, summarizeSlackSection } from './ai/summarize.js'
+import { summarizeJira, summarizeConfluence, summarizeGithub, summarizeSlackMentions, summarizeSlackThreads, summarizeSlackDMs, summarizeSlackSection } from './ai/summarize.js'
 import {
   writeDailyNote,
   renderJiraTickets,
@@ -13,6 +13,7 @@ import {
   renderConfluence,
   renderGithub,
   renderSlackMentions,
+  renderSlackThreads,
   renderSlackDMs,
   renderSlackSections,
   renderSlackSection,
@@ -82,6 +83,7 @@ let confluenceSummary = []
 let githubComSummary = []
 let githubCorpSummary = []
 let slackMentionsSummary = []
+let slackThreadsSummary = []
 let slackDMsSummary = []
 const slackSectionSummaries = {} // { sectionName: channelSummaries[] }
 
@@ -117,6 +119,10 @@ if (slack.ok) {
   if (slack.data.mentions.length > 0) {
     console.log(`[index] Summarizing ${slack.data.mentions.length} Slack mentions...`)
     slackMentionsSummary = await summarizeSlackMentions(slack.data.mentions)
+  }
+  if (slack.data.threadUpdates.length > 0) {
+    console.log(`[index] Summarizing ${slack.data.threadUpdates.length} Slack thread updates...`)
+    slackThreadsSummary = await summarizeSlackThreads(slack.data.threadUpdates)
   }
   if (slack.data.directMessages.length > 0) {
     console.log(`[index] Summarizing ${slack.data.directMessages.length} Slack DMs...`)
@@ -190,6 +196,7 @@ if (!slack.ok) {
   rendered.slack_other = ''
 } else {
   rendered.slack_mentions = renderSlackMentions(slackMentionsSummary)
+  rendered.slack_threads = renderSlackThreads(slackThreadsSummary)
   rendered.slack_dms = renderSlackDMs(slackDMsSummary)
   rendered.slack_sections_dynamic = renderSlackSections(slackSectionSummaries)
   rendered.slack_other = renderSlackOther(slack.data.otherChannelsActivity)
@@ -215,6 +222,9 @@ const actionItems = [
   ),
   ...slackMentionsSummary.filter(m => m.needsReply).map(m =>
     `- [ ] [Slack #${m.channelName}] ${m.user}: ${m.summary}`
+  ),
+  ...slackThreadsSummary.filter(t => t.needsReply).map(t =>
+    `- [ ] [Slack thread #${t.channelName}] ${t.summary}`
   ),
   ...slackDMsSummary.filter(dm => dm.replyExpected).map(dm =>
     `- [ ] [Slack DM] ${dm.withUser}: ${dm.summary}`
