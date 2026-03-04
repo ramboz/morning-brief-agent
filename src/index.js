@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { isDryRun, isMock, isDebug, debug, lookbackHours, aiModel } from './utils/flags.js'
+import { isDryRun, isMock, isDebug, debug, lookbackHours, aiModel, outputPath } from './utils/flags.js'
 import { fetchJira } from './sources/jira.js'
 import { fetchConfluence } from './sources/confluence.js'
 import { fetchGithubDotCom } from './sources/githubDotCom.js'
@@ -25,7 +25,7 @@ const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
 
 const lookbackLabel = lookbackHours >= 24 ? `${lookbackHours / 24}d` : `${lookbackHours}h`
 console.log(`[index] Morning briefing started (lookback: ${lookbackLabel})`)
-if (isDryRun) console.log('[index] DRY RUN — output goes to ./output/, no vault writes')
+if (isDryRun) console.log(`[index] DRY RUN — no drafts or external writes (output: ${outputPath})`)
 if (isMock) console.log('[index] MOCK — reading from tests/fixtures/ instead of live APIs')
 if (isDebug) console.log('[index]:debug Debug logging enabled')
 if (aiModel) console.log(`[index] AI model override: ${aiModel}`)

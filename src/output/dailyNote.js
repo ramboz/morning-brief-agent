@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
 import path from 'path'
-import { isDryRun } from '../utils/flags.js'
+import { outputPath } from '../utils/flags.js'
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -47,19 +47,11 @@ function relativeTime(dateStr) {
 
 /**
  * Returns the full path to today's daily note.
- * In dry-run mode, returns a path inside ./output/.
- * @param {boolean} [dryRun]
+ * Resolved from: --output flag > OUTPUT_PATH env > ./output (default).
  * @returns {string}
  */
-export function getDailyNotePath(dryRun = isDryRun) {
-  const date = formatDate()
-  if (dryRun) return path.join('./output', `${date}.md`)
-
-  const vaultPath = process.env.OBSIDIAN_VAULT_PATH
-  if (!vaultPath) throw new Error('[output] OBSIDIAN_VAULT_PATH is not set in .env')
-
-  const folder = process.env.OBSIDIAN_DAILY_NOTES_FOLDER ?? 'Daily Notes'
-  return path.join(vaultPath, folder, `${date}.md`)
+export function getDailyNotePath() {
+  return path.join(outputPath, `${formatDate()}.md`)
 }
 
 // ---------------------------------------------------------------------------
@@ -451,19 +443,18 @@ function updateHeader(content, meta) {
 // ---------------------------------------------------------------------------
 
 /**
- * Writes or smart-merges the daily note into the Obsidian vault (or ./output/ in dry-run).
+ * Writes or smart-merges the daily note to the configured output directory.
+ * Output path resolved from: --output flag > OUTPUT_PATH env > ./output (default).
  * @param {object} rendered - Keyed by AGENT anchor name, values are markdown strings
  * @param {object} [options]
- * @param {boolean} [options.dryRun]
  * @param {number} [options.sources] - Number of sources that returned ok:true
  * @param {number} [options.items] - Total action items count
  * @returns {Promise<{ ok: boolean, path: string, isNew: boolean }>}
  */
 export async function writeDailyNote(rendered, options = {}) {
-  const dryRun = options.dryRun ?? isDryRun
   const meta = { sources: options.sources ?? 0, items: options.items ?? 0 }
 
-  const filePath = getDailyNotePath(dryRun)
+  const filePath = getDailyNotePath()
   const dir = path.dirname(filePath)
 
   // Ensure output directory exists
@@ -472,16 +463,6 @@ export async function writeDailyNote(rendered, options = {}) {
   } catch (err) {
     if (err.code !== 'EEXIST') {
       throw new Error(`[output] Could not create output directory ${dir}: ${err.message}`)
-    }
-  }
-
-  // Check if vault parent exists (non-dry-run only)
-  if (!dryRun) {
-    const vaultPath = process.env.OBSIDIAN_VAULT_PATH
-    try {
-      await fs.access(vaultPath)
-    } catch {
-      throw new Error(`[output] Vault path not found: ${vaultPath}. Check OBSIDIAN_VAULT_PATH in .env`)
     }
   }
 

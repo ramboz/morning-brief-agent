@@ -6,7 +6,7 @@ This is the project bible. Read this before writing any code. Follow these conve
 
 ## What This Project Does
 
-A personal productivity agent that runs every morning and produces an Obsidian daily note helping you decide where to show up and what to act on today — across email, meetings, Teams activity, JIRA, Confluence, GitHub, and Slack. It saves email draft responses to Outlook Drafts and auto-triages obvious junk mail.
+A personal productivity agent that runs every morning and produces a daily markdown note helping you decide where to show up and what to act on today — across email, meetings, Teams activity, JIRA, Confluence, GitHub, and Slack. It saves email draft responses to Outlook Drafts and auto-triages obvious junk mail.
 
 The core philosophy: **not what happened yesterday, but where you need to show up today.** Every source is filtered through the question "does this need my attention?" rather than "what changed?"
 
@@ -53,14 +53,14 @@ morning-briefing/
 │   ├── ai/
 │   │   └── summarize.js         # All AI summarization calls (claude-cli or openai)
 │   ├── output/
-│   │   └── dailyNote.js         # Assembles + writes Obsidian daily note
+│   │   └── dailyNote.js         # Assembles + writes the daily note
 │   ├── utils/
 │   │   └── flags.js             # CLI flags, debug helper, lookback calculation
 │   └── index.js                 # Orchestrator — entry point
 ├── tests/
 │   └── fixtures/                # Saved API responses for offline/mock testing
 ├── logs/                        # Daily log files (gitignored)
-├── output/                      # Dry-run note output (gitignored)
+├── output/                      # Default note output directory (gitignored)
 ├── scripts/
 │   ├── run.bat                  # Task Scheduler entry point
 │   └── setup-scheduler.js       # Task Scheduler setup helper
@@ -167,7 +167,8 @@ The script supports the following flags:
 
 ```bash
 node src/index.js                          # Normal run
-node src/index.js --dry-run                # No writes, output to ./output/
+node src/index.js --dry-run                # Suppress all outbound writes (no email/Slack drafts)
+node src/index.js --output ./notes         # Write daily note to ./notes/ instead of default
 node src/index.js --mock                   # Use fixture files, skip live APIs
 node src/index.js --mock --dry-run         # Full offline test — no API calls, no writes
 node src/index.js --debug                  # Verbose debug logging for all sources
@@ -176,16 +177,19 @@ node src/index.js --model haiku            # Use a specific Claude model for sum
 ```
 
 ### --dry-run
-- No emails are archived or deleted
-- No Outlook drafts are saved
-- Daily note written to `./output/YYYY-MM-DD.md` instead of vault
-- All would-be actions logged to console
+Suppresses all outbound writes — no email drafts saved, no Slack drafts posted (future). The daily note is still written to the output directory. Use this when you want to preview action items without committing to any external side effects.
+
+### --output \<path\>
+- Sets the output directory for the daily note
+- Overrides `OUTPUT_PATH` env var and the `./output` default
+- Supports `--output ./notes` (space) and `--output=./notes` (equals) syntax
+- The note is always written as `{path}/YYYY-MM-DD.md`
 
 ### --mock
 - Each source reads from `tests/fixtures/{source}.json` instead of calling live APIs
 - MSAL token acquisition is skipped entirely
 - Summarization and output still run normally
-- Always combine with `--dry-run` unless you want to write to the vault with fixture data
+- Always combine with `--dry-run` for a fully offline test run
 
 ### --debug
 - Enables verbose debug logging for all source modules
@@ -210,6 +214,7 @@ export const isSaveFixture = process.argv.includes('--save-fixture')
 export const isDebug = process.argv.includes('--debug')
 export const lookbackHours = /* --days flag > Monday auto-extend (72h) > LOOKBACK_HOURS env > 24h default */
 export const aiModel = /* --model flag, null if not set */
+export const outputPath = /* --output flag > OUTPUT_PATH env > ./output */
 export function debug(label, ...args) { /* no-op unless --debug */ }
 ```
 
@@ -258,10 +263,8 @@ OPENAI_MODEL=gpt-4o
 # Timeout per AI call in ms (default 5 min; claude-cli can be slow on first run)
 AI_TIMEOUT_MS=300000
 
-# Obsidian vault path
-OBSIDIAN_VAULT_PATH=C:/Users/yourname/Google Drive/MyVault
-OBSIDIAN_DAILY_NOTES_FOLDER=Daily Notes
-OBSIDIAN_DATE_FORMAT=YYYY-MM-DD
+# Output path for daily notes (overridden by --output flag at runtime)
+OUTPUT_PATH=./output
 
 # Behaviour
 LOOKBACK_HOURS=24
@@ -293,7 +296,7 @@ Calls an OpenAI-compatible chat completions API. Works with `api.openai.com` and
 
 ## Output Format
 
-The Obsidian daily note follows this exact markdown structure (section headers must match exactly — the output module depends on them):
+The daily note follows this exact markdown structure (section headers must match exactly — the output module depends on them):
 
 ```markdown
 # Daily Brief — {{DATE}}

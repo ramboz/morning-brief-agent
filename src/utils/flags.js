@@ -4,6 +4,22 @@ export const isSaveFixture = process.argv.includes('--save-fixture')
 export const isDebug = process.argv.includes('--debug')
 
 /**
+ * Parses --output <path> from argv. Falls back to OUTPUT_PATH env var, then ./output.
+ * Supports --output ./notes (space-separated) and --output=./notes (equals-separated).
+ * @returns {string}
+ */
+function parseOutputFlag() {
+  for (let i = 0; i < process.argv.length; i++) {
+    const arg = process.argv[i]
+    if (arg === '--output' && process.argv[i + 1]) return process.argv[i + 1]
+    if (arg.startsWith('--output=')) return arg.slice('--output='.length)
+  }
+  return process.env.OUTPUT_PATH ?? './output'
+}
+
+export const outputPath = parseOutputFlag()
+
+/**
  * Parses --model <name> from argv. Passed through to `claude -p --model <name>`.
  * Supports --model haiku (space-separated) and --model=haiku (equals-separated).
  * @returns {string|null}
