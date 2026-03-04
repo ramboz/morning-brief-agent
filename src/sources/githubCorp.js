@@ -39,9 +39,16 @@ export async function fetchGithubCorp(since) {
     if (err.status === 403 && err.response?.headers['x-ratelimit-remaining'] === '0') {
       return { ok: false, error: 'Corporate GitHub rate limit exceeded' }
     }
-    const networkCode = err.cause?.code ?? err.code
+    const networkCode = err.cause?.code
     if (networkCode === 'ECONNREFUSED' || networkCode === 'ENOTFOUND') {
-      return { ok: false, error: 'Corporate GitHub unreachable — check VPN?' }
+      return { ok: false, error: 'Corporate GitHub unreachable — are you on VPN?' }
+    }
+    const SSL_ERROR_CODES = [
+      'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'SELF_SIGNED_CERT_IN_CHAIN',
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID', 'CERT_HAS_EXPIRED',
+    ]
+    if (SSL_ERROR_CODES.includes(networkCode) || err.message?.includes('certificate')) {
+      return { ok: false, error: 'Corporate GitHub SSL error — certificate could not be verified. Are you on VPN?' }
     }
     return { ok: false, error: `Corporate GitHub fetch failed: ${err.message}` }
   }

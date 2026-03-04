@@ -142,7 +142,29 @@ async function resolveText(slack, userCache, text) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Resolves a list of raw Slack message objects into threadContext entries with
+ * display names and resolved @-mention text. Used to build AI-readable context.
+ * @param {WebClient} slack
+ * @param {Map} userCache
+ * @param {object[]} replies - Raw Slack message objects
+ * @returns {Promise<Array<{ user: string, text: string }>>}
+ */
+async function buildThreadContext(slack, userCache, replies) {
+  const context = []
+  for (const r of replies) {
+    const user = r.user
+      ? await resolveUser(slack, userCache, r.user)
+      : { id: 'bot', name: r.username ?? 'bot' }
+    const text = await resolveText(slack, userCache, r.text ?? '')
+    context.push({ user: user.name, text: text.slice(0, 150) })
+  }
+  return context
+}
+
+/**
  * Fetches messages mentioning the authenticated user via the search API.
+ * For threaded mentions, checks if the user has already replied and has the last word.
+ * If so, the mention is considered handled and filtered out.
  * @param {WebClient} slack
  * @param {Map} userCache
  * @param {string} userId
@@ -170,10 +192,60 @@ async function fetchMentions(slack, userCache, userId, since) {
         user,
         text: text.slice(0, 300),
         threadTs: msg.thread_ts ?? null,
+        replyCount: msg.reply_count ?? 0,
         permalink: msg.permalink,
       })
     }
-    return mentions
+
+    // For threaded mentions: fetch thread replies to (a) drop fully-handled mentions and
+    // (b) attach context so the AI can judge whether the thread is still open for the user.
+    // Handles two cases:
+    //   - thread reply: threadTs !== ts (user was mentioned in a reply)
+    //   - thread root: threadTs === ts (user was mentioned in the opening message, which has replies)
+    const filtered = []
+    for (const mention of mentions) {
+      const isThreadReply = mention.threadTs && mention.threadTs !== mention.ts
+      const isThreadRoot = mention.threadTs && mention.threadTs === mention.ts && mention.replyCount > 0
+      if (!isThreadReply && !isThreadRoot) {
+        // Standalone message or root with no replies yet — include directly
+        filtered.push(mention)
+        continue
+      }
+      try {
+        const threadResp = await slack.conversations.replies({
+          channel: mention.channelId,
+          ts: mention.threadTs,
+          limit: 50,
+        })
+        const replies = (threadResp.messages ?? []).slice(1) // skip parent message
+        const userReplies = replies.filter(m => m.user === userId && parseFloat(m.ts) > parseFloat(mention.ts))
+
+        if (userReplies.length === 0) {
+          // User hasn't replied since the mention — include with full reply context
+          const raw = replies.slice(-5)
+          const context = raw.length > 0 ? await buildThreadContext(slack, userCache, raw) : undefined
+          filtered.push({ ...mention, threadContext: context })
+          continue
+        }
+
+        const lastUserTs = Math.max(...userReplies.map(m => parseFloat(m.ts)))
+        const repliesAfterUser = replies.filter(m => m.user !== userId && parseFloat(m.ts) > lastUserTs && !m.subtype)
+
+        if (repliesAfterUser.length === 0) {
+          // User has the last word — mention is handled, skip it
+          continue
+        }
+
+        // Thread still active after user's reply — include with context of what happened after
+        const context = await buildThreadContext(slack, userCache, repliesAfterUser.slice(0, 5))
+        filtered.push({ ...mention, threadContext: context })
+      } catch (err) {
+        console.warn(`[slack] thread check failed ${mention.channelId}/${mention.threadTs}:`, err.message)
+        filtered.push(mention) // include on error (safe default)
+      }
+    }
+    debug('[slack]', `${filtered.length} mentions after filtering already-handled threads (${mentions.length - filtered.length} skipped)`)
+    return filtered
   } catch (err) {
     console.warn('[slack] search.messages failed:', err.message)
     return []
@@ -504,9 +576,11 @@ export async function fetchSlack(since) {
     const userCache = new Map()
 
     let userId
+    let workspaceUrl = ''
     try {
       const auth = await slack.auth.test()
       userId = auth.user_id
+      workspaceUrl = auth.url ?? ''
     } catch (err) {
       if (err.data?.error === 'invalid_auth') return { ok: false, error: 'Slack auth failed — check SLACK_USER_TOKEN' }
       return { ok: false, error: `Slack auth failed: ${err.message}` }
@@ -539,7 +613,7 @@ export async function fetchSlack(since) {
     const otherChannelsActivity = countOtherChannelActivity(memberChannels, priorityChannelIds)
     debug('[slack]', `${otherChannelsActivity.totalChannelsWithActivity} other channels with activity`)
 
-    return { ok: true, data: { mentions, threadUpdates, directMessages, channels: channelData, otherChannelsActivity } }
+    return { ok: true, data: { mentions, threadUpdates, directMessages, channels: channelData, otherChannelsActivity, workspaceUrl } }
   } catch (err) {
     console.error('[slack] fetch failed:', err.message)
     return { ok: false, error: err.message }

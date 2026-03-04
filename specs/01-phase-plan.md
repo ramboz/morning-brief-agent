@@ -15,7 +15,7 @@ Always begin each session with: **"Read CLAUDE.md and specs/00-architecture.md b
 - `.husky/commit-msg` hook
 - `.env.example` with all variables from CLAUDE.md
 - `.gitignore` (includes `.env`, `token.json`, `logs/`, `output/`, `tests/fixtures/`, `config/*.json`)
-- `src/utils/flags.js` — `isDryRun`, `isMock`, `isSaveFixture`, `isDebug`, `debug()`, `lookbackHours`, `aiModel` helpers
+- `src/utils/flags.js` — `isDryRun`, `isMock`, `isSaveFixture`, `isDebug`, `debug()`, `lookbackHours` (with Monday auto-extend), `aiModel` helpers
 - `src/auth/msalClient.js` — **stub only**: `acquireToken()` logs "MS Graph pending admin approval" and returns `null`. Full implementation deferred to Phase 6.
 - `src/index.js` — skeleton orchestrator (imports sources, calls `Promise.allSettled`, logs results, writes to log file)
 - `logs/` directory created (gitignored)

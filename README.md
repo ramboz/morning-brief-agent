@@ -267,7 +267,7 @@ Copy `.env.example` to `.env` and fill in each value.
 
 | Variable | Default | Description |
 |---|---|---|
-| `LOOKBACK_HOURS` | `24` | How many hours back to fetch from each source |
+| `LOOKBACK_HOURS` | `24` | How many hours back to fetch from each source. Automatically extended to 72h on Mondays. |
 | `LOG_DIR` | `./logs` | Directory for daily log files |
 
 ---
@@ -305,7 +305,9 @@ Run the full pipeline against saved fixture files instead of live APIs:
 Enables verbose debug logging for all source modules. Shows pagination progress, query timings, item counts, and AI call details. Useful for diagnosing slow runs or API issues.
 
 ### --days N
-Overrides `LOOKBACK_HOURS` for this run. Useful for Monday mornings (`--days 3`) or returning from PTO (`--days 14`). Supports `--days 3` (space) and `--days=3` (equals) syntax.
+Overrides `LOOKBACK_HOURS` for this run. Useful for returning from PTO (`--days 14`). Supports `--days 3` (space) and `--days=3` (equals) syntax.
+
+**Monday auto-extend:** When run on a Monday, the lookback is automatically extended to 72 hours (back to Friday) — no flag needed. The `--days` flag takes priority if set.
 
 ### --model \<name\>
 Passes `--model <name>` to the Claude CLI backend. Use `--model haiku` for faster summarization at the cost of slightly less nuanced output. Ignored when `AI_BACKEND=openai`.
@@ -460,6 +462,7 @@ If Claude is uncertain about a classification, it defaults to `fyi` — never au
 - **Slack sidebar sections** are not available via the Slack API — priority channels are configured as a flat list in `config/slack.json`.
 - **Meeting transcripts** require Teams meetings to have been recorded. The script skips meetings without transcripts silently.
 - **MSAL token refresh** requires the user to be logged in. If you restart your machine and don't log in before the scheduled run time, the script may fail to refresh silently and log an error.
+- **VPN-gated sources:** JIRA, Confluence, and Corporate GitHub are only reachable on VPN. When run off VPN, each affected section shows `_Skipped — not on VPN_` rather than crashing the briefing. Re-running after connecting to VPN smart-merges the new data.
 
 ---
 

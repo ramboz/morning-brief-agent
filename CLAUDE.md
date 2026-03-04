@@ -107,6 +107,14 @@ async function fetchJira() {
 
 The orchestrator (`index.js`) always uses `Promise.allSettled()` and handles both `ok: true` and `ok: false` results.
 
+### VPN-Gated Sources
+JIRA, Confluence, and Corporate GitHub are only reachable on VPN. These sources use `!err.status` to distinguish network errors (no HTTP status = unreachable) from HTTP errors (always have a `.status`). When a network error is detected:
+- The **user-info probe** (the first API call in each module) re-throws the error immediately so expensive queries are skipped
+- The module returns `{ ok: false, error: 'Source unreachable — are you on VPN?' }`
+- The orchestrator renders this as `_Skipped — not on VPN_` (not `_Source unavailable_`)
+
+Re-running after connecting to VPN smart-merges the new data into the existing daily note.
+
 ### Environment Variables
 - All secrets and config via `.env` — never hardcoded
 - Always read via `process.env.X` with a clear error if missing
@@ -186,8 +194,9 @@ node src/index.js --model haiku            # Use a specific Claude model for sum
 
 ### --days N
 - Overrides `LOOKBACK_HOURS` for this run
-- Useful for Monday mornings (`--days 3`) or returning from PTO (`--days 14`)
+- Useful for returning from PTO (`--days 14`)
 - Supports `--days 3` (space) and `--days=3` (equals) syntax
+- **Monday auto-extend:** when run on a Monday with no `--days` flag, lookback is automatically extended to 72h (back to Friday) — no flag needed
 
 ### --model \<name\>
 - Passes `--model <name>` to the Claude CLI backend (e.g. `--model haiku` for faster summarization)
@@ -199,7 +208,7 @@ export const isDryRun = process.argv.includes('--dry-run')
 export const isMock = process.argv.includes('--mock')
 export const isSaveFixture = process.argv.includes('--save-fixture')
 export const isDebug = process.argv.includes('--debug')
-export const lookbackHours = /* --days flag > LOOKBACK_HOURS env > 24h default */
+export const lookbackHours = /* --days flag > Monday auto-extend (72h) > LOOKBACK_HOURS env > 24h default */
 export const aiModel = /* --model flag, null if not set */
 export function debug(label, ...args) { /* no-op unless --debug */ }
 ```
@@ -314,6 +323,10 @@ The Obsidian daily note follows this exact markdown structure (section headers m
 ```
 
 If a section has no content, write: `_Nothing to report._`
+
+If a source was unreachable due to VPN (network error), write: `_Skipped — not on VPN_`
+
+If a source failed for any other reason, write: `_Source unavailable: {error message}_`
 
 ---
 

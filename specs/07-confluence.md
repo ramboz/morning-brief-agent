@@ -10,19 +10,25 @@ Read-only. The script never creates or modifies pages.
 
 ## Authentication
 
-Same Basic Auth pattern as JIRA — shared credential in `.env`:
+Personal Access Tokens for Confluence DC are used as Bearer tokens (not Basic Auth credentials):
 
 ```js
-const auth = Buffer.from(`${process.env.CONFLUENCE_USER}:${process.env.CONFLUENCE_API_TOKEN}`).toString('base64')
+const response = await fetch(`${process.env.CONFLUENCE_BASE_URL}/rest/api/content/search`, {
+  headers: {
+    'Authorization': `Bearer ${process.env.CONFLUENCE_API_TOKEN}`,
+    'Content-Type': 'application/json'
+  }
+})
 ```
 
-For self-hosted DC, JIRA and Confluence API tokens may be the same personal access token if they share an identity provider, or separate. Use separate env vars to be safe.
+See: https://confluence.atlassian.com/enterprise/using-personal-access-tokens-1026032365.html
+
+For self-hosted DC, JIRA and Confluence PATs may be the same token if they share an identity provider, or separate. Use separate env vars to be safe.
 
 ### Environment Variables
 
 ```
 CONFLUENCE_BASE_URL=https://confluence.yourcompany.com
-CONFLUENCE_USER=your@email.com
 CONFLUENCE_API_TOKEN=your_personal_access_token
 CONFLUENCE_CONFIG_PATH=./config/confluence.json
 ```
@@ -213,8 +219,9 @@ Items identified by page ID for smart merge deduplication.
 | Scenario | Behaviour |
 |---|---|
 | `config/confluence.json` missing or `spaces` empty | Return `{ ok: false, error: 'Confluence config missing or no spaces configured — create config/confluence.json' }` |
-| Auth failure (401) | Return `{ ok: false, error: 'Confluence auth failed — check CONFLUENCE_USER and CONFLUENCE_API_TOKEN' }` |
-| Instance unreachable | Return `{ ok: false, error: 'Confluence unreachable — check CONFLUENCE_BASE_URL and VPN' }` |
+| Auth failure (401) | Return `{ ok: false, error: 'Confluence auth failed — check CONFLUENCE_API_TOKEN in .env' }` |
+| Instance unreachable (network error) | Return `{ ok: false, error: 'Confluence unreachable — are you on VPN?' }`. Detected via `!err.status` (network errors have no HTTP status). The user-info probe at startup re-throws network errors immediately, skipping expensive CQL queries. |
+| SSL cert error | Return `{ ok: false, error: 'Confluence SSL error — certificate could not be verified. Are you on VPN?' }` |
 | Invalid space key (404 from CQL) | Log warning for that space, continue with valid spaces. Confluence CQL returns an error if any space in the `in` clause doesn't exist — run each space as a separate query if the combined query fails. |
 | Comment mention search fails | Log `[confluence] Mention search unavailable, skipping`, return Query 1 results only |
 | No results | Return `{ ok: true, data: { pages: [], truncated: false } }` |
@@ -245,8 +252,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
 ## Notes for Implementation
 
-- Same `confluenceFetch(path, params)` helper pattern as `jiraFetch` — handles auth headers and base URL. These can share an `atlassianFetch` helper in a shared util file if convenient, since auth is identical.
+- Same `confluenceFetch(path, params)` helper pattern as `jiraFetch` — handles Bearer auth headers and base URL.
 - `body.excerpt` from the Confluence API is already plain text (no wiki markup) — use it directly, truncate to 200 chars if longer.
 - For comment mentions, the comment `body` may contain Confluence storage format XML. Strip tags before using: `body.replace(/<[^>]+>/g, ' ').trim().slice(0, 300)`.
 - The `ancestors` expand gives a breadcrumb array — join the last 2 ancestors with ` > ` for a concise location string.
-- Both JIRA and Confluence are self-hosted and likely on the same VPN. If both fail simultaneously with ECONNREFUSED, the user is probably off VPN — the error messages should both say "check VPN".
+- Both JIRA and Confluence are self-hosted and likely on the same VPN. If both fail simultaneously with a network error (no `err.status`), the user is probably off VPN — both messages say "are you on VPN?".
+- VPN detection: use `!err.status` as the discriminator. The user-info probe call (`/rest/api/user/current`) re-throws network errors immediately, skipping all CQL queries.

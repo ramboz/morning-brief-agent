@@ -256,6 +256,8 @@ Skip: trivial chatter, fully resolved discussions, status updates requiring no a
 
 Note: user's own messages are already filtered from channel data before this function is called — summaries reflect what the org is discussing, not the user's own contributions.
 
+**Deduplication:** Each channel must appear at most once in the output. The prompt explicitly instructs this. Additionally, post-process the AI response to merge any duplicate entries by channel name (normalised: lowercase, strip leading `#`). The renderer applies the same normalised key as a final safety net. This three-layer approach handles cases where the AI occasionally splits a channel into multiple JSON entries.
+
 ---
 
 ## Daily Note Rendering

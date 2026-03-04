@@ -115,9 +115,13 @@ The merge strategy preserves user edits while adding new information from the la
 ### How It Works
 
 1. Read the existing file content
-2. Parse each `<!-- AGENT:{key} -->` anchored section by finding content between consecutive anchors (or between an anchor and the next `##` heading)
+2. Parse each `<!-- AGENT:{key} -->` anchored section by finding content between consecutive anchors (or between an anchor and the next `##`/`###` heading)
 3. For each section, run the merge logic below
 4. Write the updated file
+
+### Anchor Boundary Detection
+
+When finding the end boundary of an anchored section, check whether the line immediately preceding the next `<!-- AGENT: -->` anchor is a `##` or `###` heading. If so, the heading belongs to the *next* section and must be excluded from the current section's content (preserve it, don't overwrite it). Slice the replacement content to end before the heading line, not at the `\n` immediately before the anchor tag.
 
 ### Section Merge Rules
 
@@ -182,6 +186,16 @@ After every run (first or re-run), update the header line:
 If a section has no content after a run, write:
 ```markdown
 _Nothing to report._
+```
+
+If a source was unreachable due to VPN or network error, write:
+```markdown
+_Skipped — not on VPN_
+```
+
+If a source failed for any other reason, write:
+```markdown
+_Source unavailable: {error message}_
 ```
 
 Never leave a section completely blank (makes the note look broken in Obsidian).

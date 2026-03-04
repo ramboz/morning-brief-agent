@@ -10,24 +10,23 @@ Read-only. The script never creates, updates, or transitions tickets.
 
 ## Authentication
 
-Basic Auth with a personal API token:
+Personal Access Tokens for Jira DC are used as Bearer tokens (not Basic Auth credentials):
 
 ```js
-const auth = Buffer.from(`${process.env.JIRA_USER}:${process.env.JIRA_API_TOKEN}`).toString('base64')
-
 const response = await fetch(`${process.env.JIRA_BASE_URL}/rest/api/2/search`, {
   headers: {
-    'Authorization': `Basic ${auth}`,
+    'Authorization': `Bearer ${process.env.JIRA_API_TOKEN}`,
     'Content-Type': 'application/json'
   }
 })
 ```
 
+See: https://confluence.atlassian.com/enterprise/using-personal-access-tokens-1026032365.html
+
 ### Environment Variables
 
 ```
 JIRA_BASE_URL=https://jira.yourcompany.com
-JIRA_USER=your@email.com
 JIRA_API_TOKEN=your_personal_access_token
 JIRA_CONFIG_PATH=./config/jira.json
 ```
@@ -244,8 +243,9 @@ Items identified by issue key (e.g. `ENG-482`) for smart merge deduplication.
 | `config/jira.json` missing or `projects` empty | Return `{ ok: false, error: 'JIRA config missing or no projects configured — create config/jira.json' }` |
 | Invalid project key format in config | Log warning, skip that key, continue with valid ones |
 | ScriptRunner not available (Query 2 fallback) | Log `[jira] ScriptRunner unavailable, using fallback JQL for comments`, continue |
-| Auth failure (401) | Return `{ ok: false, error: 'JIRA auth failed — check JIRA_USER and JIRA_API_TOKEN' }` |
-| Instance unreachable | Return `{ ok: false, error: 'JIRA unreachable — check JIRA_BASE_URL and VPN' }` |
+| Auth failure (401) | Return `{ ok: false, error: 'JIRA auth failed — check JIRA_API_TOKEN in .env' }` |
+| Instance unreachable (network error) | Return `{ ok: false, error: 'JIRA unreachable — are you on VPN?' }`. Detected via `!err.status` (network errors have no HTTP status). The user-info probe at startup re-throws network errors immediately, skipping expensive JQL queries. |
+| SSL cert error | Return `{ ok: false, error: 'JIRA SSL error — certificate could not be verified. Are you on VPN?' }` |
 | Query returns 0 results | Return `{ ok: true, data: { issues: [], truncated: false } }` — not an error |
 | Truncation at 150 issues | Include `truncated: true` in response, note in daily note: "_Results truncated — too many updates. Check JIRA directly._" |
 
@@ -270,7 +270,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
 ## Notes for Implementation
 
-- No external JIRA client library — use native `fetch` with the helper pattern established in `msalClient.js`. A small `jiraFetch(path, params)` helper that handles auth headers and base URL is sufficient.
+- No external JIRA client library — use native `fetch`. A small `jiraFetch(path, params)` helper that handles Bearer auth headers and base URL is sufficient.
 - The three JQL queries run in parallel via `Promise.allSettled` — a failure in one query does not prevent the others from completing.
 - Comment bodies should have JIRA wiki markup stripped before truncating (e.g. `{code}`, `{noformat}`, `[~username]` → `@username`).
-- `lookback_hours_override` applies to the JQL `-Nh` time expression, not just the `since` parameter passed in. Compute the effective lookback at module startup: `const hours = config.lookback_hours_override ?? parseInt(process.env.LOOKBACK_HOURS ?? '24')`
+- `lookback_hours_override` applies to the JQL `-Nh` time expression, not just the `since` parameter passed in. Compute the effective lookback at module startup: `const hours = config.lookback_hours_override ?? derivedHours`
+- VPN detection: use `!err.status` as the discriminator. Network errors (`TypeError: fetch failed`) never have a `.status`; HTTP errors (4xx/5xx) always do. The user-info probe call (`/rest/api/2/myself`) is the natural network check — if it throws a network error, re-throw immediately to skip all JQL queries.

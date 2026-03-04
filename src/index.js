@@ -171,7 +171,8 @@ const rendered = {}
 
 // JIRA — error state
 if (!jira.ok) {
-  rendered.jira_tickets = `_JIRA unavailable: ${jira.error}_`
+  const isNetworkError = jira.error?.includes('VPN') || jira.error?.includes('SSL error')
+  rendered.jira_tickets = isNetworkError ? `_Skipped — not on VPN_` : `_JIRA unavailable: ${jira.error}_`
   rendered.jira_discussions = ''
 } else if (jira.data.truncated) {
   rendered.jira_tickets = renderJiraTickets(jiraSummary.actionRequired, issueMap)
@@ -184,7 +185,8 @@ if (!jira.ok) {
 
 // Confluence — error state
 if (!confluence.ok) {
-  rendered.confluence = `_Confluence unavailable: ${confluence.error}_`
+  const isNetworkError = confluence.error?.includes('VPN') || confluence.error?.includes('SSL error')
+  rendered.confluence = isNetworkError ? `_Skipped — not on VPN_` : `_Confluence unavailable: ${confluence.error}_`
 } else {
   rendered.confluence = renderConfluence(confluenceSummary)
   if (confluence.data.truncated) {
@@ -201,7 +203,10 @@ if (!githubCom.ok) {
 
 // Corporate GitHub
 if (!githubCorp.ok) {
-  rendered.github_corp = `_Corporate GitHub unavailable: ${githubCorp.error}_`
+  const isNetworkError = githubCorp.error?.includes('VPN') || githubCorp.error?.includes('SSL error')
+  rendered.github_corp = isNetworkError
+    ? `_Skipped — not on VPN_`
+    : `_Corporate GitHub unavailable: ${githubCorp.error}_`
 } else {
   rendered.github_corp = renderGithub(githubCorpSummary)
 }
@@ -216,7 +221,7 @@ if (!slack.ok) {
   rendered.slack_mentions = renderSlackMentions(slackMentionsSummary)
   rendered.slack_threads = renderSlackThreads(slackThreadsSummary)
   rendered.slack_dms = renderSlackDMs(slackDMsSummary)
-  rendered.slack_channels = renderSlackChannels(slackChannelsSummary)
+  rendered.slack_channels = renderSlackChannels(slackChannelsSummary, slack.data.workspaceUrl)
   rendered.slack_other = renderSlackOther(slack.data.otherChannelsActivity)
 }
 
@@ -234,9 +239,10 @@ const actionItems = [
   ...githubCorpSummary.filter(n => n.needsAction).map(n =>
     `- [ ] [GitHub Corp] [${n.title}](${n.url}) — ${n.summary}`
   ),
-  ...slackMentionsSummary.filter(m => m.needsReply).map(m =>
-    `- [ ] [Slack #${m.channelName}] ${m.user}: ${m.summary}`
-  ),
+  ...slackMentionsSummary.filter(m => m.needsReply).map(m => {
+    const link = m.permalink ? `[#${m.channelName}](${m.permalink})` : `#${m.channelName}`
+    return `- [ ] [Slack] ${link} — ${m.user}: ${m.summary}`
+  }),
   ...slackThreadsSummary.filter(t => t.needsReply).map(t =>
     `- [ ] [Slack thread #${t.channelName}] ${t.summary}`
   ),

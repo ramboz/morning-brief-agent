@@ -139,16 +139,17 @@ export function renderConfluence(pages) {
 
 /**
  * Renders the Slack "Mentions & Threads" section content.
+ * Only shows items where needsReply is true — resolved threads are filtered out.
  * @param {object[]} mentions - From summarizeSlackMentions()
  * @returns {string}
  */
 export function renderSlackMentions(mentions) {
-  if (!mentions || mentions.length === 0) return '_Nothing to report._'
+  const actionable = (mentions ?? []).filter(m => m.needsReply)
+  if (actionable.length === 0) return '_Nothing to report._'
 
-  return mentions.map(m => {
-    const icon = m.needsReply ? '🔴' : 'ℹ️'
+  return actionable.map(m => {
     const link = m.permalink ? `[#${m.channelName}](${m.permalink})` : `#${m.channelName}`
-    return `- ${icon} **${link}** — ${m.user}: ${m.summary}`
+    return `- 🔴 **${link}** — ${m.user}: ${m.summary}`
   }).join('\n')
 }
 
@@ -182,16 +183,47 @@ export function renderSlackDMs(dms) {
 }
 
 /**
- * Renders priority channel summaries as a markdown block.
+ * Renders priority channel summaries as a markdown block with deep links.
+ * Channels and per-bullet thread links are constructed from channelId + ts in the AI output.
  * @param {object[]} channels - From summarizeSlackChannels()
+ * @param {string} [workspaceUrl] - Slack workspace URL (e.g. https://myteam.slack.com/)
  * @returns {string}
  */
-export function renderSlackChannels(channels) {
+export function renderSlackChannels(channels, workspaceUrl) {
   if (!channels || channels.length === 0) return '_Nothing to report._'
 
-  const parts = channels.map(ch => {
-    const bullets = (ch.bullets ?? []).map(b => `- ${b}`).join('\n')
-    return bullets ? `#### #${ch.channel}\n${bullets}` : null
+  const base = workspaceUrl ? workspaceUrl.replace(/\/$/, '') : null
+
+  // Merge bullets for duplicate channel entries (same channel name from multiple AI outputs)
+  const seen = new Map()
+  const deduped = []
+  for (const ch of channels) {
+    const key = ch.channel.replace(/^#/, '').toLowerCase()
+    if (seen.has(key)) {
+      seen.get(key).bullets.push(...(ch.bullets ?? []))
+    } else {
+      const entry = { ...ch, bullets: [...(ch.bullets ?? [])] }
+      seen.set(key, entry)
+      deduped.push(entry)
+    }
+  }
+
+  const parts = deduped.map(ch => {
+    const channelLink = base && ch.channelId
+      ? `[#${ch.channel}](${base}/archives/${ch.channelId})`
+      : `#${ch.channel}`
+
+    const bullets = (ch.bullets ?? []).map(b => {
+      // b is either a string (legacy) or { text, ts }
+      const text = typeof b === 'string' ? b : b.text
+      const ts = typeof b === 'object' ? b.ts : null
+      const threadLink = base && ch.channelId && ts
+        ? ` [↗](${base}/archives/${ch.channelId}/p${ts.replace('.', '')})`
+        : ''
+      return `- ${text}${threadLink}`
+    }).join('\n')
+
+    return bullets ? `#### ${channelLink}\n${bullets}` : null
   }).filter(Boolean)
 
   return parts.length > 0 ? parts.join('\n\n') : '_Nothing to report._'
@@ -315,9 +347,24 @@ _Nothing to report._
  * @param {object} meta - { sources: number, items: number }
  * @returns {string}
  */
+/**
+ * Replaces bare JIRA ticket keys (e.g. SITES-40610) with markdown links to the JIRA instance.
+ * Skips keys that are already inside a markdown link to avoid double-linking.
+ * @param {string} text
+ * @returns {string}
+ */
+function linkJiraRefs(text) {
+  const jiraBase = (process.env.JIRA_BASE_URL ?? '').replace(/\/$/, '')
+  if (!jiraBase) return text
+  // Match JIRA keys not already used as link text [KEY] or inside a URL (browse/KEY)
+  return text.replace(/(?<!\[|\/)\b([A-Z][A-Z0-9_]+-\d+)\b(?!\])/g, (match, key) =>
+    `[${key}](${jiraBase}/browse/${key})`
+  )
+}
+
 function buildFromTemplate(rendered, meta) {
   const now = new Date()
-  return DAILY_BRIEF_TEMPLATE
+  const content = DAILY_BRIEF_TEMPLATE
     .replace('{DATE}', formatDate(now))
     .replace('{TIME}', formatTime(now))
     .replace('{SOURCES}', String(meta.sources ?? 0))
@@ -333,6 +380,7 @@ function buildFromTemplate(rendered, meta) {
     .replace('{confluence}', rendered.confluence ?? '_Nothing to report._')
     .replace('{github_com}', rendered.github_com ?? '_Nothing to report._')
     .replace('{github_corp}', rendered.github_corp ?? '_Nothing to report._')
+  return linkJiraRefs(content)
 }
 
 // ---------------------------------------------------------------------------
@@ -360,8 +408,18 @@ function updateAnchor(content, key, newContent) {
 
   let endIdx
   if (nextAnchorIdx !== -1 && (nextHeadingIdx === -1 || nextAnchorIdx < nextHeadingIdx)) {
-    // End just before the next anchor line
-    endIdx = content.lastIndexOf('\n', nextAnchorIdx)
+    // End just before the next anchor — but preserve any markdown heading (###) on the
+    // line immediately before the anchor (e.g. "### Other Channels\n<!-- AGENT:next -->").
+    // content[nextAnchorIdx - 1] is the \n right before <!-- AGENT: -->, so we look
+    // one step further back to get the actual preceding line.
+    const nlBeforeAnchor = nextAnchorIdx - 1
+    const nlBeforeLine = content.lastIndexOf('\n', nlBeforeAnchor - 1)
+    const prevLine = nlBeforeLine >= 0 ? content.slice(nlBeforeLine + 1, nlBeforeAnchor) : ''
+    if (prevLine.trimEnd().startsWith('#')) {
+      endIdx = nlBeforeLine  // preserve heading — slice picks it up from here
+    } else {
+      endIdx = nlBeforeAnchor
+    }
   } else if (nextHeadingIdx !== -1) {
     endIdx = nextHeadingIdx
   } else {
@@ -459,6 +517,7 @@ export async function writeDailyNote(rendered, options = {}) {
     content = updateAnchor(content, key, sectionContent)
   }
   content = updateHeader(content, meta)
+  content = linkJiraRefs(content)
 
   console.log(`[output] Merging into existing daily note: ${filePath}`)
   await fs.writeFile(filePath, content, 'utf-8')

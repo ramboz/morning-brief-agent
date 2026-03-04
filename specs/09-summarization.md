@@ -200,6 +200,9 @@ See `specs/04-slack.md` for full prompt guidance.
 - Skip: trivial chatter, fully resolved discussions, status updates requiring no action, bot messages unless incident/alert/error
 - Up to 5 concise bullets per channel framed as "what's happening and why it might need you"
 - Omit channels where nothing warrants the user's attention
+- **Each channel must appear at most ONCE in the output.** Do not split a channel into multiple entries.
+
+**Post-processing:** After parsing the AI response, merge any duplicate channel entries by channel name (normalised: lowercase, strip leading `#`). This guards against the AI occasionally splitting a channel across multiple JSON entries.
 
 **Output shape:**
 ```js
@@ -427,10 +430,20 @@ The final call. Takes all per-source summaries and produces a cross-source prior
 ```js
 [
   { source: "Email",  text: "Reply to Jane re: Q1 roadmap — needed before Friday" },
-  { source: "JIRA",   text: "Review PR #482 — blocking release" },
-  { source: "GitHub", text: "Approve dependabot PR on api-service" }
+  { source: "JIRA",   text: "Review PR #482 — blocking release", url: "https://jira.../browse/ENG-482" },
+  { source: "GitHub", text: "Approve dependabot PR on api-service", url: "https://github.com/..." }
 ]
 ```
+
+**Rendered format in daily note:**
+```
+- [ ] [Email] Reply to Jane re: Q1 roadmap — needed before Friday
+- [ ] [JIRA] [ENG-482](https://jira.../browse/ENG-482) — Review PR #482 — blocking release
+- [ ] [Slack] [#eng-general](https://slack.../archives/...) — Alice Chen: Can you review PR #482?
+```
+
+For Slack action items, the format is `[Slack] [#channel](permalink) — user: summary`.
+For JIRA/GitHub items with URLs, the ticket/PR reference is linked.
 
 **Safe default:** `[]`
 

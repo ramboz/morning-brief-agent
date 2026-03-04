@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
-import { isMock, isSaveFixture, debug } from '../utils/flags.js'
+import { isMock, isSaveFixture, debug, lookbackHours } from '../utils/flags.js'
 
 const FIELDS = 'summary,status,priority,assignee,reporter,updated,comment,labels,issuetype,parent'
 const MAX_PAGES = 3
@@ -192,10 +192,10 @@ function mapIssue(issue, reason, baseUrl) {
  * Fetches JIRA activity relevant to the current user in the last N hours.
  * Runs three JQL queries in parallel: assigned tickets, commented tickets, mentioned tickets.
  * Deduplicates by issue key, with assigned taking precedence.
- * @param {Date} since - Lookback start time (used for fallback display; JQL uses hours from config)
+ * @param {Date} since - Lookback start time (honours --days flag)
  * @returns {Promise<{ ok: boolean, data?: { issues: object[], truncated: boolean }, error?: string }>}
  */
-export async function fetchJira(_since) {
+export async function fetchJira(since) {
   if (isMock) {
     try {
       const fixture = JSON.parse(await fs.readFile('tests/fixtures/jira.json', 'utf-8'))
@@ -210,7 +210,8 @@ export async function fetchJira(_since) {
 
   const { config } = configResult
   const baseUrl = process.env.JIRA_BASE_URL
-  const hours = config.lookback_hours_override ?? parseInt(process.env.LOOKBACK_HOURS ?? '24')
+  const derivedHours = Math.round((Date.now() - since.getTime()) / (60 * 60 * 1000))
+  const hours = config.lookback_hours_override ?? derivedHours
   const projectClause = `project in (${config.projects.join(', ')})`
   debug('[jira]', `Fetching from ${config.projects.length} projects, lookback ${hours}h`)
 
@@ -222,6 +223,7 @@ export async function fetchJira(_since) {
       mentionTag = me.name ? `[~${me.name}]` : (me.accountId ? `[~accountId:${me.accountId}]` : null)
       debug('[jira]', `User: ${me.displayName ?? me.name ?? 'unknown'}`)
     } catch (err) {
+      if (!err.status) throw err  // network error (no HTTP status) — server unreachable, likely VPN
       if (err.status === 401) throw err
       console.warn('[jira] Could not fetch user info — mention query will be skipped:', err.message)
     }
@@ -303,8 +305,15 @@ export async function fetchJira(_since) {
     if (err.status === 401) {
       return { ok: false, error: 'JIRA auth failed — check JIRA_API_TOKEN in .env' }
     }
-    if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
-      return { ok: false, error: 'JIRA unreachable — check JIRA_BASE_URL and VPN' }
+    const networkCode = err.cause?.code
+    const SSL_CODES = ['UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'SELF_SIGNED_CERT_IN_CHAIN',
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID', 'CERT_HAS_EXPIRED']
+    if (SSL_CODES.includes(networkCode) || err.message?.includes('certificate')) {
+      return { ok: false, error: 'JIRA SSL error — certificate could not be verified. Are you on VPN?' }
+    }
+    if (!err.status) {
+      // No HTTP status → network/connectivity failure (ECONNREFUSED, ENOTFOUND, ETIMEDOUT, etc.)
+      return { ok: false, error: 'JIRA unreachable — are you on VPN?' }
     }
     return { ok: false, error: `JIRA fetch failed: ${err.message}` }
   }
@@ -312,7 +321,7 @@ export async function fetchJira(_since) {
 
 // Standalone runner
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
   const result = await fetchJira(since)
   console.log(JSON.stringify(result, null, 2))
 

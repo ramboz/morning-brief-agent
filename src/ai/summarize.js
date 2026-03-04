@@ -22,14 +22,36 @@ if (AI_BACKEND === 'openai' && !process.env.OPENAI_API_KEY) {
 // ---------------------------------------------------------------------------
 
 /**
- * Strips markdown code fences from AI responses and parses JSON.
- * Fallback for backends that don't support JSON schema enforcement.
+ * Extracts and parses JSON from an AI response.
+ * Handles markdown code fences and trailing explanation text that some models append.
+ * Finds the outermost [ ] or { } block and parses only that portion.
  * @param {string} text - Raw AI response
  * @returns {any} Parsed JSON
  */
 function parseJSONResponse(text) {
-  const stripped = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '')
-  return JSON.parse(stripped)
+  // Strip markdown code fences first
+  const stripped = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
+
+  // Find the outermost JSON structure (array or object)
+  const arrayStart = stripped.indexOf('[')
+  const objectStart = stripped.indexOf('{')
+  let start = -1
+  let endChar
+
+  if (arrayStart === -1 && objectStart === -1) return JSON.parse(stripped)
+
+  if (arrayStart !== -1 && (objectStart === -1 || arrayStart < objectStart)) {
+    start = arrayStart
+    endChar = ']'
+  } else {
+    start = objectStart
+    endChar = '}'
+  }
+
+  const end = stripped.lastIndexOf(endChar)
+  if (end === -1) return JSON.parse(stripped)
+
+  return JSON.parse(stripped.slice(start, end + 1))
 }
 
 // ---------------------------------------------------------------------------
@@ -138,9 +160,21 @@ const SCHEMA_SLACK_CHANNELS = {
     type: 'object',
     properties: {
       channel: { type: 'string' },
-      bullets: { type: 'array', items: { type: 'string' } },
+      channelId: { type: 'string' },
+      bullets: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            text: { type: 'string' },
+            ts: { type: 'string' },
+          },
+          required: ['text', 'ts'],
+          additionalProperties: false,
+        },
+      },
     },
-    required: ['channel', 'bullets'],
+    required: ['channel', 'channelId', 'bullets'],
     additionalProperties: false,
   },
 }
@@ -245,7 +279,7 @@ async function callClaude(prompt, userContent, opts = {}) {
  * @param {object} [schema] - JSON Schema for structured output validation
  * @returns {Promise<string>}
  */
-function callClaudeCLI(prompt, userContent, schema) {
+function callClaudeCLI(prompt, userContent) {
   const fullPrompt = `${prompt}\n\n${userContent}`
   const t0 = Date.now()
 
@@ -473,9 +507,27 @@ export async function summarizeGithub(notifications, label) {
 
 const PROMPT_SLACK_MENTIONS = `You are summarizing Slack mentions for a morning briefing.
 
-You will receive a JSON array of messages where the user was mentioned. For each mention, write one concise line describing what they were asked or notified about. Note if a reply seems expected.
+You will receive a JSON array of messages where the user was mentioned. Each item has the original mention text, and optionally a "threadContext" array showing the most recent replies in the thread that followed.
 
-Return JSON only. No markdown, no explanation, no preamble.
+IMPORTANT: Only return items where the user genuinely still needs to act. If a thread is resolved, omit it entirely — do not return it with needsReply: false.
+
+For each item you include, write one concise line describing the CURRENT open situation — not the original message. If threadContext shows a follow-up question from someone else, describe that follow-up (and name who is asking) rather than the original mention. The summary should reflect what is unresolved RIGHT NOW.
+
+Include an item (needsReply: true) only if:
+- The user was asked a question and there's no clear answer in threadContext
+- A follow-up question was raised (by anyone) that remains open
+- They were tagged with a specific outstanding ask that hasn't been addressed
+
+OMIT an item entirely if any of these are true:
+- threadContext shows a direct factual answer, explanation, or resolution — even if you can't verify its correctness
+- The original asker acknowledged the answer ("Got it", "Thanks", "Makes sense", "I'll try that", "Will do")
+- The requester said they'll handle it themselves ("I'll reach out to X", "I'll start integrating")
+- The mention was purely informational — no direct ask was made
+- threadContext shows multiple replies from others but the original asker did NOT follow up with a new question (conversation concluded naturally)
+
+Key principle: when threadContext shows a clear, direct answer, treat the thread as resolved. Err toward omitting rather than creating false urgency.
+
+Return JSON only. No markdown, no explanation, no preamble. Return [] if nothing requires attention.
 
 Output shape:
 [
@@ -505,7 +557,7 @@ Output shape:
 
 const PROMPT_SLACK_CHANNELS = `You are helping someone decide where to focus their attention today based on Slack channel activity.
 
-You will receive an array of channels with recent messages from others (the user's own messages are already excluded). For each channel, identify discussions where the user should consider engaging:
+You will receive an array of channels with recent messages from others (the user's own messages are already excluded). Each channel has a "name", "channelId", "messages" (with ts, user, text), and "threadReplies". For each channel, identify discussions where the user should consider engaging:
 - Open questions or debates where their expertise or opinion would be valuable
 - Architecture or technical decisions being made without a clear conclusion
 - Customer feedback or incidents being discussed
@@ -516,15 +568,22 @@ Skip: trivial chatter, fully resolved discussions, status updates requiring no a
 
 For each relevant channel, write up to 5 concise bullets framed as "what's happening and why it might need you." Omit channels where there's nothing worth the user's attention.
 
+IMPORTANT: Each channel must appear at most ONCE in the output. Do not split a channel into multiple entries.
+
+For each bullet, include the "ts" of the single most relevant message or thread reply from the input. If no single message is clearly associated, use the ts of the most recent relevant message.
+
+Pass "channelId" through unchanged from the input.
+
 Return JSON only. No markdown, no explanation, no preamble.
 
 Output shape:
 [
   {
     "channel": "eng-general",
+    "channelId": "C012AB3CD",
     "bullets": [
-      "Open debate on moving to Postgres 16 — no decision yet, Alice asked for input",
-      "Bob raised a concern about the auth token refresh edge case in the new flow"
+      { "text": "Open debate on moving to Postgres 16 — no decision yet, Alice asked for input", "ts": "1234567890.123456" },
+      { "text": "Bob raised a concern about the auth token refresh edge case in the new flow", "ts": "1234567891.000000" }
     ]
   }
 ]
@@ -599,13 +658,28 @@ export async function summarizeSlackChannels(channels) {
 
   const input = channelsWithMessages.map(ch => ({
     name: ch.name,
+    channelId: ch.id,
     messages: ch.messages.slice(0, 5),
     threadReplies: ch.threadReplies.slice(0, 10),
   }))
 
   try {
     const text = await callClaude(PROMPT_SLACK_CHANNELS, JSON.stringify(input), { schema: SCHEMA_SLACK_CHANNELS })
-    return parseJSONResponse(text)
+    const raw = parseJSONResponse(text)
+
+    // Merge any duplicate channel entries the AI may have returned (case-insensitive, strip leading #)
+    const seen = new Map()
+    const merged = []
+    for (const entry of raw) {
+      const key = entry.channel.replace(/^#/, '').toLowerCase()
+      if (seen.has(key)) {
+        seen.get(key).bullets.push(...(entry.bullets ?? []))
+      } else {
+        seen.set(key, entry)
+        merged.push(entry)
+      }
+    }
+    return merged
   } catch (err) {
     console.error('[ai] summarizeSlackChannels failed:', err.message)
     return []

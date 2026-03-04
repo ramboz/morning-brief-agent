@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
-import { isMock, isSaveFixture, debug } from '../utils/flags.js'
+import { isMock, isSaveFixture, debug, lookbackHours } from '../utils/flags.js'
 
 const MAX_PAGES_PER_QUERY = 2
 const PAGE_SIZE = 50
@@ -39,6 +39,7 @@ async function loadConfig() {
     ok: true,
     config: {
       spaces: config.spaces,
+      ancestor_page_ids: Array.isArray(config.ancestor_page_ids) ? config.ancestor_page_ids : [],
       lookback_hours_override: config.lookback_hours_override ?? null,
     },
   }
@@ -174,15 +175,16 @@ async function runCqlQuery(cql, expand = 'version,space,body.excerpt,ancestors')
  * Used when Confluence CQL rejects a space key in the combined `in (...)` clause.
  * @param {string[]} spaces
  * @param {number} hours
+ * @param {string} ancestorClause - Additional CQL clause for ancestor scoping (may be empty)
  * @returns {Promise<{ results: object[], truncated: boolean }>}
  */
-async function runSpacesIndividually(spaces, hours) {
+async function runSpacesIndividually(spaces, hours, ancestorClause = '') {
   const allResults = []
   let truncated = false
 
   for (const space of spaces) {
     debug('[confluence]', `Querying space "${space}" individually...`)
-    const cql = `space = "${space}" AND lastModified >= now("-${hours}h") AND type = page ORDER BY lastModified DESC`
+    const cql = `space = "${space}"${ancestorClause} AND lastModified >= now("-${hours}h") AND type = page ORDER BY lastModified DESC`
     try {
       const { results, truncated: t } = await runCqlQuery(cql)
       debug('[confluence]', `space "${space}": ${results.length} pages`)
@@ -199,10 +201,10 @@ async function runSpacesIndividually(spaces, hours) {
 /**
  * Fetches recently modified Confluence pages from watched spaces.
  * Runs two CQL queries in parallel: recent page changes, and pages where user was mentioned.
- * @param {Date} since - Lookback start time (hours derived from config/env)
+ * @param {Date} since - Lookback start time (honours --days flag)
  * @returns {Promise<{ ok: boolean, data?: { pages: object[], truncated: boolean }, error?: string }>}
  */
-export async function fetchConfluence(_since) {
+export async function fetchConfluence(since) {
   if (isMock) {
     try {
       const fixture = JSON.parse(await fs.readFile('tests/fixtures/confluence.json', 'utf-8'))
@@ -217,9 +219,17 @@ export async function fetchConfluence(_since) {
 
   const { config } = configResult
   const baseUrl = process.env.CONFLUENCE_BASE_URL
-  const hours = config.lookback_hours_override ?? parseInt(process.env.LOOKBACK_HOURS ?? '24')
+  const derivedHours = Math.round((Date.now() - since.getTime()) / (60 * 60 * 1000))
+  const hours = config.lookback_hours_override ?? derivedHours
   const spaceClause = `space in (${config.spaces.map(s => `"${s}"`).join(', ')})`
-  debug('[confluence]', `Fetching from ${config.spaces.length} spaces, lookback ${hours}h`)
+  const ancestorClause = config.ancestor_page_ids.length > 0
+    ? ` AND ancestor in (${config.ancestor_page_ids.join(', ')})`
+    : ''
+  if (config.ancestor_page_ids.length > 0) {
+    debug('[confluence]', `Fetching from ${config.spaces.length} spaces, ${config.ancestor_page_ids.length} ancestor(s), lookback ${hours}h`)
+  } else {
+    debug('[confluence]', `Fetching from ${config.spaces.length} spaces, lookback ${hours}h`)
+  }
 
   try {
     let username = null
@@ -229,15 +239,17 @@ export async function fetchConfluence(_since) {
       username = me.username ?? me.accountId ?? null
       debug('[confluence]', `User: ${me.displayName ?? username ?? 'unknown'}`)
     } catch (err) {
+      if (!err.status) throw err  // network error (no HTTP status) — server unreachable, likely VPN
+      if (err.status === 401) throw err
       console.warn('[confluence] Could not fetch current user — mention search will be skipped:', err.message)
     }
 
-    // Query 1: recently modified pages
-    const q1 = `${spaceClause} AND lastModified >= now("-${hours}h") AND type = page ORDER BY lastModified DESC`
+    // Query 1: recently modified pages (scoped to ancestor subtrees if configured)
+    const q1 = `${spaceClause}${ancestorClause} AND lastModified >= now("-${hours}h") AND type = page ORDER BY lastModified DESC`
 
     // Query 2: pages where user was mentioned in comments (skip if no username)
     const q2 = username
-      ? `${spaceClause} AND type = comment AND text ~ "[~${username}]" AND created >= now("-${hours}h")`
+      ? `${spaceClause}${ancestorClause} AND type = comment AND text ~ "[~${username}]" AND created >= now("-${hours}h")`
       : null
 
     debug('[confluence]', `Running ${q2 ? 2 : 1} CQL queries (pages${q2 ? ' + mentions' : ''})...`)
@@ -246,7 +258,7 @@ export async function fetchConfluence(_since) {
     const [q1Result, q2Result] = await Promise.allSettled([
       runCqlQuery(q1).catch(err => {
         console.warn('[confluence] Combined CQL failed, trying per-space fallback:', err.message)
-        return runSpacesIndividually(config.spaces, hours)
+        return runSpacesIndividually(config.spaces, hours, ancestorClause)
       }),
       q2
         ? runCqlQuery(q2, 'version,space,ancestors,container').catch(err => {
@@ -301,10 +313,17 @@ export async function fetchConfluence(_since) {
     return { ok: true, data: { pages, truncated } }
   } catch (err) {
     if (err.status === 401) {
-      return { ok: false, error: 'Confluence auth failed — check CONFLUENCE_USER and CONFLUENCE_API_TOKEN' }
+      return { ok: false, error: 'Confluence auth failed — check CONFLUENCE_API_TOKEN in .env' }
     }
-    if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
-      return { ok: false, error: 'Confluence unreachable — check CONFLUENCE_BASE_URL and VPN' }
+    const networkCode = err.cause?.code
+    const SSL_CODES = ['UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'SELF_SIGNED_CERT_IN_CHAIN',
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID', 'CERT_HAS_EXPIRED']
+    if (SSL_CODES.includes(networkCode) || err.message?.includes('certificate')) {
+      return { ok: false, error: 'Confluence SSL error — certificate could not be verified. Are you on VPN?' }
+    }
+    if (!err.status) {
+      // No HTTP status → network/connectivity failure (ECONNREFUSED, ENOTFOUND, ETIMEDOUT, etc.)
+      return { ok: false, error: 'Confluence unreachable — are you on VPN?' }
     }
     return { ok: false, error: `Confluence fetch failed: ${err.message}` }
   }
@@ -312,7 +331,7 @@ export async function fetchConfluence(_since) {
 
 // Standalone runner
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
   const result = await fetchConfluence(since)
   console.log(JSON.stringify(result, null, 2))
 

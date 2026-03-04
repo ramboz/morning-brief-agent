@@ -38,8 +38,20 @@ function parseDaysFlag() {
   return null
 }
 
-/** Lookback window in hours. --days flag > LOOKBACK_HOURS env > 24h default. */
-export const lookbackHours = parseDaysFlag() ?? parseInt(process.env.LOOKBACK_HOURS ?? '24')
+/**
+ * On Mondays, automatically extends lookback to cover since last Friday (skipping the weekend).
+ * Returns hours since Friday at the same time-of-day, or null if today is not Monday.
+ */
+function mondayLookbackHours() {
+  const now = new Date()
+  if (now.getDay() !== 1) return null // 1 = Monday
+  // Calculate hours elapsed since exactly 3 days ago (Friday same time)
+  // Friday → Saturday = 1 day, Saturday → Sunday = 1 day, Sunday → Monday = 1 day
+  return 72
+}
+
+/** Lookback window in hours. --days flag > Monday auto-extend > LOOKBACK_HOURS env > 24h default. */
+export const lookbackHours = parseDaysFlag() ?? mondayLookbackHours() ?? parseInt(process.env.LOOKBACK_HOURS ?? '24')
 
 /**
  * Logs a debug message. No-op unless --debug flag is set.
