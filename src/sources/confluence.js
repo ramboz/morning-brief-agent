@@ -41,6 +41,7 @@ async function loadConfig() {
       spaces: config.spaces,
       ancestor_page_ids: Array.isArray(config.ancestor_page_ids) ? config.ancestor_page_ids : [],
       lookback_hours_override: config.lookback_hours_override ?? null,
+      exclude_title_patterns: Array.isArray(config.exclude_title_patterns) ? config.exclude_title_patterns : [],
     },
   }
 }
@@ -306,7 +307,19 @@ export async function fetchConfluence(since) {
       }
     }
 
-    const pages = Array.from(pageMap.values())
+    let pages = Array.from(pageMap.values())
+
+    // Hard filter: exclude pages whose titles match any configured pattern (case-insensitive substring)
+    if (config.exclude_title_patterns.length > 0) {
+      const before = pages.length
+      pages = pages.filter(p => !config.exclude_title_patterns.some(pat =>
+        p.title.toLowerCase().includes(pat.toLowerCase())
+      ))
+      if (pages.length < before) {
+        debug('[confluence]', `Excluded ${before - pages.length} pages by title pattern filter`)
+      }
+    }
+
     const mentioned = pages.filter(p => p.reason === 'mentioned').length
     debug('[confluence]', `${pages.length} pages (${mentioned} with mentions)${truncated ? ' [truncated]' : ''}`)
 

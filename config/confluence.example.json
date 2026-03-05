@@ -1,5 +1,6 @@
 {
   "spaces": ["ENG", "PRODUCT", "COMPANY"],
   "ancestor_page_ids": [],
-  "lookback_hours_override": null
+  "lookback_hours_override": null,
+  "exclude_title_patterns": []
 }

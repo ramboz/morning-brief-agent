@@ -36,7 +36,7 @@ function formatTime(date = new Date()) {
  * @returns {string}
  */
 function relativeTime(dateStr) {
-  if (!dateStr) return 'unknown'
+  if (!dateStr) return null
   const diff = Date.now() - new Date(dateStr).getTime()
   const hours = Math.floor(diff / (60 * 60 * 1000))
   if (hours < 1) return 'just now'
@@ -237,6 +237,50 @@ export function renderSlackOther(activity) {
 }
 
 /**
+ * Renders the ⚡ Action Items section from synthesizeActionItems() output.
+ * Items with a URL or permalink have their reference portion linked.
+ * Expects text in the form "Reference — description" to extract the link label.
+ * @param {Array<{ source: string, text: string, url: string, permalink: string }>} items
+ * @returns {string}
+ */
+export function renderActionItems(items) {
+  if (!items || items.length === 0) return '_Nothing to report._'
+
+  return items.map(item => {
+    const url = item.url || item.permalink || ''
+    const sep = item.text.indexOf(' — ')
+
+    if (url && sep !== -1) {
+      const ref = item.text.slice(0, sep)
+      const desc = item.text.slice(sep + 3)
+      return `- [ ] [${item.source}] [${ref}](${url}) — ${desc}`
+    }
+    if (url) {
+      return `- [ ] [${item.source}] [${item.text}](${url})`
+    }
+    return `- [ ] [${item.source}] ${item.text}`
+  }).join('\n')
+}
+
+/**
+ * Renders the 🔥 Focus Areas section from synthesizeProjectClusters() output.
+ * Each cluster is a ### heading followed by source-tagged bullet lines.
+ * @param {Array<{ name: string, signals: Array<{ source: string, summary: string, url: string }> }>} clusters
+ * @returns {string}
+ */
+export function renderProjectClusters(clusters) {
+  if (!clusters || clusters.length === 0) return '_No cross-source patterns today._'
+
+  return clusters.map(cluster => {
+    const signals = cluster.signals.map(signal => {
+      if (signal.url) return `- [${signal.source}] [${signal.summary}](${signal.url})`
+      return `- [${signal.source}] ${signal.summary}`
+    }).join('\n')
+    return `### ${cluster.name}\n${signals}`
+  }).join('\n\n')
+}
+
+/**
  * Renders a GitHub section (github.com or Corporate GitHub).
  * @param {object[]} notifications - From summarizeGithub()
  * @returns {string}
@@ -246,7 +290,9 @@ export function renderGithub(notifications) {
 
   return notifications.map(item => {
     const icon = item.needsAction ? '🔴' : 'ℹ️'
-    let line = `- ${icon} **[${item.title}](${item.url})** — \`${item.repo}\``
+    const numMatch = item.url?.match(/\/(pull|issues)\/(\d+)$/)
+    const ref = numMatch ? `${item.repo} #${numMatch[2]}` : item.repo
+    let line = `- ${icon} **[${ref}](${item.url})** — ${item.title}`
     line += `\n  ${item.summary}`
     return line
   }).join('\n')
@@ -263,6 +309,10 @@ const DAILY_BRIEF_TEMPLATE = `# Daily Brief — {DATE}
 ## ⚡ Action Items
 <!-- AGENT:action_items -->
 {action_items}
+
+## 🔥 Focus Areas
+<!-- AGENT:focus_areas -->
+{focus_areas}
 
 ## 📬 Email
 ### Action Required
@@ -316,7 +366,7 @@ _Nothing to report._
 <!-- AGENT:jira_discussions -->
 {jira_discussions}
 
-## 📖 Confluence
+## 📖 Wiki
 ### Pages Needing Attention
 <!-- AGENT:confluence -->
 {confluence}
@@ -362,6 +412,7 @@ function buildFromTemplate(rendered, meta) {
     .replace('{SOURCES}', String(meta.sources ?? 0))
     .replace('{ITEMS}', String(meta.items ?? 0))
     .replace('{action_items}', rendered.action_items ?? '_Nothing to report._')
+    .replace('{focus_areas}', rendered.focus_areas ?? '_No cross-source patterns today._')
     .replace('{slack_mentions}', rendered.slack_mentions ?? '_Nothing to report._')
     .replace('{slack_threads}', rendered.slack_threads ?? '_Nothing to report._')
     .replace('{slack_dms}', rendered.slack_dms ?? '_Nothing to report._')

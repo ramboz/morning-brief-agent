@@ -9,3 +9,4 @@ config/jira.json
 config/confluence.json
 config/github.json
 config/slack.json
+config/context.md

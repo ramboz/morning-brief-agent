@@ -35,6 +35,9 @@ Every daily note starts from this exact template on first run. Section headers m
 ## ⚡ Action Items
 <!-- AGENT:action_items -->
 
+## 🔥 Focus Areas
+<!-- AGENT:focus_areas -->
+
 ## 📬 Email
 ### Action Required
 <!-- AGENT:email_action -->
@@ -142,6 +145,12 @@ When finding the end boundary of an anchored section, check whether the line imm
 - [x] [GitHub] Approve dependabot PR on morning-briefing repo
 ```
 
+#### 🔥 Focus Areas
+- Fully overwrite on each run — no merge, no user edits expected here
+- If no clusters (no topics with 2+ source signals): write `_No cross-source patterns today._`
+- Format: one `###` heading per cluster, followed by source-tagged bullet lines
+- See `specs/09-summarization.md` for the rendered format
+
 #### Email Sections (Action Required, FYI, Auto-Archived)
 - Each email item is identified by its **subject line**
 - If an email from this run already exists in the section: update its summary text in place
@@ -215,6 +224,65 @@ Only write this on first creation — do not duplicate on re-runs.
 
 ---
 
+## Slack DM Output
+
+After the daily note is written, the agent posts a summary to the user's own Slack DM as a secondary delivery channel — so the brief surfaces in the user's natural Slack workflow without requiring them to open a file.
+
+### Behaviour
+
+- Implemented as `postBriefToSlack(actionItems, clusters)` in **`src/sources/slack.js`** (reuses the existing Slack client and user ID from `fetchSlack()`)
+- Called from `index.js` **after** `writeDailyNote()` completes
+- Gated by `isDryRun` — in dry-run mode, logs `[slack] DRY RUN — would post brief to self` and skips
+- If Slack is unavailable (source returned `ok: false`), skip with a log message — do not error
+- The user's own Slack member ID comes from the `auth.test()` call already performed during `fetchSlack()` — pass it through from the fetch result or re-use the cached client
+
+### Content
+
+The DM contains two sections:
+1. **🔥 Focus Areas** — the cross-source project clusters (if any)
+2. **⚡ Action Items** — the top action items
+
+Both are already computed by the time this is called. If no clusters exist, omit the Focus Areas block entirely.
+
+### Slack formatting
+
+Use Slack `mrkdwn` format (not GitHub markdown):
+- Bold: `*text*` (not `**text**`)
+- Links: `<url|text>` (not `[text](url)`)
+- Bullets: `•` character
+- No heading syntax — use `*Section Title*` on its own line followed by bullets
+
+**Example message:**
+```
+*Morning Brief — 2026-03-04*
+
+*🔥 Focus Areas*
+• *Auth Service* — JIRA (blocked), GitHub (review needed), Slack (3 mentions)
+• *Q2 Roadmap* — Confluence (updated), JIRA (debate open)
+
+*⚡ Action Items*
+• [JIRA] <https://jira.../browse/ENG-482|ENG-482> — Alice blocked, token refresh edge case
+• [GitHub] <https://github.com/...|PR: feat/auth> — review requested
+• [Slack] <https://slack.../archives/...|#eng-backend> — caching approach debate, your input wanted
+```
+
+### Interface
+
+```js
+// src/sources/slack.js
+
+/**
+ * Posts the morning brief summary to the user's own Slack DM.
+ * @param {string} userId - The authenticated user's Slack member ID
+ * @param {object[]} actionItems - From synthesizeActionItems() — array of { source, text, url?, permalink? }
+ * @param {object[]} clusters - From synthesizeProjectClusters() — array of { name, signals }
+ * @returns {Promise<{ ok: boolean, error?: string }>}
+ */
+export async function postBriefToSlack(userId, actionItems, clusters)
+```
+
+---
+
 ## Exported API
 
 ```js
@@ -233,6 +301,20 @@ export async function writeDailyNote(sections, options)
  * @returns {string}
  */
 export function getDailyNotePath()
+
+/**
+ * Renders the ⚡ Action Items section from synthesizeActionItems() output.
+ * @param {object[]} items - Array of { source, text, url?, permalink? }
+ * @returns {string}
+ */
+export function renderActionItems(items)
+
+/**
+ * Renders the 🔥 Focus Areas section from synthesizeProjectClusters() output.
+ * @param {object[]} clusters - Array of { name, signals: [{ source, summary, url? }] }
+ * @returns {string}
+ */
+export function renderProjectClusters(clusters)
 ```
 
 ---

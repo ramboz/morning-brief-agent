@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { spawn } from 'child_process'
 import { debug, aiModel } from '../utils/flags.js'
+import { withContext } from '../utils/context.js'
 
 // ---------------------------------------------------------------------------
 // AI Backend configuration
@@ -428,7 +429,7 @@ export async function summarizeConfluence(pages) {
     .slice(0, 20)
 
   try {
-    const text = await callClaude(PROMPT_CONFLUENCE, JSON.stringify(input), { schema: SCHEMA_CONFLUENCE })
+    const text = await callClaude(await withContext(PROMPT_CONFLUENCE), JSON.stringify(input), { schema: SCHEMA_CONFLUENCE })
     return parseJSONResponse(text)
   } catch (err) {
     console.error('[ai] summarizeConfluence failed:', err.message)
@@ -460,11 +461,15 @@ Skip notifications where nothing needs engagement:
 - A resolved or closed item with no follow-up needed
 - Bot comments or automated status updates with no human discussion
 
-Keep summaries concise and framed around why the user should care today. Examples:
-- "Review requested — adds OAuth2 support to auth flow"
-- "Alice left unresolved questions on your PR about error handling"
-- "CI failing on your feature branch: build step failing"
-- "Open debate on API versioning approach — no decision yet"
+Keep summaries concise and framed around why the user should care today.
+Always mention the author (from the "author" field) — it is important for the user to know who to engage with.
+Always refer to GitHub users with the @ prefix (e.g. @zehnder, not just zehnder). The "author" field already contains the formatted name.
+
+Examples:
+- "@alice requested your review — adds OAuth2 support to auth flow"
+- "@bob left unresolved questions on your PR about error handling"
+- "CI failing on @zehnder's PR — build step failing"
+- "Open debate on API versioning approach — @carol and @dave disagree, no decision yet"
 
 Return JSON only. No markdown, no explanation, no preamble.
 
@@ -567,10 +572,13 @@ You will receive an array of channels with recent messages from others (the user
 Skip: trivial chatter, fully resolved discussions, status updates requiring no action, bot messages unless incident/alert/error.
 
 For each relevant channel, write up to 5 concise bullets framed as "what's happening and why it might need you." Omit channels where there's nothing worth the user's attention.
+When mentioning people by name or handle, always use the @ prefix (e.g. @zehnder, not zehnder).
 
 IMPORTANT: Each channel must appear at most ONCE in the output. Do not split a channel into multiple entries.
 
 For each bullet, include the "ts" of the single most relevant message or thread reply from the input. If no single message is clearly associated, use the ts of the most recent relevant message.
+
+If a message text contains a GitHub PR or issue URL (e.g. https://github.com/org/repo/pull/123 or https://github.com/org/repo/issues/456), include it in the bullet "text" as a markdown link: [repo #number](url). Example: "@zehnder requesting review on [spacecat-api-service #1892](https://github.com/adobe/spacecat-api-service/pull/1892)". This preserves the URL for deep linking.
 
 Pass "channelId" through unchanged from the input.
 
@@ -707,7 +715,199 @@ export async function summarizeSlackThreads(threadUpdates) {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-source synthesis
+// ---------------------------------------------------------------------------
+
+const SCHEMA_ACTION_ITEMS = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      source:    { type: 'string' },
+      text:      { type: 'string' },
+      url:       { type: 'string' },
+      permalink: { type: 'string' },
+    },
+    required: ['source', 'text', 'url', 'permalink'],
+    additionalProperties: false,
+  },
+}
+
+const SCHEMA_PROJECT_CLUSTERS = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      signals: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            source:  { type: 'string' },
+            summary: { type: 'string' },
+            url:     { type: 'string' },
+          },
+          required: ['source', 'summary', 'url'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['name', 'signals'],
+    additionalProperties: false,
+  },
+}
+
+const PROMPT_ACTION_ITEMS = `You are synthesizing a morning briefing for an engineer. You will receive pre-summarized data from multiple work tools: JIRA, Wiki (Confluence), GitHub (public and corporate), and Slack (mentions, thread updates, DMs).
+
+Your job: produce a single prioritized list of up to 10 action items the engineer must attend to today.
+
+Rules:
+- Include only items that require action: a review is needed, a question needs answering, someone is blocked on the user, a decision is needed
+- Omit informational updates, FYI items, resolved items, or anything that does not require the user to do something today
+- Deduplicate: if the same underlying task appears in multiple sources (e.g. a JIRA ticket AND a Slack mention about it), merge into one item — use the most informative source tag and the most specific URL
+- Do NOT merge multiple PRs or issues into a single action item — emit one item per PR/issue
+- Prioritize: blocking or time-sensitive items first
+- Write each item as a plain-text one-liner — concise, specific, actionable. State what needs to happen and why it matters today.
+- Source tags: [JIRA], [GitHub], [GitHub Corp], [Slack], [Wiki]
+- For GitHub/GitHub Corp items, format "text" as: repo #number — description (e.g. "spacecat-api-service #1892 — review requested: adds retry logic")
+- For GitHub users, always use @ prefix in descriptions (e.g. @zehnder, not zehnder)
+- Always include "url" — use the item's URL if available, empty string otherwise
+- Always include "permalink" — use the Slack permalink if it's a Slack item, empty string otherwise
+
+Input structure:
+{
+  "jira": { "actionRequired": [...], "updates": [...] },
+  "wiki": [...],
+  "github": [...],
+  "githubCorp": [...],
+  "slackMentions": [...],
+  "slackThreads": [...],
+  "slackDMs": [...],
+  "slackChannels": [{ "channel": "...", "channelId": "...", "bullets": [{ "text": "...", "ts": "..." }] }]
+}
+
+Selection rules per source:
+- jira.actionRequired: include all
+- jira.updates: include only if a direct question or decision is open
+- confluence: include only if needsAttention: true
+- github / githubCorp: include only if needsAction: true
+- slackMentions: include only if needsReply: true
+- slackThreads: include only if needsReply: true
+- slackDMs: include only if replyExpected: true
+- slackChannels: include a bullet only if it describes an explicit ask directed at the user, someone is blocked waiting for them, a review or decision is needed, or a time-sensitive action is required; skip informational updates or discussions the user can observe passively
+
+For slackChannels action items, set "permalink" to empty string. For "url": if the bullet text contains a markdown link to a GitHub PR or issue (e.g. [repo #number](https://...)), extract and use that URL; otherwise set "url" to empty string.
+
+Return JSON only. No markdown, no explanation, no preamble.
+
+Output shape:
+[
+  { "source": "JIRA",    "text": "ENG-482 — Alice is blocked on token refresh, needs your review", "url": "https://jira.../browse/ENG-482", "permalink": "" },
+  { "source": "GitHub",  "text": "PR: feat/auth — review requested, adds OAuth2 support",           "url": "https://github.com/...",           "permalink": "" },
+  { "source": "Slack",   "text": "#eng-backend — caching approach debate, your input was asked for", "url": "",                                 "permalink": "https://..." }
+]`
+
+const PROMPT_PROJECT_CLUSTERS = `You are synthesizing a morning briefing for an engineer. You will receive pre-summarized data from multiple work tools: JIRA, Wiki (Confluence), GitHub (public and corporate), and Slack (mentions, thread updates, DMs).
+
+Your job: identify cross-source focus areas — projects, features, or systems generating activity in 2 or more tools today.
+
+Rules:
+- Only create a cluster if the same topic appears in 2 or more distinct sources
+- Name each cluster after the project, feature, or system it represents (e.g. "Auth Service", "Q2 Roadmap", "API Gateway")
+- For each cluster, list one concise signal line per source — what's happening in that source regarding this topic
+- Sort clusters by number of signals descending (most cross-source activity first)
+- Max 5 clusters — only the most active topics
+- Single-source topics are already covered by the per-source sections — omit them here
+- Always include "url" — use the item URL if available, empty string otherwise
+- Use source tag "Wiki" (not "Confluence") for items from the wiki input array
+- If a slackChannels bullet text contains GitHub PR or issue markdown links (e.g. [repo #number](url)), preserve those links inline in the signal "summary". Set "url" to empty string for Slack signals.
+
+Input structure:
+{
+  "jira": { "actionRequired": [...], "updates": [...] },
+  "wiki": [...],
+  "github": [...],
+  "githubCorp": [...],
+  "slackMentions": [...],
+  "slackThreads": [...],
+  "slackDMs": [...],
+  "slackChannels": [{ "channel": "...", "channelId": "...", "bullets": [{ "text": "...", "ts": "..." }] }]
+}
+
+Return JSON only. No markdown, no explanation, no preamble. Return [] if no cross-source clusters exist.
+
+Output shape:
+[
+  {
+    "name": "Auth Service",
+    "signals": [
+      { "source": "JIRA",   "summary": "ENG-482 blocked — token refresh edge case",         "url": "https://jira.../browse/ENG-482" },
+      { "source": "GitHub", "summary": "PR #91 — review requested for OAuth2 changes",      "url": "https://github.com/..." },
+      { "source": "Slack",  "summary": "3 mentions in #eng-backend about token refresh failures", "url": "" }
+    ]
+  }
+]`
+
+/**
+ * Synthesizes a cross-source prioritized action list from all per-source summaries.
+ * Deduplicates items that appear in multiple sources and prioritizes blocking/time-sensitive work.
+ * @param {{ jira: object, wiki: object[], github: object[], githubCorp: object[], slackMentions: object[], slackThreads: object[], slackDMs: object[], slackChannels: object[] }} allSummaries
+ * @returns {Promise<Array<{ source: string, text: string, url: string, permalink: string }>>}
+ */
+export async function synthesizeActionItems(allSummaries) {
+  const hasData = (
+    allSummaries.jira?.actionRequired?.length > 0 ||
+    allSummaries.jira?.updates?.length > 0 ||
+    allSummaries.wiki?.length > 0 ||
+    allSummaries.github?.length > 0 ||
+    allSummaries.githubCorp?.length > 0 ||
+    allSummaries.slackMentions?.length > 0 ||
+    allSummaries.slackThreads?.length > 0 ||
+    allSummaries.slackDMs?.length > 0 ||
+    allSummaries.slackChannels?.length > 0
+  )
+  if (!hasData) return []
+
+  try {
+    const text = await callClaude(await withContext(PROMPT_ACTION_ITEMS), JSON.stringify(allSummaries), { maxTokens: 1500, schema: SCHEMA_ACTION_ITEMS })
+    return parseJSONResponse(text)
+  } catch (err) {
+    console.error('[ai] synthesizeActionItems failed:', err.message)
+    return []
+  }
+}
+
+/**
+ * Identifies cross-source focus areas — projects or topics with signals in 2+ tools today.
+ * Only clusters with 2 or more distinct source signals are included.
+ * @param {{ jira: object, wiki: object[], github: object[], githubCorp: object[], slackMentions: object[], slackThreads: object[], slackDMs: object[], slackChannels: object[] }} allSummaries
+ * @returns {Promise<Array<{ name: string, signals: Array<{ source: string, summary: string, url: string }> }>>}
+ */
+export async function synthesizeProjectClusters(allSummaries) {
+  const hasData = (
+    allSummaries.jira?.actionRequired?.length > 0 ||
+    allSummaries.jira?.updates?.length > 0 ||
+    allSummaries.wiki?.length > 0 ||
+    allSummaries.github?.length > 0 ||
+    allSummaries.githubCorp?.length > 0 ||
+    allSummaries.slackMentions?.length > 0 ||
+    allSummaries.slackThreads?.length > 0 ||
+    allSummaries.slackDMs?.length > 0 ||
+    allSummaries.slackChannels?.length > 0
+  )
+  if (!hasData) return []
+
+  try {
+    const text = await callClaude(await withContext(PROMPT_PROJECT_CLUSTERS), JSON.stringify(allSummaries), { maxTokens: 1000, schema: SCHEMA_PROJECT_CLUSTERS })
+    return parseJSONResponse(text)
+  } catch (err) {
+    console.error('[ai] synthesizeProjectClusters failed:', err.message)
+    return []
+  }
+}
+
+// ---------------------------------------------------------------------------
 // TODO: Add summarizeEmails() — Phase 3
 // TODO: Add summarizeTeamsActivity(), summarizeMeetings() — Phase 7
-// TODO: Add synthesizeActionItems() — Phase 8
 // ---------------------------------------------------------------------------

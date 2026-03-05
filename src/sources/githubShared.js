@@ -219,6 +219,37 @@ async function enrichNotification(octokit, notification, filters) {
 }
 
 /**
+ * Resolves GitHub login handles to display names, updating the author field in-place.
+ * Formats as "Display Name (@login)" when a name is available, "@login" otherwise.
+ * Skips logins that look like bots (ending in [bot]).
+ * @param {import('@octokit/rest').Octokit} octokit
+ * @param {object[]} notifications
+ * @returns {Promise<void>}
+ */
+async function resolveAuthorNames(octokit, notifications) {
+  const logins = [...new Set(notifications.map(n => n.author).filter(l => l && !l.endsWith('[bot]')))]
+  if (logins.length === 0) return
+
+  const nameMap = new Map()
+  await Promise.allSettled(logins.map(async login => {
+    try {
+      const { data } = await octokit.users.getByUsername({ username: login })
+      nameMap.set(login, data.name ?? null)
+    } catch (err) {
+      debug('[github]', `resolveAuthorNames: failed to resolve @${login}: ${err.message}`)
+    }
+  }))
+
+  for (const n of notifications) {
+    if (!n.author || n.author.endsWith('[bot]')) continue
+    const login = n.author
+    const name = nameMap.get(login)
+    n.author = name ? `${name} (@${login})` : `@${login}`
+    debug('[github]', `resolved author: ${login} → ${n.author}`)
+  }
+}
+
+/**
  * Fetches, filters, and enriches GitHub notifications for a given instance.
  * @param {import('@octokit/rest').Octokit} octokit
  * @param {'github.com'|'corporate'} instance
@@ -261,6 +292,8 @@ export async function fetchGithubNotifications(octokit, instance, config, _since
     }
   }
   debug(label, `${notifications.length} notifications enriched in ${Date.now() - t1}ms`)
+
+  await resolveAuthorNames(octokit, notifications)
 
   return { ok: true, data: { instance, notifications } }
 }

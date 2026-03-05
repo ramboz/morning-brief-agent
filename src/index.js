@@ -5,9 +5,11 @@ import { fetchConfluence } from './sources/confluence.js'
 import { fetchGithubDotCom } from './sources/githubDotCom.js'
 import { fetchGithubCorp } from './sources/githubCorp.js'
 import { fetchSlack } from './sources/slack.js'
-import { summarizeJira, summarizeConfluence, summarizeGithub, summarizeSlackMentions, summarizeSlackThreads, summarizeSlackDMs, summarizeSlackChannels } from './ai/summarize.js'
+import { summarizeJira, summarizeConfluence, summarizeGithub, summarizeSlackMentions, summarizeSlackThreads, summarizeSlackDMs, summarizeSlackChannels, synthesizeActionItems, synthesizeProjectClusters } from './ai/summarize.js'
 import {
   writeDailyNote,
+  renderActionItems,
+  renderProjectClusters,
   renderJiraTickets,
   renderJiraDiscussions,
   renderConfluence,
@@ -225,39 +227,38 @@ if (!slack.ok) {
   rendered.slack_other = renderSlackOther(slack.data.otherChannelsActivity)
 }
 
-// Action items: JIRA actionRequired + GitHub items needing action
-// TODO: Phase 8 will add synthesizeActionItems() for cross-source synthesis
-const actionItems = [
-  ...jiraSummary.actionRequired.map(item => {
-    const issue = issueMap.get(item.key)
-    const url = issue?.url ?? ''
-    return `- [ ] [JIRA] [${item.key}](${url}) — ${item.summary}`
-  }),
-  ...githubComSummary.filter(n => n.needsAction).map(n =>
-    `- [ ] [GitHub] [${n.title}](${n.url}) — ${n.summary}`
-  ),
-  ...githubCorpSummary.filter(n => n.needsAction).map(n =>
-    `- [ ] [GitHub Corp] [${n.title}](${n.url}) — ${n.summary}`
-  ),
-  ...slackMentionsSummary.filter(m => m.needsReply).map(m => {
-    const link = m.permalink ? `[#${m.channelName}](${m.permalink})` : `#${m.channelName}`
-    return `- [ ] [Slack] ${link} — ${m.user}: ${m.summary}`
-  }),
-  ...slackThreadsSummary.filter(t => t.needsReply).map(t =>
-    `- [ ] [Slack thread #${t.channelName}] ${t.summary}`
-  ),
-  ...slackDMsSummary.filter(dm => dm.replyExpected).map(dm =>
-    `- [ ] [Slack DM] ${dm.withUser}: ${dm.summary}`
-  ),
-]
-rendered.action_items = actionItems.length > 0 ? actionItems.join('\n') : '_Nothing to report._'
+// ---------------------------------------------------------------------------
+// Step 5: Cross-source synthesis — action items + project clusters (parallel)
+// ---------------------------------------------------------------------------
+
+const allSummaries = {
+  jira:          jiraSummary,
+  wiki:          confluenceSummary,
+  github:        githubComSummary,
+  githubCorp:    githubCorpSummary,
+  slackMentions: slackMentionsSummary,
+  slackThreads:  slackThreadsSummary,
+  slackDMs:      slackDMsSummary,
+  slackChannels: slackChannelsSummary,
+}
+
+console.log('[index] Synthesizing action items and focus areas...')
+const synthesisStart = Date.now()
+const [actionItemsSynthesis, clustersSynthesis] = await Promise.all([
+  synthesizeActionItems(allSummaries),
+  synthesizeProjectClusters(allSummaries),
+])
+debug('[index]', `Synthesis done in ${Date.now() - synthesisStart}ms`)
+
+rendered.action_items = renderActionItems(actionItemsSynthesis)
+rendered.focus_areas  = renderProjectClusters(clustersSynthesis)
 
 // ---------------------------------------------------------------------------
-// Step 5: Write the daily note
+// Step 6: Write the daily note
 // ---------------------------------------------------------------------------
 
 const sources = [jira, confluence, githubCom, githubCorp, slack].filter(r => r.ok).length
-const items = actionItems.length
+const items = actionItemsSynthesis.length
 
 const result = await writeDailyNote(rendered, { sources, items })
 

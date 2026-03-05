@@ -401,51 +401,111 @@ See `specs/04-slack.md` for full prompt guidance.
 
 ### synthesizeActionItems(allSummaries)
 
-The final call. Takes all per-source summaries and produces a cross-source prioritized action list for the ⚡ Action Items section. Called **after** all source summaries are collected — not part of the `Promise.allSettled()` fetch phase.
+The final synthesis call. Takes all per-source summaries and produces a cross-source prioritized action list for the ⚡ Action Items section. Called **after** all per-source summarizations complete — run in parallel with `synthesizeProjectClusters()`.
+
+**Current scope (Phase 8):** 4 active sources. Input shape will expand when Email and Teams are added.
 
 **Input:**
 ```js
 {
-  email:      { actionRequired, drafts, ... },
-  slack:      { mentions, threads, dms, channels },
-  teams:      { activities, meetings },
-  jira:       { actionRequired, updates },
-  confluence: [...],
-  github:     { reviewRequested, mentioned, other },
-  githubCorp: { reviewRequested, mentioned, other }
+  jira:       { actionRequired: [...], updates: [...] },
+  confluence: [...],                              // from summarizeConfluence()
+  github:     [...],                              // from summarizeGithub() — github.com
+  githubCorp: [...],                              // from summarizeGithub() — corporate GHE
+  slackMentions:  [...],                          // from summarizeSlackMentions()
+  slackThreads:   [...],                          // from summarizeSlackThreads()
+  slackDMs:       [...],                          // from summarizeSlackDMs()
+  // future: email, teams
 }
 ```
+
+Each array contains already-summarized items from the per-source functions. Do not re-summarize raw API data here.
 
 **Max tokens:** 1500
 
 **Prompt instructions:**
 - Produce a flat prioritized list of up to 10 action items
-- Each item must include a source tag: `[Email]`, `[Slack]`, `[Teams]`, `[JIRA]`, `[Confluence]`, `[GitHub]`, `[GitHub Corp]`
+- Each item must include a source tag: `[Slack]`, `[JIRA]`, `[Confluence]`, `[GitHub]`, `[GitHub Corp]` (expand when Email/Teams added)
 - Deduplicate: if the same task appears in multiple sources, merge into one item and pick the most informative source tag
-- Prioritize: time-sensitive or blocking items go first
-- Informational updates are not action items — omit them
-- Format each item as a plain-text one-liner: not a question, not a command (e.g. `"Reply to Jane re: Q1 roadmap — needed before Friday"`)
+- Prioritize: time-sensitive or blocking items first (review_requested, blocked on you, direct question); informational updates are not action items — omit them
+- Write each item as a plain-text one-liner stating the action and why it matters today
 
 **Output shape:**
 ```js
 [
-  { source: "Email",  text: "Reply to Jane re: Q1 roadmap — needed before Friday" },
-  { source: "JIRA",   text: "Review PR #482 — blocking release", url: "https://jira.../browse/ENG-482" },
-  { source: "GitHub", text: "Approve dependabot PR on api-service", url: "https://github.com/..." }
+  { source: "JIRA",       text: "ENG-482 — Alice is blocked on token refresh, needs your review", url: "https://jira.../browse/ENG-482" },
+  { source: "GitHub",     text: "PR: feat/auth — review requested, adds OAuth2 support",           url: "https://github.com/..." },
+  { source: "Slack",      text: "#eng-backend — unresolved question on caching approach, you were asked", permalink: "https://..." }
 ]
 ```
 
-**Rendered format in daily note:**
+**Rendered format in daily note** (via `renderActionItems()` in `dailyNote.js`):
 ```
-- [ ] [Email] Reply to Jane re: Q1 roadmap — needed before Friday
-- [ ] [JIRA] [ENG-482](https://jira.../browse/ENG-482) — Review PR #482 — blocking release
-- [ ] [Slack] [#eng-general](https://slack.../archives/...) — Alice Chen: Can you review PR #482?
+- [ ] [JIRA] [ENG-482](https://jira.../browse/ENG-482) — Alice is blocked on token refresh, needs your review
+- [ ] [GitHub] [PR: feat/auth](https://github.com/...) — review requested, adds OAuth2 support
+- [ ] [Slack] [#eng-backend](https://...) — unresolved question on caching approach, you were asked
 ```
 
-For Slack action items, the format is `[Slack] [#channel](permalink) — user: summary`.
-For JIRA/GitHub items with URLs, the ticket/PR reference is linked.
+For Slack items: `[Slack] [#channel](permalink) — summary`.
+For JIRA/GitHub items with URLs: ticket/PR reference is linked.
 
 **Safe default:** `[]`
+
+---
+
+### synthesizeProjectClusters(allSummaries)
+
+A synthesis call that groups items from different sources into cross-source "focus areas" — projects or topics where multiple signals converged today. This becomes the 🔥 Focus Areas section.
+
+Called **in parallel** with `synthesizeActionItems()` after all per-source summarizations complete.
+
+**Input:** same shape as `synthesizeActionItems()` — all per-source summaries.
+
+**Max tokens:** 1000
+
+**Prompt instructions:**
+- Identify recurring themes, projects, or features across sources — things showing up in 2 or more sources
+- Each cluster represents one project/topic with signals from multiple sources
+- Do not create clusters for items appearing in only one source
+- Sort by signal count descending (most cross-source activity first)
+- Max 5 clusters — only the most active topics
+- For each cluster, write one concise line per source signal (what happened in that source regarding this topic)
+- Name clusters after the project, feature, or system they represent (e.g. "Auth Service", "Q2 Roadmap", "API Gateway migration")
+
+**Output shape:**
+```js
+[
+  {
+    name: "Auth Service",
+    signals: [
+      { source: "JIRA",   summary: "ENG-482 blocked — token refresh edge case", url: "https://jira.../browse/ENG-482" },
+      { source: "GitHub", summary: "PR #91 — review requested for OAuth2 changes", url: "https://github.com/..." },
+      { source: "Slack",  summary: "3 mentions in #eng-backend about token refresh failures" }
+    ]
+  },
+  {
+    name: "Q2 Roadmap",
+    signals: [
+      { source: "Wiki", summary: "Alice added mobile-first section — may affect your team", url: "https://confluence.../..." },
+      { source: "JIRA",       summary: "ENG-410 — debate on caching strategy open, your input wanted", url: "https://jira.../browse/ENG-410" }
+    ]
+  }
+]
+```
+
+**Rendered format in daily note** (via `renderProjectClusters()` in `dailyNote.js`):
+```
+### Auth Service
+- [JIRA] [ENG-482](https://jira.../browse/ENG-482) — blocked, token refresh edge case
+- [GitHub] [PR #91](https://github.com/...) — review requested for OAuth2 changes
+- [Slack] 3 mentions in #eng-backend about token refresh failures
+
+### Q2 Roadmap
+- [Confluence] [Q2 Roadmap](https://confluence.../...) — Alice added mobile-first section
+- [JIRA] [ENG-410](https://jira.../browse/ENG-410) — caching debate open, your input wanted
+```
+
+**Safe default:** `[]` (section shows "_Nothing to report._" — no clusters means no cross-source overlap today)
 
 ---
 
@@ -467,5 +527,6 @@ For JIRA/GitHub items with URLs, the ticket/PR reference is linked.
 - `callClaude`, `callClaudeCLI`, `callOpenAI`, and `parseJSONResponse` are internal — do not export them
 - For `claude-cli`: system prompt and user content are combined into a single `-p` string (no separate system/user turns)
 - For `openai`: system prompt is the `system` turn, user content is the `user` turn
-- `synthesizeActionItems` is the only function that receives data from multiple sources — keep it that way
+- `synthesizeActionItems` and `synthesizeProjectClusters` are the only functions that receive data from multiple sources — keep it that way
+- Both synthesis functions are called in parallel with `Promise.all()` after per-source summarizations complete (it's acceptable to fail the entire synthesis together since they share input)
 - JSON schemas live as `const SCHEMA_X = ...` constants alongside their corresponding `PROMPT_X` constants
