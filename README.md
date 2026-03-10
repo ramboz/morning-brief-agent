@@ -44,14 +44,14 @@ node src/index.js [--dry-run]
 > ⏱️ Last updated: 08:02 — 4 sources • 8 items
 
 ## ⚡ Action Items
-- [ ] [Slack] spacecat-api-service #1892 — review requested by @zehnder
-- [ ] [JIRA] ENG-1204 — Alice is blocked on token refresh, needs your decision
-- [ ] [Wiki] Review ASO Onboarding (v133) — Sean updated patterns blocking customers
+- [ ] [Slack] my-service #42 — review requested by @alice
+- [ ] [JIRA] ENG-1204 — Bob is blocked on token refresh, needs your decision
+- [ ] [Wiki] Review Q1 Onboarding guide (v12) — Carol updated patterns blocking customers
 
 ## 🔥 Focus Areas
-### ASO Onboarding & Customer Unblocking
-- [Slack] @bordeian: Dover Corp blocked on IP allowlisting — needs your guidance
-- [Wiki] Onboarding playbook updated (v133) — affects customer pipeline
+### Auth Service
+- [Slack] @alice: external team blocked on API access — needs your guidance
+- [Wiki] Onboarding playbook updated — affects customer pipeline
 
 ## 📬 Email
 ### Action Required
