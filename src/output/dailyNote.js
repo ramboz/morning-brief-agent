@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
 import path from 'path'
-import { outputPath } from '../utils/flags.js'
+import { outputPath, lookbackHours } from '../utils/flags.js'
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -43,6 +43,57 @@ function relativeTime(dateStr) {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   return `${days}d ago`
+}
+
+/**
+ * Splits items into Today / Yesterday / Earlier buckets based on a timestamp accessor.
+ * @param {object[]} items
+ * @param {(item: object) => string|null} getTimestamp - Returns an ISO date string or null
+ * @returns {{ today: object[], yesterday: object[], earlier: object[] }}
+ */
+function groupByRecency(items, getTimestamp) {
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000)
+
+  const today = []
+  const yesterday = []
+  const earlier = []
+
+  for (const item of items) {
+    const ts = getTimestamp(item)
+    if (!ts) { earlier.push(item); continue }
+    const date = new Date(ts)
+    if (date >= todayStart) today.push(item)
+    else if (date >= yesterdayStart) yesterday.push(item)
+    else earlier.push(item)
+  }
+
+  return { today, yesterday, earlier }
+}
+
+/**
+ * Wraps a render function with Today/Yesterday/Earlier sub-headers when lookback > 72h.
+ * Passes through to renderFn unchanged when lookback is short or items don't span multiple days.
+ * @param {object[]} items - Items to render
+ * @param {(item: object) => string|null} getTimestamp - Timestamp accessor per item
+ * @param {(items: object[]) => string} renderFn - Render function for a flat item list
+ * @returns {string} Markdown output, optionally with recency sub-headers
+ */
+export function withRecencyGrouping(items, getTimestamp, renderFn) {
+  if (lookbackHours <= 72 || !items || items.length === 0) return renderFn(items)
+
+  const { today, yesterday, earlier } = groupByRecency(items, getTimestamp)
+
+  const nonEmpty = [today, yesterday, earlier].filter(g => g.length > 0)
+  if (nonEmpty.length <= 1) return renderFn(items)
+
+  const parts = []
+  if (today.length > 0) parts.push(`#### Today\n${renderFn(today)}`)
+  if (yesterday.length > 0) parts.push(`#### Yesterday\n${renderFn(yesterday)}`)
+  if (earlier.length > 0) parts.push(`#### Earlier\n${renderFn(earlier)}`)
+
+  return parts.join('\n\n')
 }
 
 /**
@@ -141,7 +192,8 @@ export function renderSlackMentions(mentions) {
 
   return actionable.map(m => {
     const link = m.permalink ? `[#${m.channelName}](${m.permalink})` : `#${m.channelName}`
-    return `- 🔴 **${link}** — ${m.user}: ${m.summary}`
+    const user = m.user.startsWith('@') ? m.user : `@${m.user}`
+    return `- 🔴 **${link}** — ${user}: ${m.summary}`
   }).join('\n')
 }
 
@@ -149,28 +201,40 @@ export function renderSlackMentions(mentions) {
  * Renders the Slack "Thread Updates" section content.
  * These are threads the user participated in that have new replies from others.
  * @param {object[]} threads - From summarizeSlackThreads()
+ * @param {string} [workspaceUrl] - Slack workspace URL for deep links
  * @returns {string}
  */
-export function renderSlackThreads(threads) {
+export function renderSlackThreads(threads, workspaceUrl) {
   if (!threads || threads.length === 0) return '_Nothing to report._'
+
+  const base = workspaceUrl ? workspaceUrl.replace(/\/$/, '') : null
 
   return threads.map(t => {
     const icon = t.needsReply ? '🔴' : 'ℹ️'
-    return `- ${icon} **#${t.channelName}** _(re: ${t.parentText})_ — ${t.summary}`
+    const threadLink = base && t.channelId && t.threadTs
+      ? `[#${t.channelName}](${base}/archives/${t.channelId}/p${t.threadTs.replace('.', '')})`
+      : `#${t.channelName}`
+    return `- ${icon} **${threadLink}** _(re: ${t.parentText})_ — ${t.summary}`
   }).join('\n')
 }
 
 /**
  * Renders the Slack "Direct Messages" section content.
  * @param {object[]} dms - From summarizeSlackDMs()
+ * @param {string} [workspaceUrl] - Slack workspace URL for deep links
  * @returns {string}
  */
-export function renderSlackDMs(dms) {
+export function renderSlackDMs(dms, workspaceUrl) {
   if (!dms || dms.length === 0) return '_Nothing to report._'
+
+  const base = workspaceUrl ? workspaceUrl.replace(/\/$/, '') : null
 
   return dms.map(dm => {
     const icon = dm.replyExpected ? '🔴' : 'ℹ️'
-    return `- ${icon} **${dm.withUser}** — ${dm.summary}`
+    const userLink = base && dm.dmChannelId
+      ? `[${dm.withUser}](${base}/archives/${dm.dmChannelId})`
+      : dm.withUser
+    return `- ${icon} **${userLink}** — ${dm.summary}`
   }).join('\n')
 }
 
@@ -238,25 +302,31 @@ export function renderSlackOther(activity) {
 
 /**
  * Renders the ⚡ Action Items section from synthesizeActionItems() output.
- * Items with a URL or permalink have their reference portion linked.
+ * Items with a URL, permalink, or channelId+ts have their reference portion linked.
  * Expects text in the form "Reference — description" to extract the link label.
- * @param {Array<{ source: string, text: string, url: string, permalink: string }>} items
+ * @param {Array<{ source: string, text: string, url: string, permalink: string, channelId: string, ts: string }>} items
+ * @param {string} [workspaceUrl] - Slack workspace base URL for channelId+ts deep links
  * @returns {string}
  */
-export function renderActionItems(items) {
+export function renderActionItems(items, workspaceUrl) {
   if (!items || items.length === 0) return '_Nothing to report._'
 
-  return items.map(item => {
-    const url = item.url || item.permalink || ''
-    const sep = item.text.indexOf(' — ')
+  const base = workspaceUrl ? workspaceUrl.replace(/\/$/, '') : null
 
-    if (url && sep !== -1) {
+  return items.map(item => {
+    let link = item.url || item.permalink || ''
+    if (!link && base && item.channelId && item.ts) {
+      link = `${base}/archives/${item.channelId}/p${item.ts.replace('.', '')}`
+    }
+
+    const sep = item.text.indexOf(' — ')
+    if (link && sep !== -1) {
       const ref = item.text.slice(0, sep)
       const desc = item.text.slice(sep + 3)
-      return `- [ ] [${item.source}] [${ref}](${url}) — ${desc}`
+      return `- [ ] [${item.source}] [${ref}](${link}) — ${desc}`
     }
-    if (url) {
-      return `- [ ] [${item.source}] [${item.text}](${url})`
+    if (link) {
+      return `- [ ] [${item.source}] [${item.text}](${link})`
     }
     return `- [ ] [${item.source}] ${item.text}`
   }).join('\n')

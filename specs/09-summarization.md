@@ -169,14 +169,17 @@ See `specs/04-slack.md` for full prompt guidance.
 **Max tokens:** 1000
 
 **Prompt instructions:**
-- For each DM thread, produce a 1-2 sentence summary of the conversation
+- For each DM conversation, produce a 1-2 sentence summary of the conversation
 - Flag if a reply from the user seems expected
+- Pass through `dmId` from input as `dmChannelId` (used by the renderer for deep links)
+- **Noise filtering:** omit conversations where the only messages are simple acknowledgments ("thanks", "got it"), the conversation is fully resolved, or the content is purely social with no work relevance
 
 **Output shape:**
 ```js
 [
   {
     withUser: "Bob Smith",
+    dmChannelId: "D012AB3CD",
     summary: "Wants to sync tomorrow about the Q2 roadmap.",
     replyExpected: true
   }
@@ -197,7 +200,7 @@ See `specs/04-slack.md` for full prompt guidance.
 
 **Prompt instructions:**
 - Identify discussions where the user should consider engaging: open questions, architecture/technical decisions in progress, customer feedback or incidents, decisions affecting the user's work, announcements worth knowing
-- Skip: trivial chatter, fully resolved discussions, status updates requiring no action, bot messages unless incident/alert/error
+- **Noise filtering** — skip these explicitly: simple acknowledgments/emoji-only messages, greetings/social chatter, fully resolved discussions, non-actionable status updates, bot messages unless they contain incident/alert/error keywords, thread replies that are only acks of a resolved question
 - Up to 5 concise bullets per channel framed as "what's happening and why it might need you"
 - Omit channels where nothing warrants the user's attention
 - **Each channel must appear at most ONCE in the output.** Do not split a channel into multiple entries.
@@ -231,12 +234,16 @@ See `specs/04-slack.md` for full prompt guidance.
 - Each thread shows new replies from others after the user's last reply
 - Determine whether the user should follow up
 - Write one concise line per thread describing what happened and whether a response seems expected
+- Pass through `channelId` and `threadTs` from input (used by the renderer for deep links)
+- **Noise filtering:** omit threads where the only new replies are simple acknowledgments ("thanks", "got it", "will do", emoji-only), bot noise, or redundant status updates. Include threads with follow-up questions, pushback, new decisions, or blockers.
 
 **Output shape:**
 ```js
 [
   {
     channelName: "eng-backend",
+    channelId: "C012AB3CD",
+    threadTs: "1234567890.123456",
     parentText: "Should we use optimistic locking here?",
     summary: "Alice and Bob pushed back on the approach — waiting for your thoughts",
     needsReply: true

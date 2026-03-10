@@ -201,6 +201,7 @@ Suppresses all outbound writes — no email drafts saved, no Slack drafts posted
 - Useful for returning from PTO (`--days 14`)
 - Supports `--days 3` (space) and `--days=3` (equals) syntax
 - **Monday auto-extend:** when run on a Monday with no `--days` flag, lookback is automatically extended to 72h (back to Friday) — no flag needed
+- **PTO mode (> 3 days):** when lookback exceeds 72h, JIRA, Confluence, and GitHub sections are split into Today / Yesterday / Earlier sub-groups using `####` headers for scannability
 
 ### --model \<name\>
 - Passes `--model <name>` to the Claude CLI backend (e.g. `--model haiku` for faster summarization)

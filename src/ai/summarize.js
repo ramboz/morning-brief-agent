@@ -147,10 +147,11 @@ const SCHEMA_SLACK_DMS = {
     type: 'object',
     properties: {
       withUser: { type: 'string' },
+      dmChannelId: { type: 'string' },
       summary: { type: 'string' },
       replyExpected: { type: 'boolean' },
     },
-    required: ['withUser', 'summary', 'replyExpected'],
+    required: ['withUser', 'dmChannelId', 'summary', 'replyExpected'],
     additionalProperties: false,
   },
 }
@@ -186,11 +187,13 @@ const SCHEMA_SLACK_THREADS = {
     type: 'object',
     properties: {
       channelName: { type: 'string' },
+      channelId: { type: 'string' },
+      threadTs: { type: 'string' },
       parentText: { type: 'string' },
       summary: { type: 'string' },
       needsReply: { type: 'boolean' },
     },
-    required: ['channelName', 'parentText', 'summary', 'needsReply'],
+    required: ['channelName', 'channelId', 'threadTs', 'parentText', 'summary', 'needsReply'],
     additionalProperties: false,
   },
 }
@@ -222,20 +225,27 @@ Output shape:
 
 const PROMPT_CONFLUENCE = `You are helping an engineer decide which Confluence pages deserve their attention today.
 
-You will receive a JSON array of recently modified Confluence pages. For each page, assess whether the user should review, comment, or respond — not just that something changed.
+You will receive a JSON array of recently modified Confluence pages. Your job is aggressive filtering — most pages should be OMITTED. Only return pages that would change what the user does today.
 
-Include a page if:
-- The user was explicitly mentioned ("reason": "mentioned")
-- The page covers an area the user likely owns or is responsible for, and a significant decision or direction was added
-- There's an open question, RFC, or proposal that hasn't been resolved
-- The change is substantial enough that being unaware of it could affect the user's work
+Include a page ONLY if ALL of these are true:
+- Someone OTHER than the user made a meaningful edit (check "lastModifiedBy" against the user's name from the context above)
+- The change involves a decision, open question, RFC, or direction that affects the user's responsibilities
+- The user was explicitly mentioned ("reason": "mentioned") OR the page is in their active focus area AND has a substantive change
 
-Skip pages where:
-- The user made the last edit and no one has replied or changed it since
-- The edit is trivial (formatting, typos, version bump, minor wording)
-- The content is purely informational with no action or engagement opportunity
+NEVER include — omit these entirely, do not return them in the output:
+- Pages where the user is the last editor (lastModifiedBy matches the user) — they know what they wrote
+- Pages the user just created (low version number, lastModifiedBy is the user) — no one has responded yet
+- Pages on topics marked as deprioritized in the user context — do NOT include with a note like "deprioritized", just omit
+- Team status updates, weekly reports, sprint reports, standup notes (e.g. "Week 11'26", "Sprint Review", "Weekly Status")
+- Operational runbooks, environment configs, deployment guides — unless there's an active incident referencing them
+- Tracking pages, catalogs, or dashboards with no open question or decision
+- Milestone or roadmap pages where nothing changed that affects the user's work
+- Demo tracking, brainstorm ideation, or early-stage pages with no decision point
+- Pages that are purely informational with no action or engagement opportunity
 
-Write one concise line framed as "why this might need your attention" rather than just what changed.
+Before returning each page, ask: "Would ignoring this page cause the user to miss something they need to act on today?" If no, omit it.
+
+Write one concise line framed as "why this needs your attention" rather than just what changed.
 
 Return JSON only. No markdown, no explanation, no preamble.
 
@@ -523,6 +533,8 @@ Include an item (needsReply: true) only if:
 - A follow-up question was raised (by anyone) that remains open
 - They were tagged with a specific outstanding ask that hasn't been addressed
 
+Always refer to people by their Slack handle with the @ prefix (e.g. @rpapani, not rpapani).
+
 OMIT an item entirely if any of these are true:
 - threadContext shows a direct factual answer, explanation, or resolution — even if you can't verify its correctness
 - The original asker acknowledged the answer ("Got it", "Thanks", "Makes sense", "I'll try that", "Will do")
@@ -547,14 +559,22 @@ Output shape:
 
 const PROMPT_SLACK_DMS = `You are summarizing Slack direct messages for a morning briefing.
 
-You will receive a JSON array of DM threads with unread messages. For each thread, write 1-2 sentences summarizing what was said. Flag if a reply from the user seems expected.
+You will receive a JSON array of DM conversations with recent messages. For each conversation, write 1-2 sentences summarizing what was said. Flag if a reply from the user seems expected.
 
-Return JSON only. No markdown, no explanation, no preamble.
+Include a DM conversation only if there's something the user should know or respond to. OMIT conversations where:
+- The only messages are simple acknowledgments ("thanks", "got it", "sounds good")
+- The conversation is fully resolved with no open question or pending action
+- The content is trivial or purely social with no work relevance
+
+Pass through "dmId" from the input unchanged as "dmChannelId" for each item.
+
+Return JSON only. No markdown, no explanation, no preamble. Return [] if nothing warrants attention.
 
 Output shape:
 [
   {
     "withUser": "Bob Smith",
+    "dmChannelId": "D012AB3CD",
     "summary": "Wants to sync tomorrow about the Q2 roadmap.",
     "replyExpected": true
   }
@@ -569,7 +589,13 @@ You will receive an array of channels with recent messages from others (the user
 - Decisions in progress that affect the user's work
 - Announcements they should be aware of
 
-Skip: trivial chatter, fully resolved discussions, status updates requiring no action, bot messages unless incident/alert/error.
+Skip these entirely — they add noise, not signal:
+- Simple acknowledgments and reactions expressed as text: "thanks", "got it", "will do", "sounds good", "+1", emoji-only messages
+- Trivial chatter: greetings, social messages, lunch plans, "happy Friday" posts
+- Fully resolved discussions where a clear conclusion was reached and no open question remains
+- Status updates requiring no action or response (e.g. "deployed to staging", "tests passing")
+- Bot messages unless they contain incident, alert, error, outage, or failure keywords
+- Thread replies that are only acknowledgments of a resolved question
 
 For each relevant channel, write up to 5 concise bullets framed as "what's happening and why it might need you." Omit channels where there's nothing worth the user's attention.
 When mentioning people by name or handle, always use the @ prefix (e.g. @zehnder, not zehnder).
@@ -602,14 +628,30 @@ const PROMPT_SLACK_THREADS = `You are summarizing thread updates for a morning b
 
 You will receive an array of Slack threads where the user previously replied. Each thread shows the new replies from others that appeared after the user's last reply. Determine whether the user should follow up.
 
-For each thread, write one concise line describing what happened and whether a response seems expected.
+For each thread you include, write one concise line describing what happened and whether a response seems expected.
 
-Return JSON only. No markdown, no explanation, no preamble.
+Include a thread (needsReply: true or false) if:
+- Someone asked a follow-up question the user hasn't answered
+- There's a disagreement or pushback on the user's position
+- New information or a decision was shared that the user should know about
+- Someone is blocked or waiting on the user
+
+OMIT a thread entirely if the only new replies are:
+- Simple acknowledgments ("thanks", "got it", "will do", "sounds good", "👍", "+1")
+- Emoji-only reactions or single-word confirmations
+- Bot messages with no actionable content
+- Redundant status updates with nothing new for the user
+
+Pass through "channelId" and "threadTs" unchanged from the input for each item.
+
+Return JSON only. No markdown, no explanation, no preamble. Return [] if nothing warrants attention.
 
 Output shape:
 [
   {
     "channelName": "eng-backend",
+    "channelId": "C012AB3CD",
+    "threadTs": "1234567890.123456",
     "parentText": "Should we use optimistic locking here?",
     "summary": "Alice and Bob pushed back on the approach — waiting for your thoughts",
     "needsReply": true
@@ -727,8 +769,10 @@ const SCHEMA_ACTION_ITEMS = {
       text:      { type: 'string' },
       url:       { type: 'string' },
       permalink: { type: 'string' },
+      channelId: { type: 'string' },
+      ts:        { type: 'string' },
     },
-    required: ['source', 'text', 'url', 'permalink'],
+    required: ['source', 'text', 'url', 'permalink', 'channelId', 'ts'],
     additionalProperties: false,
   },
 }
@@ -784,28 +828,31 @@ Input structure:
   "slackMentions": [...],
   "slackThreads": [...],
   "slackDMs": [...],
-  "slackChannels": [{ "channel": "...", "channelId": "...", "bullets": [{ "text": "...", "ts": "..." }] }]
+  "slackChannels": [{ "channel": "...", "channelId": "...", "url": "https://...", "bullets": [{ "text": "...", "ts": "..." }] }]
 }
 
 Selection rules per source:
 - jira.actionRequired: include all
 - jira.updates: include only if a direct question or decision is open
-- confluence: include only if needsAttention: true
+- wiki: include only if needsAttention: true
 - github / githubCorp: include only if needsAction: true
-- slackMentions: include only if needsReply: true
-- slackThreads: include only if needsReply: true
-- slackDMs: include only if replyExpected: true
-- slackChannels: include a bullet only if it describes an explicit ask directed at the user, someone is blocked waiting for them, a review or decision is needed, or a time-sensitive action is required; skip informational updates or discussions the user can observe passively
+- slackMentions: include only if needsReply: true — set "permalink" to the item's permalink value, "channelId" and "ts" to empty string
+- slackThreads: include only if needsReply: true — set "channelId" to the item's channelId, "ts" to the item's threadTs, "permalink" to empty string
+- slackDMs: include only if replyExpected: true — set "channelId" to the item's dmChannelId, "ts" to empty string, "permalink" to empty string
+- slackChannels: include a bullet only if it describes an explicit ask directed at the user, someone is blocked waiting for them, a review or decision is needed, or a time-sensitive action is required; skip informational updates or discussions the user can observe passively — set "channelId" to the channel's channelId, "ts" to the bullet's ts, "permalink" to empty string
 
-For slackChannels action items, set "permalink" to empty string. For "url": if the bullet text contains a markdown link to a GitHub PR or issue (e.g. [repo #number](https://...)), extract and use that URL; otherwise set "url" to empty string.
+For all non-Slack items, set "channelId" and "ts" to empty string.
+For Slack items from slackChannels: if the bullet text contains a markdown link to a GitHub PR or issue (e.g. [repo #number](https://...)), extract and use that as "url". Otherwise, use the channel's "url" field from the input as "url".
+For Slack items from slackMentions/slackThreads/slackDMs: set "url" to empty string (permalinks and channelId handle the linking).
 
 Return JSON only. No markdown, no explanation, no preamble.
 
 Output shape:
 [
-  { "source": "JIRA",    "text": "ENG-482 — Alice is blocked on token refresh, needs your review", "url": "https://jira.../browse/ENG-482", "permalink": "" },
-  { "source": "GitHub",  "text": "PR: feat/auth — review requested, adds OAuth2 support",           "url": "https://github.com/...",           "permalink": "" },
-  { "source": "Slack",   "text": "#eng-backend — caching approach debate, your input was asked for", "url": "",                                 "permalink": "https://..." }
+  { "source": "JIRA",   "text": "ENG-482 — Alice is blocked on token refresh, needs your review", "url": "https://jira.../browse/ENG-482", "permalink": "", "channelId": "", "ts": "" },
+  { "source": "GitHub", "text": "my-repo #91 — review requested, adds OAuth2 support",            "url": "https://github.com/...",           "permalink": "", "channelId": "", "ts": "" },
+  { "source": "Slack",  "text": "#eng-backend — caching approach debate, your input was asked for", "url": "",                                "permalink": "https://...", "channelId": "", "ts": "" },
+  { "source": "Slack",  "text": "#eng-general — Alice asked for your decision on the API design",   "url": "",                                "permalink": "", "channelId": "C012AB3CD", "ts": "1234567890.123456" }
 ]`
 
 const PROMPT_PROJECT_CLUSTERS = `You are synthesizing a morning briefing for an engineer. You will receive pre-summarized data from multiple work tools: JIRA, Wiki (Confluence), GitHub (public and corporate), and Slack (mentions, thread updates, DMs).
@@ -821,7 +868,10 @@ Rules:
 - Single-source topics are already covered by the per-source sections — omit them here
 - Always include "url" — use the item URL if available, empty string otherwise
 - Use source tag "Wiki" (not "Confluence") for items from the wiki input array
-- If a slackChannels bullet text contains GitHub PR or issue markdown links (e.g. [repo #number](url)), preserve those links inline in the signal "summary". Set "url" to empty string for Slack signals.
+- Always use @ prefix when referencing people (e.g. @alice, not alice or rpapani)
+- If a slackChannels bullet text contains GitHub PR or issue markdown links (e.g. [repo #number](url)), preserve those links inline in the signal "summary".
+- For Slack signals sourced from slackChannels: use the channel's "url" field from the input as the signal "url". Each slackChannels entry has a "url" field with the channel archive link — pass it through.
+- For Slack signals sourced from slackMentions, slackThreads, or slackDMs: set "url" to empty string.
 
 Input structure:
 {
@@ -832,7 +882,7 @@ Input structure:
   "slackMentions": [...],
   "slackThreads": [...],
   "slackDMs": [...],
-  "slackChannels": [{ "channel": "...", "channelId": "...", "bullets": [{ "text": "...", "ts": "..." }] }]
+  "slackChannels": [{ "channel": "...", "channelId": "...", "url": "https://...", "bullets": [{ "text": "...", "ts": "..." }] }]
 }
 
 Return JSON only. No markdown, no explanation, no preamble. Return [] if no cross-source clusters exist.
@@ -844,7 +894,7 @@ Output shape:
     "signals": [
       { "source": "JIRA",   "summary": "ENG-482 blocked — token refresh edge case",         "url": "https://jira.../browse/ENG-482" },
       { "source": "GitHub", "summary": "PR #91 — review requested for OAuth2 changes",      "url": "https://github.com/..." },
-      { "source": "Slack",  "summary": "3 mentions in #eng-backend about token refresh failures", "url": "" }
+      { "source": "Slack",  "summary": "3 mentions in #eng-backend about token refresh failures", "url": "https://myteam.slack.com/archives/C012AB3CD" }
     ]
   }
 ]`

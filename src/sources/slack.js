@@ -128,7 +128,7 @@ async function resolveUser(slack, cache, userId) {
  */
 async function resolveText(slack, userCache, text) {
   if (!text) return ''
-  const matches = [...text.matchAll(/<@(U[A-Z0-9]+)>/g)]
+  const matches = [...text.matchAll(/<@([UW][A-Z0-9]+)>/g)]
   let resolved = text
   for (const [full, userId] of matches) {
     const user = await resolveUser(slack, userCache, userId)

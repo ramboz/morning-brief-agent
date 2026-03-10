@@ -8,6 +8,7 @@ import { fetchSlack } from './sources/slack.js'
 import { summarizeJira, summarizeConfluence, summarizeGithub, summarizeSlackMentions, summarizeSlackThreads, summarizeSlackDMs, summarizeSlackChannels, synthesizeActionItems, synthesizeProjectClusters } from './ai/summarize.js'
 import {
   writeDailyNote,
+  withRecencyGrouping,
   renderActionItems,
   renderProjectClusters,
   renderJiraTickets,
@@ -107,6 +108,16 @@ if (confluence.ok && confluence.data.pages.length > 0) {
   console.log(`[index] Summarizing ${confluence.data.pages.length} Confluence pages...`)
   const t = Date.now()
   confluenceSummary = await summarizeConfluence(confluence.data.pages)
+
+  // Safety net: filter out items the AI should have omitted but didn't.
+  // These patterns appear when the AI correctly identifies irrelevance but returns the item anyway.
+  const CONFLUENCE_NOISE = /\b(deprioritized|you made the last edit|no replies or changes since|no replies since|outside your (domain|scope)|not your (primary )?focus|no decision|operational reference|team status|status (page|update))\b/i
+  const before = confluenceSummary.length
+  confluenceSummary = confluenceSummary.filter(p => !CONFLUENCE_NOISE.test(p.summary))
+  if (confluenceSummary.length < before) {
+    debug('[index]', `Confluence post-filter: removed ${before - confluenceSummary.length} noise items`)
+  }
+
   debug('[index]', `Confluence summarization done in ${Date.now() - t}ms`)
 } else if (confluence.ok) {
   console.log('[index] Confluence: no pages in lookback window')
@@ -176,13 +187,17 @@ if (!jira.ok) {
   const isNetworkError = jira.error?.includes('VPN') || jira.error?.includes('SSL error')
   rendered.jira_tickets = isNetworkError ? `_Skipped — not on VPN_` : `_JIRA unavailable: ${jira.error}_`
   rendered.jira_discussions = ''
-} else if (jira.data.truncated) {
-  rendered.jira_tickets = renderJiraTickets(jiraSummary.actionRequired, issueMap)
-  rendered.jira_discussions = renderJiraDiscussions(jiraSummary.updates, issueMap) +
-    '\n\n_Results truncated — too many updates. Check JIRA directly._'
 } else {
-  rendered.jira_tickets = renderJiraTickets(jiraSummary.actionRequired, issueMap)
-  rendered.jira_discussions = renderJiraDiscussions(jiraSummary.updates, issueMap)
+  const jiraTs = item => issueMap.get(item.key)?.updatedAt
+  rendered.jira_tickets = withRecencyGrouping(
+    jiraSummary.actionRequired, jiraTs, items => renderJiraTickets(items, issueMap)
+  )
+  rendered.jira_discussions = withRecencyGrouping(
+    jiraSummary.updates, jiraTs, items => renderJiraDiscussions(items, issueMap)
+  )
+  if (jira.data.truncated) {
+    rendered.jira_discussions += '\n\n_Results truncated — too many updates. Check JIRA directly._'
+  }
 }
 
 // Confluence — error state
@@ -190,7 +205,10 @@ if (!confluence.ok) {
   const isNetworkError = confluence.error?.includes('VPN') || confluence.error?.includes('SSL error')
   rendered.confluence = isNetworkError ? `_Skipped — not on VPN_` : `_Confluence unavailable: ${confluence.error}_`
 } else {
-  rendered.confluence = renderConfluence(confluenceSummary)
+  const confPageTs = new Map((confluence.data.pages ?? []).map(p => [p.url, p.lastModifiedAt]))
+  rendered.confluence = withRecencyGrouping(
+    confluenceSummary, page => confPageTs.get(page.url), pages => renderConfluence(pages)
+  )
   if (confluence.data.truncated) {
     rendered.confluence += '\n\n_Results truncated — too many page updates. Check Confluence directly._'
   }
@@ -200,7 +218,10 @@ if (!confluence.ok) {
 if (!githubCom.ok) {
   rendered.github_com = `_GitHub.com unavailable: ${githubCom.error}_`
 } else {
-  rendered.github_com = renderGithub(githubComSummary)
+  const ghComTs = new Map((githubCom.data.notifications ?? []).map(n => [n.url, n.updatedAt]))
+  rendered.github_com = withRecencyGrouping(
+    githubComSummary, item => ghComTs.get(item.url), items => renderGithub(items)
+  )
 }
 
 // Corporate GitHub
@@ -210,7 +231,10 @@ if (!githubCorp.ok) {
     ? `_Skipped — not on VPN_`
     : `_Corporate GitHub unavailable: ${githubCorp.error}_`
 } else {
-  rendered.github_corp = renderGithub(githubCorpSummary)
+  const ghCorpTs = new Map((githubCorp.data.notifications ?? []).map(n => [n.url, n.updatedAt]))
+  rendered.github_corp = withRecencyGrouping(
+    githubCorpSummary, item => ghCorpTs.get(item.url), items => renderGithub(items)
+  )
 }
 
 // Slack
@@ -221,8 +245,8 @@ if (!slack.ok) {
   rendered.slack_other = ''
 } else {
   rendered.slack_mentions = renderSlackMentions(slackMentionsSummary)
-  rendered.slack_threads = renderSlackThreads(slackThreadsSummary)
-  rendered.slack_dms = renderSlackDMs(slackDMsSummary)
+  rendered.slack_threads = renderSlackThreads(slackThreadsSummary, slack.data.workspaceUrl)
+  rendered.slack_dms = renderSlackDMs(slackDMsSummary, slack.data.workspaceUrl)
   rendered.slack_channels = renderSlackChannels(slackChannelsSummary, slack.data.workspaceUrl)
   rendered.slack_other = renderSlackOther(slack.data.otherChannelsActivity)
 }
@@ -230,6 +254,15 @@ if (!slack.ok) {
 // ---------------------------------------------------------------------------
 // Step 5: Cross-source synthesis — action items + project clusters (parallel)
 // ---------------------------------------------------------------------------
+
+// Pre-attach channel archive URLs so the AI can include them in synthesis output
+const slackWorkspaceBase = slack.ok && slack.data.workspaceUrl
+  ? slack.data.workspaceUrl.replace(/\/$/, '')
+  : null
+const enrichedSlackChannels = slackChannelsSummary.map(ch => ({
+  ...ch,
+  url: slackWorkspaceBase && ch.channelId ? `${slackWorkspaceBase}/archives/${ch.channelId}` : '',
+}))
 
 const allSummaries = {
   jira:          jiraSummary,
@@ -239,7 +272,7 @@ const allSummaries = {
   slackMentions: slackMentionsSummary,
   slackThreads:  slackThreadsSummary,
   slackDMs:      slackDMsSummary,
-  slackChannels: slackChannelsSummary,
+  slackChannels: enrichedSlackChannels,
 }
 
 console.log('[index] Synthesizing action items and focus areas...')
@@ -250,7 +283,7 @@ const [actionItemsSynthesis, clustersSynthesis] = await Promise.all([
 ])
 debug('[index]', `Synthesis done in ${Date.now() - synthesisStart}ms`)
 
-rendered.action_items = renderActionItems(actionItemsSynthesis)
+rendered.action_items = renderActionItems(actionItemsSynthesis, slack.ok ? slack.data.workspaceUrl : null)
 rendered.focus_areas  = renderProjectClusters(clustersSynthesis)
 
 // ---------------------------------------------------------------------------

@@ -303,6 +303,18 @@ export async function writeDailyNote(sections, options)
 export function getDailyNotePath()
 
 /**
+ * Wraps a render function with Today/Yesterday/Earlier sub-headers when lookback > 72h.
+ * Passes through to renderFn unchanged when lookback is short or items don't span
+ * multiple days (avoids a lone "Earlier" header when all items are in one bucket).
+ * Used by index.js to wrap JIRA, Confluence, and GitHub render calls.
+ * @param {object[]} items
+ * @param {(item: object) => string|null} getTimestamp - Timestamp accessor
+ * @param {(items: object[]) => string} renderFn - Underlying render function
+ * @returns {string}
+ */
+export function withRecencyGrouping(items, getTimestamp, renderFn)
+
+/**
  * Renders the ⚡ Action Items section from synthesizeActionItems() output.
  * @param {object[]} items - Array of { source, text, url?, permalink? }
  * @returns {string}
@@ -316,6 +328,23 @@ export function renderActionItems(items)
  */
 export function renderProjectClusters(clusters)
 ```
+
+### Recency Grouping (PTO mode)
+
+When `lookbackHours > 72` (typically `--days 4` or more), the JIRA, Confluence, and GitHub sections are split into **Today / Yesterday / Earlier** sub-groups using `####` headers. This makes long PTO catch-up briefs scannable — you can focus on today's items first and skim older ones.
+
+- Slack sections are not grouped (inherently time-ordered, lower volume)
+- If all items fall into a single time bucket, headers are omitted (no lone "Earlier" heading)
+- Timestamps are cross-referenced from original source data (e.g. `issueMap.updatedAt` for JIRA, `page.lastModifiedAt` for Confluence, `notification.updatedAt` for GitHub)
+
+### Permalink Deep Links
+
+`renderSlackThreads(threads, workspaceUrl)` and `renderSlackDMs(dms, workspaceUrl)` accept an optional `workspaceUrl` parameter. When provided, they construct deep links:
+
+- **Threads:** `{workspaceUrl}/archives/{channelId}/p{threadTs}` — links directly to the thread in Slack
+- **DMs:** `{workspaceUrl}/archives/{dmChannelId}` — links to the DM conversation
+
+The `channelId`/`threadTs` and `dmChannelId` fields are passed through from the AI summarization output (see spec 09).
 
 ---
 
