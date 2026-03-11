@@ -342,37 +342,47 @@ async function fetchThreadUpdates(slack, userCache, userId, since) {
  * @returns {Promise<object[]>}
  */
 async function fetchDirectMessages(slack, userCache, myUserId, since) {
-  let dmChannels = []
+  const sinceTs = String(since.getTime() / 1000)
+  const sinceTsNum = parseFloat(sinceTs)
+  const activeDMs = []
+
   try {
     let cursor
     let page = 0
+    let totalScanned = 0
+    // Slack returns DMs roughly by most-recent interaction. Fetch in smaller pages
+    // and stop early once an entire page has no activity in the lookback window.
     do {
       page++
       debug('[slack]', `DM users.conversations page ${page}...`)
       const resp = await slack.users.conversations({
         types: 'im,mpim',
         exclude_archived: true,
-        limit: 1000,
+        limit: 200,
         ...(cursor ? { cursor } : {}),
       })
-      dmChannels.push(...(resp.channels ?? []))
+      const channels = resp.channels ?? []
+      totalScanned += channels.length
+
+      let pageHasActive = false
+      for (const dm of channels) {
+        if (dm.latest?.ts && parseFloat(dm.latest.ts) >= sinceTsNum) {
+          activeDMs.push(dm)
+          pageHasActive = true
+        }
+      }
+
       cursor = resp.response_metadata?.next_cursor
+      if (!pageHasActive && page > 1) {
+        debug('[slack]', `DM page ${page} had no recent activity — stopping early (scanned ${totalScanned})`)
+        break
+      }
     } while (cursor)
-    debug('[slack]', `Found ${dmChannels.length} DM conversations`)
+    debug('[slack]', `${activeDMs.length} active DMs found (scanned ${totalScanned})`)
   } catch (err) {
     console.warn('[slack] DM list failed:', err.message)
     return []
   }
-
-  const sinceTs = String(since.getTime() / 1000)
-  const sinceTsNum = parseFloat(sinceTs)
-
-  // Pre-filter: skip DMs where the latest message is older than the lookback window
-  const activeDMs = dmChannels.filter(dm => {
-    if (!dm.latest || !dm.latest.ts) return false
-    return parseFloat(dm.latest.ts) >= sinceTsNum
-  })
-  debug('[slack]', `${activeDMs.length} of ${dmChannels.length} DMs had activity since lookback`)
 
   const directMessages = []
 
@@ -498,20 +508,34 @@ async function fetchChannelHistory(slack, userCache, channel, myUserId, since) {
 
 /**
  * Fetches history for all priority channels with rate limiting.
+ * Skips channels whose latest message is older than the lookback window
+ * (using metadata from the member channels list to avoid unnecessary API calls).
  * @param {WebClient} slack
  * @param {Map} userCache
  * @param {Array<{id: string, name: string}>} channels
  * @param {string} myUserId
  * @param {Date} since
+ * @param {Map<string, object>} memberChannelMap - Pre-fetched channel metadata keyed by ID
  * @returns {Promise<object[]>}
  */
-async function fetchPriorityChannels(slack, userCache, channels, myUserId, since) {
+async function fetchPriorityChannels(slack, userCache, channels, myUserId, since, memberChannelMap) {
+  const sinceTsNum = since.getTime() / 1000
   const result = []
+  let skipped = 0
+
   for (const channel of channels) {
+    const meta = memberChannelMap.get(channel.id)
+    if (meta?.latest?.ts && parseFloat(meta.latest.ts) < sinceTsNum) {
+      result.push({ ...channel, messages: [], threadReplies: [] })
+      skipped++
+      continue
+    }
     const channelData = await fetchChannelHistory(slack, userCache, channel, myUserId, since)
     result.push(channelData)
     await sleep(1200) // Tier 3 rate limit: ~50 req/min
   }
+
+  if (skipped > 0) debug('[slack]', `Skipped ${skipped}/${channels.length} priority channels (no activity in lookback)`)
   return result
 }
 
@@ -607,8 +631,9 @@ export async function fetchSlack(since) {
     const directMessages = await fetchDirectMessages(slack, userCache, userId, since)
     debug('[slack]', `${directMessages.length} DM conversations with activity`)
 
+    const memberChannelMap = new Map(memberChannels.map(ch => [ch.id, ch]))
     debug('[slack]', `Fetching history for ${priorityChannels.length} priority channels...`)
-    const channelData = await fetchPriorityChannels(slack, userCache, priorityChannels, userId, since)
+    const channelData = await fetchPriorityChannels(slack, userCache, priorityChannels, userId, since, memberChannelMap)
 
     const otherChannelsActivity = countOtherChannelActivity(memberChannels, priorityChannelIds)
     debug('[slack]', `${otherChannelsActivity.totalChannelsWithActivity} other channels with activity`)
