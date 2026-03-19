@@ -90,26 +90,19 @@ Filters out tickets already caught by Query 1 (where user is assignee) to avoid 
 > ```
 > This is less precise (searches comment text for username) but works on vanilla JIRA DC. Log a warning when falling back.
 
-### Query 3 — Tickets where user was @mentioned
+### Query 3 — Tickets mentioning the current user
 
 ```
 project in (ENG, OPS, INFRA)
-AND comment ~ "[~accountId:USER_ACCOUNT_ID]"
+AND text ~ currentUser()
 AND updated >= -24h
 AND assignee != currentUser()
 ORDER BY updated DESC
 ```
 
-Requires fetching the user's `accountId` first (see below). Filters out assignee tickets again to avoid duplicates.
+`text ~ currentUser()` searches across summary, description, and comments — broader than a pure mention search but reliable across all JIRA DC versions. Results are deduped against Q1/Q2 so overlap doesn't matter.
 
-### Fetching the User's accountId
-
-```js
-const me = await jiraFetch('/rest/api/2/myself')
-const accountId = me.accountId  // or me.name for older DC versions
-```
-
-Call this once at module startup and reuse for Query 3.
+> Note: `comment ~ "[~accountId:xxx]"` and `comment ~ "[~username]"` syntax was tested but is not valid JQL on Adobe's JIRA DC instance. `text ~ currentUser()` is the reliable alternative.
 
 ### Building JQL Dynamically
 

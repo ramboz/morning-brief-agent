@@ -147,46 +147,14 @@ async function runBrief(baseUrl, token, projects, hours) {
   const projectClause = `project in (${projects.join(', ')})`
   const timeClause = `updated >= -${hours}h`
 
-  // Fetch user info for Q3 mention query (accountId for newer DC, name for older DC)
-  const me = await jiraGet(baseUrl, token, '/rest/api/2/myself')
-  const accountId = me.accountId ?? ''
-  const username = me.name ?? ''
+  // Network probe — doubles as accountId fetch (needed for /rest/api/2/myself call elsewhere if required)
+  await jiraGet(baseUrl, token, '/rest/api/2/myself')
 
   const jqlQ1 = `${projectClause} AND assignee = currentUser() AND ${timeClause} ORDER BY updated DESC`
   const jqlQ2sr = `${projectClause} AND issueFunction in commented("by currentUser() after -${hours}h") AND assignee != currentUser() ORDER BY updated DESC`
   const jqlQ2fb = `${projectClause} AND comment ~ currentUser() AND ${timeClause} AND assignee != currentUser() ORDER BY updated DESC`
-  // Q3: try [~accountId:xxx] (newer DC), fall back to [~username] (older DC)
-  const jqlQ3account = accountId
-    ? `${projectClause} AND comment ~ "[~accountId:${accountId}]" AND ${timeClause} AND assignee != currentUser() ORDER BY updated DESC`
-    : null
-  const jqlQ3name = username
-    ? `${projectClause} AND comment ~ "[~${username}]" AND ${timeClause} AND assignee != currentUser() ORDER BY updated DESC`
-    : null
-
-  /**
-   * Run mention query with graceful fallback for DCs that don't support it.
-   * @returns {Promise<{issues: object[], truncated: boolean}>}
-   */
-  async function runQ3() {
-    if (jqlQ3account) {
-      try {
-        return await paginateJql(baseUrl, token, jqlQ3account)
-      } catch (err) {
-        if (err.status !== 400) throw err
-        // accountId syntax not supported — try username format
-      }
-    }
-    if (jqlQ3name) {
-      try {
-        return await paginateJql(baseUrl, token, jqlQ3name)
-      } catch (err) {
-        if (err.status !== 400) throw err
-        // Neither mention syntax supported on this JIRA DC instance
-        console.error(`[${TOOL}] Mention JQL not supported on this instance — skipping mention scan`)
-      }
-    }
-    return { issues: [], truncated: false }
-  }
+  // Q3: issues mentioning the current user anywhere in text (summary, description, comments)
+  const jqlQ3 = `${projectClause} AND text ~ currentUser() AND ${timeClause} AND assignee != currentUser() ORDER BY updated DESC`
 
   const [r1, r2, r3] = await Promise.allSettled([
     paginateJql(baseUrl, token, jqlQ1),
@@ -198,7 +166,7 @@ async function runBrief(baseUrl, token, projects, hours) {
       }
       throw err
     }),
-    runQ3()
+    paginateJql(baseUrl, token, jqlQ3)
   ])
 
   // Dedup: Q1 wins, then Q2, then Q3
