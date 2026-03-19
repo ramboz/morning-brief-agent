@@ -1,0 +1,29 @@
+{
+  "github_com": {
+    "enabled": true,
+    "url": "https://github.com",
+    "orgs": [],
+    "notifications": {
+      "prs_to_review": true,
+      "pr_activity": true,
+      "issues_assigned": true,
+      "issue_mentions": true,
+      "ci_failures": true,
+      "releases": false
+    }
+  },
+  "github_corp": {
+    "enabled": true,
+    "url": "https://github.yourcompany.com",
+    "orgs": ["your-org"],
+    "notifications": {
+      "prs_to_review": true,
+      "pr_activity": true,
+      "issues_assigned": true,
+      "issue_mentions": true,
+      "ci_failures": true,
+      "releases": false
+    }
+  },
+  "note": "Copy to github-repos.json. Set github_corp.url to your GitHub Enterprise URL. Leave orgs empty to scan all accessible repos."
+}

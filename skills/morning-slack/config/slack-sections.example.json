@@ -1,0 +1,26 @@
+{
+  "sections": [
+    {
+      "name": "Engineering",
+      "channels": ["#eng-general", "#architecture", "#incidents", "#deploys", "#eng-backend"]
+    },
+    {
+      "name": "Product",
+      "channels": ["#roadmap", "#product-updates", "#feature-requests"]
+    },
+    {
+      "name": "Company",
+      "channels": ["#general", "#announcements"]
+    }
+  ],
+  "emoji_triage": {
+    "enabled": true,
+    "signals": [":eyes:", ":bookmark:", ":pushpin:"],
+    "note": "Reactions with these emojis pre-flag messages for morning review"
+  },
+  "ignore_bots": true,
+  "ignore_automated_messages": true,
+  "bot_exception_keywords": ["incident", "alert", "failed", "error", "outage", "degraded"],
+  "user_display_name": "Your Name",
+  "note": "Copy to slack-sections.json and fill in your channels and display name"
+}

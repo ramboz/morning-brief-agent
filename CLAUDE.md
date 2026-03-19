@@ -1,422 +1,208 @@
-# CLAUDE.md — Morning Briefing Agent
+# CLAUDE.md — Morning Assistant v2
 
-This is the project bible. Read this before writing any code. Follow these conventions strictly.
+This is the project bible. Read this file AND `docs/morning-assistant-v2-vision.md` before writing any code or skills. Follow these conventions strictly.
 
 ---
 
 ## What This Project Does
 
-A personal productivity agent that runs every morning and produces a daily markdown note helping you decide where to show up and what to act on today — across email, meetings, Teams activity, JIRA, Confluence, GitHub, and Slack. It saves email draft responses to Outlook Drafts and auto-triages obvious junk mail.
+A personal productivity agent with two modes:
 
-The core philosophy: **not what happened yesterday, but where you need to show up today.** Every source is filtered through the question "does this need my attention?" rather than "what changed?"
+**Mode 1 — Morning Brief**: Runs on schedule (or manually). Gathers context from Slack, Outlook, JIRA, Confluence, and GitHub via APIs/connectors. Writes a structured daily note to the Obsidian vault. Then uses Claude in Chrome to stage draft responses in each tool's compose UI — without sending.
+
+**Mode 2 — Deep Dive**: On-demand. The user asks "What's the latest on Project X?" and the agent searches all tools in parallel, synthesizes a cross-tool timeline, and optionally stages draft follow-ups.
 
 ---
 
-## Runtime & Language
+## Architecture — The Three Layers
 
-- **Node.js 20+**, ESM modules throughout (`"type": "module"` in package.json)
-- **No TypeScript** — plain JS with JSDoc comments for type hints where helpful
-- **No build step** — runs directly with `node src/index.js`
-- **No transpilation** — use native ESM, top-level await is fine
+```
+Layer 1: ORCHESTRATION — Cowork skills (SKILL.md files)
+  Spawns sub-agents, coordinates modes, writes daily note
+
+Layer 2: DATA GATHERING — APIs, connectors, helper scripts (fast)
+  Slack connector, GitHub connector, JIRA/Confluence/GitHub Corp REST APIs
+  Returns structured JSON to the orchestrator
+
+Layer 3: DRAFT STAGING — Claude in Chrome (slow, targeted)
+  Only for composing drafts in tool UIs. Never clicks Send.
+```
+
+Browser automation is a last resort for data gathering. Use it only when no API or connector path exists.
+
+---
+
+## Runtime & Tools
+
+- **Orchestration**: Cowork (Claude Desktop) with skills in `~/.claude/skills/`
+- **Browser automation**: Claude in Chrome extension
+- **Helper scripts**: Node.js 20+, ESM modules (`"type": "module"`)
+- **No TypeScript** — plain JS with JSDoc where helpful
+- **No build step** — scripts run directly with `node scripts/fetch-jira.js`
+- **No transpilation** — native ESM, top-level await is fine
 
 ---
 
 ## Project Structure
 
 ```
-morning-briefing/
-├── CLAUDE.md
-├── specs/
-│   ├── 00-architecture.md
-│   ├── 01-phase-plan.md
-│   ├── 02-auth.md
-│   ├── 03-outlook.md
+morning-brief-agent/
+├── CLAUDE.md                          # This file — project bible
+├── docs/
+│   └── morning-assistant-v2-vision.md # Full architecture & phase plan
+│
+├── skills/                            # Cowork skills (copied to ~/.claude/skills/)
+│   ├── morning-assistant/
+│   │   ├── SKILL.md                   # Orchestrator — both modes
+│   │   ├── config/
+│   │   │   ├── config.example.json    # Template (committed)
+│   │   │   └── config.json            # User's actual config (gitignored)
+│   │   └── state/
+│   │       ├── wiki-state.json        # Confluence version tracking (gitignored)
+│   │       └── last-run.json          # Last execution timestamp (gitignored)
+│   │
+│   ├── morning-slack/
+│   │   ├── SKILL.md
+│   │   └── config/
+│   │       ├── slack-sections.example.json
+│   │       └── slack-sections.json    # gitignored
+│   │
+│   ├── morning-outlook/
+│   │   ├── SKILL.md
+│   │   └── config/
+│   │       ├── outlook-rules.example.json
+│   │       └── outlook-rules.json     # gitignored
+│   │
+│   ├── morning-jira/
+│   │   ├── SKILL.md
+│   │   └── config/
+│   │       ├── jira-filters.example.json
+│   │       └── jira-filters.json      # gitignored
+│   │
+│   ├── morning-confluence/
+│   │   ├── SKILL.md
+│   │   └── config/
+│   │       ├── confluence-spaces.example.json
+│   │       └── confluence-spaces.json # gitignored
+│   │
+│   ├── morning-github/
+│   │   ├── SKILL.md
+│   │   └── config/
+│   │       ├── github-repos.example.json
+│   │       └── github-repos.json      # gitignored
+│   │
+│   ├── morning-ai-radar/
+│   │   ├── SKILL.md
+│   │   └── config/
+│   │       ├── ai-radar-sources.example.json
+│   │       └── ai-radar-sources.json  # gitignored
+│   │
+│   └── morning-spike/
+│       └── SKILL.md                   # Phase 0 validation tests
+│
+├── scripts/                           # Helper scripts for API-based data gathering
+│   ├── fetch-jira.js                  # JIRA DC REST API → JSON
+│   ├── fetch-confluence.js            # Confluence DC REST API → JSON
+│   ├── fetch-github-corp.js           # Corporate GitHub API → JSON
+│   ├── fetch-github-com.js            # GitHub.com API → JSON (fallback)
+│   ├── fetch-slack.js                 # Slack API → JSON (fallback if connector unavailable)
+│   ├── fetch-ai-radar.js             # RSS/GitHub trending → Claude triage → JSON
+│   ├── lib/
+│   │   ├── atlassianFetch.js          # Shared JIRA/Confluence auth + fetch util
+│   │   └── config.js                  # Config loader utility
+│   └── .env.example                   # API tokens template (committed)
+│
+├── specs/                             # v1 specs — reference for helper script logic
 │   ├── 04-slack.md
-│   ├── 05-teams.md
 │   ├── 06-jira.md
 │   ├── 07-confluence.md
 │   ├── 08-github.md
-│   ├── 09-summarization.md
-│   └── 10-output.md
-├── src/
-│   ├── auth/
-│   │   └── msalClient.js        # MSAL token acquisition + refresh
-│   ├── sources/
-│   │   ├── outlook.js           # Mail + drafts via Graph API
-│   │   ├── slack.js             # Slack mentions, DMs, priority channels
-│   │   ├── teams.js             # Activity feed + transcripts via SharePoint
-│   │   ├── jira.js              # Self-hosted JIRA REST API v2
-│   │   ├── confluence.js        # Self-hosted Confluence REST API
-│   │   ├── githubDotCom.js      # github.com notifications via Octokit
-│   │   ├── githubCorp.js        # Corporate GitHub notifications via Octokit
-│   │   └── githubShared.js      # Shared GitHub fetch/filter/enrich logic
-│   ├── ai/
-│   │   └── summarize.js         # All AI summarization calls (claude-cli or openai)
-│   ├── output/
-│   │   └── dailyNote.js         # Assembles + writes the daily note
-│   ├── utils/
-│   │   └── flags.js             # CLI flags, debug helper, lookback calculation
-│   └── index.js                 # Orchestrator — entry point
-├── tests/
-│   └── fixtures/                # Saved API responses for offline/mock testing
-├── logs/                        # Daily log files (gitignored)
-├── output/                      # Default note output directory (gitignored)
-├── scripts/
-│   ├── run.bat                  # Task Scheduler entry point
-│   └── setup-scheduler.js       # Task Scheduler setup helper
-├── .claude/
-│   ├── skills/
-│   │   └── implement-phase.md
-│   └── README.md
-├── config/
-│   ├── github.example.json      # Committed — copy to github.json and fill in
-│   ├── jira.example.json        # Committed — copy to jira.json and fill in
-│   ├── confluence.example.json  # Committed — copy to confluence.json and fill in
-│   └── slack.example.json       # Committed — copy to slack.json and fill in
-├── commitlint.config.js         # Commitlint configuration
-├── .husky/
-│   └── commit-msg               # Git hook — runs commitlint
-├── .env.example
-├── .env                         # gitignored
-├── token.json                   # gitignored — MSAL refresh token storage
-└── package.json
+│   └── 09-ai-radar.md
+│
+└── .gitignore
 ```
 
 ---
 
 ## Code Conventions
 
-### Async
+### Scripts (Layer 2)
+
 - Always `async/await`, never `.then()` chains or callbacks
-- Use `Promise.allSettled()` when fetching from multiple sources in parallel — never `Promise.all()` (one failure must not crash the briefing)
+- Every script accepts a mode flag: `--brief` (lookback scan) or `--search "query terms"`
+- Every script outputs structured JSON to stdout — nothing else to stdout
+- Errors go to stderr via `console.error('[module]', ...)`
+- Progress/debug goes to stderr via `console.error('[module]', ...)`
+- JSON output to stdout must be parseable by the Cowork sub-agent that invokes the script
+- Use Node.js built-in `fetch` — no axios, no node-fetch, no HTTP client libraries
+- Use `process.env` via dotenv for secrets — never hardcode tokens
+- Each script must be independently fault-tolerant and runnable standalone for debugging:
+  ```bash
+  node scripts/fetch-jira.js --brief
+  node scripts/fetch-jira.js --search "auth migration"
+  ```
 
-### Error Handling — Critical Rule
-Every source module must be independently fault-tolerant. If JIRA is down, the briefing still runs with a note saying "JIRA unavailable". Pattern to follow:
+### Script Output Format
 
-```js
-async function fetchJira() {
-  try {
-    // ... fetch logic
-    return { ok: true, data: [...] }
-  } catch (err) {
-    console.error('[jira] fetch failed:', err.message)
-    return { ok: false, error: err.message }
-  }
+Every script returns the same envelope:
+
+```json
+{
+  "ok": true,
+  "tool": "jira",
+  "mode": "brief",
+  "timestamp": "2026-03-17T08:00:00Z",
+  "data": { ... },
+  "errors": []
 }
 ```
 
-The orchestrator (`index.js`) always uses `Promise.allSettled()` and handles both `ok: true` and `ok: false` results.
-
-### VPN-Gated Sources
-JIRA, Confluence, and Corporate GitHub are only reachable on VPN. These sources use `!err.status` to distinguish network errors (no HTTP status = unreachable) from HTTP errors (always have a `.status`). When a network error is detected:
-- The **user-info probe** (the first API call in each module) re-throws the error immediately so expensive queries are skipped
-- The module returns `{ ok: false, error: 'Source unreachable — are you on VPN?' }`
-- The orchestrator renders this as `_Skipped — not on VPN_` (not `_Source unavailable_`)
-
-Re-running after connecting to VPN smart-merges the new data into the existing daily note.
-
-### Environment Variables
-- All secrets and config via `.env` — never hardcoded
-- Always read via `process.env.X` with a clear error if missing
-- See `.env.example` for all required variables
-
-### Secrets — Never Commit
-`.gitignore` must include:
-```
-.env
-token.json
-logs/
-output/
-tests/fixtures/
-config/github.json
-config/jira.json
-config/confluence.json
-config/slack.json
+On failure:
+```json
+{
+  "ok": false,
+  "tool": "jira",
+  "mode": "brief",
+  "timestamp": "2026-03-17T08:00:00Z",
+  "data": null,
+  "errors": ["JIRA_BASE_URL not set", "Connection refused"]
+}
 ```
 
-### Logging
-- Use `console.error('[module]', ...)` for errors
-- Use `console.log('[module]', ...)` for progress
-- Use `debug('[module]', ...)` from `src/utils/flags.js` for verbose debug output (only shows when `--debug` flag is set)
-- Debug logs use the convention `[module]:debug message` and include pagination progress, query timings, item counts, and API call details
-- No external logging libraries
-- When running via Task Scheduler, stdout and stderr are redirected to `logs/YYYY-MM-DD.log` by `scripts/run.bat`
-- Log files are gitignored and rotate naturally — one file per day, old files accumulate until manually cleared
+### Skills (Layer 1)
+
+- SKILL.md files are natural language instructions — not code
+- They describe WHAT to do, not HOW to implement it
+- They reference config files for user-specific settings
+- They reference helper scripts for data gathering
+- They include safety constraints inline (never send, never delete, etc.)
+- They follow the Agent Skills open standard (compatible with `gh-upskill`)
+
+### Error Handling — Critical Rule
+
+Every tool must fail independently. If JIRA is down, the brief still runs with a note: "JIRA: unavailable — connection refused." Never let one tool's failure crash the orchestrator or block other tools.
 
 ### Config File Pattern
 
-Service-specific config lives in `config/{service}.json`. Example files (`config/{service}.example.json`) are committed to the repo. Actual config files are gitignored. Every source module that uses a config file must:
-- Fail clearly with a helpful message if the config file is missing (don't silently use defaults that might be wrong)
-- Validate required fields (e.g. `projects` array for JIRA) before making any API calls
-- Support a `lookback_hours_override` field that overrides the global `LOOKBACK_HOURS` env var
-
----
+Config lives in `{skill}/config/{tool}.json`. Example files (`.example.json`) are committed. Actual config files are gitignored. Every script/skill that uses config must:
+- Fail clearly if the config file is missing (don't silently use wrong defaults)
+- Validate required fields before making API calls
+- Support a `lookback_hours_override` that overrides the global default
 
 ### No Over-Engineering
+
 This is a personal tool. Prefer:
-- Simple functions over classes
-- Flat logic over abstractions
-- Explicit over clever
-- Don't add caching, queuing, or retry logic unless a spec requires it
-
----
-
-## CLI Flags
-
-The script supports the following flags:
-
-```bash
-node src/index.js                          # Normal run
-node src/index.js --dry-run                # Suppress all outbound writes (no email/Slack drafts)
-node src/index.js --output ./notes         # Write daily note to ./notes/ instead of default
-node src/index.js --mock                   # Use fixture files, skip live APIs
-node src/index.js --mock --dry-run         # Full offline test — no API calls, no writes
-node src/index.js --debug                  # Verbose debug logging for all sources
-node src/index.js --days 3                 # Look back 3 days instead of default 24h
-node src/index.js --model haiku            # Use a specific Claude model for summarization
-```
-
-### --dry-run
-Suppresses all outbound writes — no email drafts saved, no Slack drafts posted (future). The daily note is still written to the output directory. Use this when you want to preview action items without committing to any external side effects.
-
-### --output \<path\>
-- Sets the output directory for the daily note
-- Overrides `OUTPUT_PATH` env var and the `./output` default
-- Supports `--output ./notes` (space) and `--output=./notes` (equals) syntax
-- The note is always written as `{path}/YYYY-MM-DD.md`
-
-### --mock
-- Each source reads from `tests/fixtures/{source}.json` instead of calling live APIs
-- MSAL token acquisition is skipped entirely
-- Summarization and output still run normally
-- Always combine with `--dry-run` for a fully offline test run
-
-### --debug
-- Enables verbose debug logging for all source modules
-- Shows pagination progress, query timings, item counts, and AI call details
-- Useful for diagnosing slow runs or API issues
-
-### --days N
-- Overrides `LOOKBACK_HOURS` for this run
-- Useful for returning from PTO (`--days 14`)
-- Supports `--days 3` (space) and `--days=3` (equals) syntax
-- **Monday auto-extend:** when run on a Monday with no `--days` flag, lookback is automatically extended to 72h (back to Friday) — no flag needed
-- **PTO mode (> 3 days):** when lookback exceeds 72h, JIRA, Confluence, and GitHub sections are split into Today / Yesterday / Earlier sub-groups using `####` headers for scannability
-
-### --model \<name\>
-- Passes `--model <name>` to the Claude CLI backend (e.g. `--model haiku` for faster summarization)
-- Ignored when `AI_BACKEND=openai`
-
-### Flag helpers (src/utils/flags.js)
-```js
-export const isDryRun = process.argv.includes('--dry-run')
-export const isMock = process.argv.includes('--mock')
-export const isSaveFixture = process.argv.includes('--save-fixture')
-export const isDebug = process.argv.includes('--debug')
-export const lookbackHours = /* --days flag > Monday auto-extend (72h) > LOOKBACK_HOURS env > 24h default */
-export const aiModel = /* --model flag, null if not set */
-export const outputPath = /* --output flag > OUTPUT_PATH env > ./output */
-export function debug(label, ...args) { /* no-op unless --debug */ }
-```
-
-`isDryRun` and `isMock` must be checked before **every** write operation and API call respectively.
-
----
-
-## Environment Variables Reference
-
-```bash
-# Microsoft / Graph API (⚠️ deferred — pending admin approval)
-AZURE_CLIENT_ID=
-AZURE_TENANT_ID=
-MSAL_TOKEN_PATH=./token.json
-
-# JIRA (self-hosted DC — PAT used as Bearer token)
-JIRA_BASE_URL=https://jira.yourcompany.com
-JIRA_API_TOKEN=
-JIRA_CONFIG_PATH=./config/jira.json
-
-# Confluence (self-hosted DC — PAT used as Bearer token)
-CONFLUENCE_BASE_URL=https://confluence.yourcompany.com
-CONFLUENCE_API_TOKEN=
-CONFLUENCE_CONFIG_PATH=./config/confluence.json
-
-# GitHub.com
-GITHUB_COM_TOKEN=
-GITHUB_CONFIG_PATH=./config/github.json
-
-# Corporate GitHub
-GITHUB_CORP_BASE_URL=https://github.yourcompany.com/api/v3
-GITHUB_CORP_TOKEN=
-
-# Slack
-SLACK_USER_TOKEN=xoxp-...
-SLACK_CONFIG_PATH=./config/slack.json
-
-# AI Backend: "claude-cli" (uses Claude Code CLI, no API key) or "openai"
-AI_BACKEND=claude-cli
-
-# OpenAI / ChatGPT Enterprise (only needed if AI_BACKEND=openai)
-OPENAI_API_KEY=
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o
-
-# Timeout per AI call in ms (default 5 min; claude-cli can be slow on first run)
-AI_TIMEOUT_MS=300000
-
-# Output path for daily notes (overridden by --output flag at runtime)
-OUTPUT_PATH=./output
-
-# Behaviour
-LOOKBACK_HOURS=24
-LOG_DIR=./logs
-```
-
----
-
-## AI Summarization
-
-All summarization calls are centralized in `src/ai/summarize.js` — no other file calls the AI directly. Two backends are supported, selected via `AI_BACKEND` env var:
-
-### `claude-cli` (default)
-Invokes `claude -p "<prompt>"` as a subprocess. Requires Claude Code to be installed and authenticated. No API key or billing needed — uses your existing Claude subscription. System prompt and user content are combined into a single string passed to `-p`. Supports `--model <name>` override via CLI flag.
-
-The Claude CLI sometimes wraps JSON output in markdown code fences (`` ```json ... ``` ``). A `parseJSONResponse()` helper strips these before parsing.
-
-### `openai`
-Calls an OpenAI-compatible chat completions API. Works with `api.openai.com` and ChatGPT Enterprise endpoints (`OPENAI_BASE_URL`). Requires `OPENAI_API_KEY`. Uses `response_format.json_schema` for structured output enforcement.
-
-### Shared conventions
-- Each source has its own summarization function with a named prompt constant
-- Prompts live at the top of `summarize.js` as `const PROMPT_X = ...` — never inline
-- JSON schemas (`const SCHEMA_X = ...`) define expected output shapes — enforced via `response_format` on OpenAI, used for documentation on `claude-cli`
-- Max tokens per call: 1000 (ignored by `claude-cli` backend)
-- The final "Action Items" synthesis gets a separate call with all source summaries as input
-
----
-
-## Output Format
-
-The daily note follows this exact markdown structure (section headers must match exactly — the output module depends on them):
-
-```markdown
-# Daily Brief — {{DATE}}
-
-## ⚡ Action Items
-## 📬 Email
-### Action Required
-### FYI / Reading
-### Auto-Archived
-## 💬 Yesterday's Meetings
-## 💬 Slack
-### 🔴 Mentions & Threads
-### Thread Updates
-### Direct Messages
-### Priority Channels
-### Other Channels
-## 💬 Teams Activity
-### Customer Mentions
-## 🎫 JIRA
-### Needs Your Input
-### Discussions to Join
-## 📖 Confluence
-### Pages Needing Attention
-## 💻 GitHub
-### github.com
-### Corporate GitHub
-```
-
-If a section has no content, write: `_Nothing to report._`
-
-If a source was unreachable due to VPN (network error), write: `_Skipped — not on VPN_`
-
-If a source failed for any other reason, write: `_Source unavailable: {error message}_`
-
----
-
-## Running Each Source Standalone
-
-Every source module must be runnable directly for debugging:
-
-```bash
-node src/sources/outlook.js                  # Run against live API, print JSON
-node src/sources/outlook.js --save-fixture   # Run + save output to tests/fixtures/
-node src/sources/jira.js
-# etc.
-```
-
-Each source file should have a standalone runner at the bottom that supports both flags:
-```js
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const result = await fetchOutlook(token, since)
-  console.log(JSON.stringify(result, null, 2))
-
-  if (process.argv.includes('--save-fixture')) {
-    await fs.writeFile('tests/fixtures/outlook.json', JSON.stringify(result, null, 2))
-    console.log('[outlook] Fixture saved to tests/fixtures/outlook.json')
-  }
-}
-```
-
----
-
-## Testing & Mock Mode
-
-### Fixtures
-After implementing each phase, save a fixture from the live API response:
-
-```bash
-node src/sources/outlook.js --save-fixture
-# Saves to tests/fixtures/outlook.json
-```
-
-Every standalone runner must support `--save-fixture`:
-```js
-if (process.argv.includes('--save-fixture')) {
-  await fs.writeFile(
-    `tests/fixtures/${moduleName}.json`,
-    JSON.stringify(result, null, 2)
-  )
-  console.log(`[${moduleName}] Fixture saved`)
-}
-```
-
-### Mock Mode
-Run the full pipeline against saved fixtures instead of live APIs:
-
-```bash
-node src/index.js --mock --dry-run
-```
-
-In mock mode:
-- Each source reads from `tests/fixtures/{source}.json` instead of calling the API
-- MSAL token acquisition is skipped
-- All other logic (summarization, output) runs normally
-- Combine with `--dry-run` to test the full pipeline with zero external calls
-
-This is the primary way to tune Claude prompts without burning API credits or waiting for real data.
-
-Every source module must check `isMock` before making any API call:
-```js
-export const isMock = process.argv.includes('--mock')
-
-// In fetchOutlook():
-if (isMock) {
-  const fixture = JSON.parse(await fs.readFile('tests/fixtures/outlook.json', 'utf-8'))
-  return fixture
-}
-// ...real fetch logic
-```
-
-### No Test Framework
-No Jest or other test framework. Standalone runners + mock mode cover all practical testing needs for this project.
+- Simple over clever
+- One file over many abstractions
+- `console.error` over logging frameworks
+- Flat config over deeply nested
+- Working today over perfect tomorrow
 
 ---
 
 ## Commit Conventions
 
-This project uses [Conventional Commits](https://www.conventionalcommits.org/) enforced by commitlint + husky.
+[Conventional Commits](https://www.conventionalcommits.org/) enforced by commitlint + husky.
 
 ### Format
 ```
@@ -430,48 +216,113 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) e
 ### Types
 | Type | When to use |
 |---|---|
-| `feat` | New source module, new feature, new spec implemented |
-| `fix` | Bug fix in existing functionality |
+| `feat` | New script, skill, or feature |
+| `fix` | Bug fix |
 | `chore` | Dependency updates, config changes, tooling |
-| `docs` | README, specs, CLAUDE.md updates |
-| `prompt` | Changes to Claude API prompts in summarize.js |
+| `docs` | README, specs, CLAUDE.md, vision doc updates |
+| `skill` | New or updated SKILL.md file |
 | `refactor` | Code restructuring with no behaviour change |
 
 ### Scopes (optional but encouraged)
-`auth`, `outlook`, `slack`, `teams`, `jira`, `confluence`, `github`, `ai`, `output`, `config`
+`orchestrator`, `slack`, `outlook`, `jira`, `confluence`, `github`, `ai-radar`, `scripts`, `config`
 
-### Examples
-```
-feat(slack): implement Slack source module with channel config
-
-fix(outlook): handle 429 rate limit with Retry-After header
-
-prompt(slack): tune channel summary to reduce noise from bot messages
-
-chore: add commitlint + husky git hooks
-
-docs: update README with Task Scheduler setup instructions
-```
-
-### Setup (Phase 1)
-Install dev dependencies:
+### Setup
 ```bash
 npm install --save-dev @commitlint/cli @commitlint/config-conventional husky
 npx husky init
-echo "npx --no -- commitlint --edit $1" > .husky/commit-msg
+echo "npx --no -- commitlint --edit \$1" > .husky/commit-msg
 ```
 
-`commitlint.config.js`:
-```js
-export default {
-  extends: ['@commitlint/config-conventional'],
-  rules: {
-    'type-enum': [2, 'always', [
-      'feat', 'fix', 'chore', 'docs', 'prompt', 'refactor'
-    ]]
-  }
-}
+---
+
+## Per-Tool Access Strategy
+
+| Tool | Gather (Layer 2) | Draft (Layer 3) | Config |
+|---|---|---|---|
+| Slack | Connector or `fetch-slack.js` | Claude in Chrome | `slack-sections.json` |
+| Outlook | M365 connector or browser fallback | Claude in Chrome | `outlook-rules.json` |
+| JIRA DC | `fetch-jira.js` (REST API) | Claude in Chrome | `jira-filters.json` |
+| Confluence DC | `fetch-confluence.js` (REST API) | None (read-only) | `confluence-spaces.json` |
+| GitHub.com | GitHub connector or `fetch-github-com.js` | Claude in Chrome | `github-repos.json` |
+| GitHub Corp | `fetch-github-corp.js` (REST API) | Claude in Chrome | `github-repos.json` |
+| AI Radar | `fetch-ai-radar.js` (RSS + GitHub API) | None (read-only) | `ai-radar-sources.json` |
+
+When a connector is available and working, prefer it over the script. The script is the fallback.
+
+---
+
+## Safety Constraints — NON-NEGOTIABLE
+
+These rules apply to all skills and scripts. They are not suggestions.
+
+1. **NEVER send messages** — compose drafts, never click Send/Submit/Post
+2. **NEVER delete emails** — archive is OK, permanent deletion requires human action
+3. **NEVER modify wiki pages** — Confluence is strictly read-only
+4. **NEVER merge PRs or push code** — read and stage review comments only
+5. **NEVER change JIRA ticket status** — read, search, stage comments only
+6. **Graceful stop on error** — login prompts, CAPTCHAs, error pages → stop, log, skip to next tool
+7. **Transparent reporting** — every action/skip is recorded in the daily note
+8. **Deep Dive scope control** — search only configured/enabled tools. Never explore beyond config.
+
+---
+
+## Environment Variables (for helper scripts)
+
+```bash
+# JIRA DC
+JIRA_BASE_URL=https://jira.yourcompany.com
+JIRA_USER=your@email.com
+JIRA_API_TOKEN=
+
+# Confluence DC
+CONFLUENCE_BASE_URL=https://confluence.yourcompany.com
+CONFLUENCE_USER=your@email.com
+CONFLUENCE_API_TOKEN=
+
+# GitHub.com
+GITHUB_COM_TOKEN=
+
+# Corporate GitHub
+GITHUB_CORP_BASE_URL=https://github.yourcompany.com/api/v3
+GITHUB_CORP_TOKEN=
+
+# Behaviour
+LOOKBACK_HOURS=24
 ```
+
+---
+
+## Reference Specs (v1)
+
+The `specs/` folder contains v1 API specs. Use them as the reference for building helper scripts:
+
+| Spec | Feeds into |
+|---|---|
+| `specs/06-jira.md` | `scripts/fetch-jira.js` — JQL queries, response parsing, error handling |
+| `specs/07-confluence.md` | `scripts/fetch-confluence.js` — CQL queries, wiki-state diffing, space config |
+| `specs/08-github.md` | `scripts/fetch-github-*.js` — dual-instance Octokit, notification enrichment |
+| `specs/04-slack.md` | `scripts/fetch-slack.js` — section config, emoji triage, channel grouping |
+| `specs/09-ai-radar.md` | `scripts/fetch-ai-radar.js` — RSS feeds, GitHub trending, Claude triage |
+
+---
+
+## Phase Plan (Summary)
+
+See `docs/morning-assistant-v2-vision.md` for the full plan.
+
+| Phase | Goal | Key deliverables |
+|---|---|---|
+| **0** | Validation spike | Confirm API access, browser draft staging, sub-agent spawning, file write |
+| **1** | Read-only brief | Orchestrator skill, helper scripts, daily note to Obsidian (no drafts) |
+| **2** | Slack | Full read + search + draft staging |
+| **3** | Outlook/Teams | Full read + search + draft staging (unblocks MS Graph dependency) |
+| **4** | JIRA DC | Full read + search + draft staging |
+| **5** | Confluence DC | Read + search (read-only, no drafts) |
+| **6** | GitHub | Full read + search + draft staging (both instances) |
+| **7** | AI Radar | RSS/trending fetch, Claude triage, daily note section |
+| **8** | Polish | Performance tuning, Deep Dive improvements, connector upgrades |
+
+**Start each Claude Code session with**: "Read CLAUDE.md and docs/morning-assistant-v2-vision.md before doing anything."
 
 ---
 
@@ -481,6 +332,9 @@ export default {
 - Do not add a web server or API layer
 - Do not add a database
 - Do not use `require()` — ESM only
-- Do not install lodash, axios, or other utility libraries unless truly necessary (Node fetch is built-in)
+- Do not install lodash, axios, or utility libraries (Node built-in `fetch` is sufficient)
 - Do not create React or frontend code
-- Do not abstract things "for future flexibility" — build exactly what the spec says
+- Do not abstract things "for future flexibility" — build what the spec says
+- Do not write browser automation code in scripts — browser interaction is handled by Claude in Chrome via skills, not by Puppeteer/Playwright in Node.js
+- Do not attempt to send, submit, or post any messages — drafts only
+- Do not modify SKILL.md files to bypass safety constraints

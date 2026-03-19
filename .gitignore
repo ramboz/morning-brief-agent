@@ -1,12 +1,26 @@
+# Actual config files (contain personal info — commit only .example.json versions)
+skills/*/config/*.json
+!skills/*/config/*.example.json
+
+# State files (runtime state, not source of truth)
+skills/morning-assistant/state/wiki-state.json
+skills/morning-assistant/state/last-run.json
+
+# Environment variables (API tokens)
+scripts/.env
 .env
-token.json
-logs/
-/output/
-tests/fixtures/
+
+# Node
 node_modules/
+
+# Daily brief output (goes to Obsidian vault, not the repo)
+output/
+
+# Logs
+logs/
+
+# AI Radar dedup cache
+logs/ai-radar-seen.json
+
+# macOS
 .DS_Store
-config/jira.json
-config/confluence.json
-config/github.json
-config/slack.json
-config/context.md

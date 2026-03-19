@@ -1,0 +1,71 @@
+{
+  "vault_path": "/path/to/your/obsidian/vault",
+  "daily_notes_folder": "Daily Notes",
+  "date_format": "YYYY-MM-DD",
+  "lookback_hours": 24,
+  "deep_dive_default_days": 7,
+  "scripts_path": "/path/to/morning-brief-agent/scripts",
+  "tools": {
+    "slack": {
+      "enabled": true,
+      "gather_method": "connector",
+      "gather_fallback": "browser",
+      "draft_method": "browser",
+      "draft_enabled": true,
+      "url": "https://app.slack.com"
+    },
+    "outlook": {
+      "enabled": true,
+      "gather_method": "connector",
+      "gather_fallback": "browser",
+      "draft_method": "browser",
+      "draft_enabled": true,
+      "auto_archive": true,
+      "auto_delete": false,
+      "url": "https://outlook.office.com"
+    },
+    "teams": {
+      "enabled": true,
+      "gather_method": "connector",
+      "gather_fallback": "browser",
+      "draft_method": "none",
+      "draft_enabled": false,
+      "note": "Teams is scanned via the Outlook skill. Draft staging deferred."
+    },
+    "jira": {
+      "enabled": true,
+      "gather_method": "script",
+      "draft_method": "browser",
+      "draft_enabled": true,
+      "url": "https://jira.yourcompany.com"
+    },
+    "confluence": {
+      "enabled": true,
+      "gather_method": "script",
+      "draft_method": "none",
+      "draft_enabled": false,
+      "url": "https://confluence.yourcompany.com"
+    },
+    "github_com": {
+      "enabled": true,
+      "gather_method": "connector",
+      "gather_fallback": "script",
+      "draft_method": "browser",
+      "draft_enabled": true,
+      "url": "https://github.com"
+    },
+    "github_corp": {
+      "enabled": true,
+      "gather_method": "script",
+      "draft_method": "browser",
+      "draft_enabled": true,
+      "url": "https://github.yourcompany.com"
+    },
+    "ai_radar": {
+      "enabled": true,
+      "gather_method": "script",
+      "draft_method": "none",
+      "draft_enabled": false
+    }
+  }
+}

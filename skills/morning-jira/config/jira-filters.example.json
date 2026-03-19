@@ -1,0 +1,6 @@
+{
+  "url": "https://jira.yourcompany.com",
+  "projects": ["ENG", "OPS", "INFRA"],
+  "lookback_hours_override": null,
+  "note": "Copy to jira-filters.json, set your JIRA instance URL and project keys"
+}

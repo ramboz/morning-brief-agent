@@ -1,25 +1,27 @@
 {
   "name": "morning-brief-agent",
-  "version": "0.1.0",
-  "description": "Personal productivity agent that produces an Obsidian daily briefing note",
+  "version": "2.0.0",
+  "description": "Personal productivity agent — morning brief + deep dive across work tools",
   "type": "module",
-  "main": "src/index.js",
+  "private": true,
   "scripts": {
-    "start": "node src/index.js",
-    "dry-run": "node src/index.js --dry-run",
-    "mock": "node src/index.js --mock --dry-run",
+    "fetch:jira": "node scripts/fetch-jira.js --brief",
+    "fetch:confluence": "node scripts/fetch-confluence.js --brief",
+    "fetch:github-com": "node scripts/fetch-github-com.js --brief",
+    "fetch:github-corp": "node scripts/fetch-github-corp.js --brief",
+    "fetch:slack": "node scripts/fetch-slack.js --brief",
+    "fetch:ai-radar": "node scripts/fetch-ai-radar.js --brief",
     "prepare": "husky"
   },
   "dependencies": {
-    "@azure/msal-node": "^2.16.2",
-    "@octokit/rest": "^20.1.1",
-    "@slack/web-api": "^7.14.1",
-    "dotenv": "^16.4.7"
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.0",
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.7.1",
-    "@commitlint/config-conventional": "^19.7.1",
-    "husky": "^9.1.7"
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "husky": "^9.0.0"
   },
   "engines": {
     "node": ">=20.0.0"

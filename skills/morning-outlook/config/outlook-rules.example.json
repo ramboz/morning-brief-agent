@@ -1,0 +1,19 @@
+{
+  "outlook_url": "https://outlook.office.com",
+  "auto_archive": true,
+  "auto_delete": false,
+  "draft_language": "English",
+  "draft_tone": "friendly-professional",
+  "draft_signature": "Best,\n[Your name]",
+  "teams": {
+    "enabled": true,
+    "note": "Teams activity is scanned via the activity feed in Outlook or Teams web app"
+  },
+  "triage_rules": {
+    "newsletter_keywords": ["unsubscribe", "weekly digest", "monthly update", "newsletter"],
+    "marketing_keywords": ["offer", "promotion", "discount", "free trial", "webinar invite"],
+    "alert_senders": [],
+    "note": "Add known newsletter/alert sender domains here for faster classification"
+  },
+  "note": "Copy to outlook-rules.json and fill in your settings"
+}
