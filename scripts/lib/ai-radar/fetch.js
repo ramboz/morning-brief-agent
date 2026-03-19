@@ -5,7 +5,9 @@ import { createHash } from 'node:crypto'
 const parser = new Parser({
   timeout: 15000,
   headers: {
-    'User-Agent': 'morning-brief-agent/2.0'
+    'User-Agent': browserHeaders()['User-Agent'],
+    'Accept': browserHeaders().Accept,
+    'Accept-Language': browserHeaders()['Accept-Language']
   }
 })
 
@@ -143,9 +145,7 @@ async function fetchGitHubCommits(source, { now, lookbackHours }) {
 
 async function fetchGitHubTrending(source, { now }) {
   const response = await fetch(source.url, {
-    headers: {
-      'User-Agent': 'morning-brief-agent/2.0'
-    }
+    headers: browserHeaders()
   })
 
   if (!response.ok) {
@@ -180,9 +180,7 @@ async function fetchGitHubTrending(source, { now }) {
 
 async function fetchHtmlPageSource(source, { now, htmlWatchState }) {
   const response = await fetch(source.url, {
-    headers: {
-      'User-Agent': 'morning-brief-agent/2.0'
-    }
+    headers: browserHeaders(source.url)
   })
 
   if (!response.ok) {
@@ -215,6 +213,13 @@ async function fetchHtmlPageSource(source, { now, htmlWatchState }) {
     }
   }
 
+  if (!previous && source.emit_on_first_seen !== true) {
+    return {
+      items: [],
+      watchUpdate
+    }
+  }
+
   const item = {
     id: `${source.id}:${contentHash.slice(0, 12)}`,
     sourceId: source.id,
@@ -224,7 +229,8 @@ async function fetchHtmlPageSource(source, { now, htmlWatchState }) {
     title,
     url: source.url,
     summary,
-    publishedAt
+    publishedAt,
+    change_type: previous ? 'updated' : 'first_seen'
   }
 
   return {
@@ -293,6 +299,25 @@ function githubHeaders() {
   return headers
 }
 
+function browserHeaders(url = '') {
+  const target = new URL(url || 'https://example.com')
+  const origin = `${target.protocol}//${target.host}`
+
+  return {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-User': '?1',
+    'Sec-Fetch-Dest': 'document',
+    'Referer': origin
+  }
+}
+
 function matchesSourceKeywords(item, source) {
   const required = source.required_keywords ?? []
 
@@ -327,22 +352,31 @@ function extractHtmlTitle($, source) {
 }
 
 function extractHtmlSummary($, source) {
-  const selectors = [
+  const metaSelectors = [
     source.summary_selector,
     'meta[name="description"]',
-    'meta[property="og:description"]',
-    'article p',
-    'main p',
-    'p'
+    'meta[property="og:description"]'
   ].filter(Boolean)
 
-  for (const selector of selectors) {
+  for (const selector of metaSelectors) {
     const value = selector.startsWith('meta[')
       ? $(selector).attr('content')
       : $(selector).first().text()
     const text = compactText(value || '')
-    if (text) {
+    if (text && isUsefulSummary(text)) {
       return text
+    }
+  }
+
+  const blockSelectors = ['article p', 'main p', 'p']
+
+  for (const selector of blockSelectors) {
+    const candidates = $(selector).toArray()
+      .map(node => compactText($(node).text() || ''))
+      .filter(text => text && isUsefulSummary(text))
+
+    if (candidates.length > 0) {
+      return candidates[0]
     }
   }
 
@@ -395,4 +429,8 @@ function extractPublishedAt($, source) {
 
 function hashText(value) {
   return createHash('sha256').update(String(value)).digest('hex')
+}
+
+function isUsefulSummary(text) {
+  return text.length >= 40 && !text.startsWith('By ')
 }

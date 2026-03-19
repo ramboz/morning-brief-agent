@@ -1,20 +1,11 @@
 ## 🤖 AI Radar
 
 ### What Should I Do?
-- Save "Anthropic Cookbook Commits: add OpenAI migration guide + SRE README + minor sync" for focused implementation reading.
-- Save "Extend Claude with skills - Claude Code Docs" for focused implementation reading.
+- Skim migration guide, extract a porting checklist, and prototype an SRE-style incident subagent in your Cowork harness; archive key snippets in Obsidian.
 
 ### Skills & Tutorials
-- 📌 **Anthropic Cookbook Commits: add OpenAI migration guide + SRE README + minor sync** — Practical pattern or example you could apply this week. Directly relevant: Touches claude, anthropic, agent.
+- 📌 **Claude Cookbook: OpenAI→Claude migration + SRE agent docs** — Adds OpenAI→Claude migration guidance and a production-flavored SRE agent example; directly useful for codifying subagents, tool use, and standardizing Claude workflows. Directly relevant: Accelerates porting existing OpenAI flows to Claude across Node.js services and MCP tools; the SRE agent pattern maps to Cowork-run subagents for incidents/runbooks.
   [→ Read](https://github.com/anthropics/claude-cookbooks/commit/6d8146dffb7223b913f144046ee2b8ff8df15790)
-- 📌 **Extend Claude with skills - Claude Code Docs** — Practical pattern or example you could apply this week. Directly relevant: Touches claude, claude code.
-  [→ Read](https://docs.claude.com/en/docs/claude-code/skills)
-
-### Worth Watching
-- 📌 **Connect Claude Code to tools via MCP - Claude Code Docs** — Broader signal worth tracking from Claude Code MCP Docs. Directly relevant: Touches mcp, model context protocol, claude.
-  [→ Read](https://docs.anthropic.com/en/docs/claude-code/mcp)
-- 📌 **Harness engineering: leveraging Codex in an agent-first world** — Broader signal worth tracking from OpenAI Harness Engineering. Directly relevant: Touches agent, codex, rag.
-  [→ Read](https://openai.com/index/harness-engineering/)
 
 ---
-*Sources: 7 checked · 4 items fetched · 4 after triage · Last run: 10:28*
+*Sources: 7 checked · 1 items fetched · 1 after triage · Last run: 14:21*

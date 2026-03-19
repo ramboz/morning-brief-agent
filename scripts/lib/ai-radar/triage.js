@@ -1,9 +1,44 @@
+import { promisify } from 'node:util'
+import { execFile as execFileCallback } from 'node:child_process'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 const MODEL = process.env.AI_RADAR_CLAUDE_MODEL || 'claude-sonnet-4-20250514'
+const CODEX_MODEL = process.env.AI_RADAR_CODEX_MODEL || 'gpt-5'
 const VALID_LAYERS = new Set(['today_signal', 'skills_tutorials', 'strategic_radar', 'skip'])
 const TUTORIAL_HINTS = ['tutorial', 'cookbook', 'guide', 'how to', 'walkthrough', 'example', 'examples', 'evaluation', 'eval', 'prompt', 'tool use', 'pattern']
 const SIGNAL_HINTS = ['release', 'launch', 'launched', 'introducing', 'announcing', 'api', 'model', 'update', 'specification', 'general availability', 'now available']
 const NOISE_HINTS = ['funding', 'hiring', 'webinar', 'podcast', 'conference', 'meetup', 'sponsor']
 const GENERIC_MODEL_HINTS = ['sota', 'benchmarks', 'cost', 'open model', 'cheaper', 'faster']
+const execFile = promisify(execFileCallback)
+const CODEX_TIMEOUT_MS = 45000
+const CLAUDE_TIMEOUT_MS = 15000
+const TRIAGE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          layer: { type: 'string', enum: ['today_signal', 'skills_tutorials', 'strategic_radar', 'skip'] },
+          score: { type: 'number' },
+          reason: { type: 'string' },
+          build_relevance: { type: ['string', 'null'] },
+          action: { type: ['string', 'null'] },
+          display_title: { type: ['string', 'null'] },
+          summary_override: { type: ['string', 'null'] }
+        },
+        required: ['id', 'layer', 'score', 'reason', 'build_relevance', 'action', 'display_title', 'summary_override']
+      }
+    }
+  },
+  required: ['items']
+}
 
 export async function triageAiRadarItems(items, config, options = {}) {
   if (items.length === 0) {
@@ -14,88 +49,98 @@ export async function triageAiRadarItems(items, config, options = {}) {
     }
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  const codexResult = await tryCodexTriage(items, config, options)
+  if (codexResult.ok) {
     return {
-      items: heuristicTriage(items, config, options),
-      mode: 'heuristic',
+      items: codexResult.items,
+      mode: 'codex',
       errors: []
     }
   }
 
-  try {
-    const triaged = await claudeTriage(items, config, options)
+  const claudeResult = await tryClaudeTriage(items, config, options)
+  if (claudeResult.ok) {
     return {
-      items: triaged,
+      items: claudeResult.items,
       mode: 'claude',
       errors: []
     }
-  } catch (error) {
-    return {
-      items: heuristicTriage(items, config, options),
-      mode: 'heuristic_fallback',
-      errors: [`Claude triage unavailable: ${error.message}`]
-    }
+  }
+
+  return {
+    items: heuristicTriage(items, config, options),
+    mode: 'heuristic_fallback',
+    errors: [codexResult.error, claudeResult.error].filter(Boolean)
   }
 }
 
-async function claudeTriage(items, config, { now = new Date() } = {}) {
-  const body = {
-    model: MODEL,
-    max_tokens: 2000,
-    system: [
-      'You are a relevance triage engine for a frontier engineer building AI agent systems.',
-      `Current focus: ${config.relevance_context}`,
-      `Project keywords: ${(config.project_keywords ?? []).join(', ')}`,
-      'For each item, return an object with: id, layer, score, reason, build_relevance, action.',
-      'Valid layers: today_signal, skills_tutorials, strategic_radar, skip.',
-      'today_signal is for breaking releases or important updates, usually within 72 hours.',
-      'skills_tutorials is for practical tutorials, cookbooks, examples, and tools worth trying this week.',
-      'strategic_radar is for broader shifts and thoughtful analysis.',
-      'action should be a concise imperative sentence only when the user should do something concrete.',
-      'Return only valid JSON.'
-    ].join(' '),
-    messages: [
-      {
-        role: 'user',
-        content: JSON.stringify({
-          now: now.toISOString(),
-          items: items.map(item => ({
-            id: item.id,
-            title: item.title,
-            summary: item.summary,
-            url: item.url,
-            category: item.category,
-            sourceLabel: item.sourceLabel,
-            publishedAt: item.publishedAt
-          }))
-        })
-      }
-    ]
+async function tryCodexTriage(items, config, { now = new Date() } = {}) {
+  const prompt = buildTriagePrompt(items, config, now)
+  const tempDir = await mkdtemp(join(tmpdir(), 'ai-radar-codex-'))
+  const schemaPath = join(tempDir, 'triage-schema.json')
+  const outputPath = join(tempDir, 'triage-output.json')
+
+  try {
+    await writeFile(schemaPath, JSON.stringify(TRIAGE_SCHEMA, null, 2))
+    await execFile('codex', [
+      'exec',
+      '--skip-git-repo-check',
+      '--sandbox', 'read-only',
+      '--cd', process.cwd(),
+      '--ephemeral',
+      '--color', 'never',
+      '--model', CODEX_MODEL,
+      '--output-schema', schemaPath,
+      '--output-last-message', outputPath,
+      prompt
+    ], {
+      timeout: CODEX_TIMEOUT_MS,
+      maxBuffer: 2 * 1024 * 1024
+    })
+
+    const raw = await readFile(outputPath, 'utf-8')
+    const classifications = unwrapTriagePayload(JSON.parse(raw))
+    return {
+      ok: true,
+      items: mergeTriagedItems(items, classifications, config, now)
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Codex triage unavailable: ${error.message}`
+    }
+  } finally {
+    await rm(tempDir, { recursive: true, force: true })
   }
+}
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'anthropic-version': '2023-06-01',
-      'x-api-key': process.env.ANTHROPIC_API_KEY
-    },
-    body: JSON.stringify(body)
-  })
+async function tryClaudeTriage(items, config, { now = new Date() } = {}) {
+  const prompt = buildTriagePrompt(items, config, now)
 
-  if (!response.ok) {
-    throw new Error(`Anthropic request failed (${response.status})`)
+  try {
+    const { stdout } = await execFile('claude', [
+      '--print',
+      '--output-format', 'text',
+      '--permission-mode', 'bypassPermissions',
+      '--model', MODEL,
+      '--json-schema', JSON.stringify(TRIAGE_SCHEMA),
+      prompt
+    ], {
+      timeout: CLAUDE_TIMEOUT_MS,
+      maxBuffer: 2 * 1024 * 1024
+    })
+
+    const classifications = unwrapTriagePayload(JSON.parse(extractJsonObject(stdout)))
+    return {
+      ok: true,
+      items: mergeTriagedItems(items, classifications, config, now)
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Claude CLI triage unavailable: ${error.message}`
+    }
   }
-
-  const payload = await response.json()
-  const text = payload.content?.map(part => part.text || '').join('\n') || ''
-  const classifications = JSON.parse(extractJsonArray(text))
-
-  const byId = new Map(classifications.map(entry => [entry.id, entry]))
-
-  return items
-    .map(item => mergeTriage(item, byId.get(item.id), config, now))
-    .filter(item => item.layer !== 'skip')
 }
 
 function heuristicTriage(items, config, { now = new Date() } = {}) {
@@ -118,6 +163,7 @@ function heuristicTriage(items, config, { now = new Date() } = {}) {
       const hasDirectRelevance = keywordMatches >= 2
       const isGenericModelNews = genericModelMatches > 0 && keywordMatches === 0
       const isSecurityStory = haystack.includes('security') || haystack.includes('sandbox') || haystack.includes('prompt injection')
+      const isDocPage = item.sourceType === 'html_page'
 
       let score = keywordMatches * 2
       if (item.category === 'model_api') score += 3
@@ -137,7 +183,7 @@ function heuristicTriage(items, config, { now = new Date() } = {}) {
       let layer = 'skip'
       if (isRecent && (isReleaseSource || (item.category === 'model_api' && titleSignalMatches > 0) || titleHaystack.includes('breaking'))) {
         layer = 'today_signal'
-      } else if (hasDirectRelevance && (titleTutorialMatches > 0 || titleHaystack.includes('/guides/') || item.category === 'skills_tutorials')) {
+      } else if (hasDirectRelevance && (titleTutorialMatches > 0 || titleHaystack.includes('/guides/') || item.category === 'skills_tutorials' || (isDocPage && item.change_type === 'updated'))) {
         layer = 'skills_tutorials'
       } else if (hasDirectRelevance && isRecent && item.category === 'tooling' && titleSignalMatches > 0) {
         layer = 'today_signal'
@@ -150,14 +196,19 @@ function heuristicTriage(items, config, { now = new Date() } = {}) {
       const buildRelevance = keywordMatches > 0
         ? `Touches ${matchingKeywords(haystack, config.project_keywords ?? []).slice(0, 3).join(', ')}.`
         : null
+      const normalizedItem = {
+        ...item,
+        title: rewriteTitle(item),
+        summary: rewriteSummary(item)
+      }
 
       return {
-        ...item,
+        ...normalizedItem,
         layer,
         score: Math.min(10, Math.max(1, score)),
-        reason: buildReason(item, layer, ageHours),
+        reason: buildReason(normalizedItem, layer, ageHours),
         build_relevance: buildRelevance,
-        action: buildAction(item, layer)
+        action: buildAction(normalizedItem, layer)
       }
     })
     .filter(Boolean)
@@ -180,6 +231,8 @@ function mergeTriage(item, triage, config, now) {
 
   return {
     ...item,
+    title: triage.display_title || fallback.title,
+    summary: triage.summary_override || fallback.summary,
     layer: triage.layer,
     score: clampScore(triage.score ?? fallback.score),
     reason: triage.reason || fallback.reason,
@@ -188,15 +241,67 @@ function mergeTriage(item, triage, config, now) {
   }
 }
 
-function extractJsonArray(text) {
-  const start = text.indexOf('[')
-  const end = text.lastIndexOf(']')
+function mergeTriagedItems(items, classifications, config, now) {
+  const byId = new Map(classifications.map(entry => [entry.id, entry]))
+
+  return items
+    .map(item => mergeTriage(item, byId.get(item.id), config, now))
+    .filter(item => item.layer !== 'skip')
+}
+
+function extractJsonObject(text) {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
 
   if (start === -1 || end === -1 || end < start) {
-    throw new Error('Claude response did not include a JSON array')
+    throw new Error('CLI response did not include a JSON object')
   }
 
   return text.slice(start, end + 1)
+}
+
+function buildTriagePrompt(items, config, now) {
+  return [
+    'You are a relevance triage engine for a frontier engineer building AI agent systems.',
+    `Current focus: ${config.relevance_context}`,
+    `Project keywords: ${(config.project_keywords ?? []).join(', ')}`,
+    `Focus topics: ${(config.focus_topics ?? []).join(', ')}`,
+    'Return a JSON object with a single top-level "items" array matching the provided schema.',
+    'For each item, include: id, layer, score, reason, build_relevance, action, display_title, summary_override.',
+    'Valid layers: today_signal, skills_tutorials, strategic_radar, skip.',
+    'today_signal = breaking releases or directly impactful updates.',
+    'skills_tutorials = practical workflows, skills, harnessing, docs, or examples worth using soon.',
+    'strategic_radar = broader but still relevant ideas worth tracking.',
+    'Skip generic AI news, broad security news, benchmark chatter, and low-value noise.',
+    'For docs or official pages, summarize why the update matters instead of restating the page title.',
+    '',
+    JSON.stringify({
+      now: now.toISOString(),
+      items: items.map(item => ({
+        id: item.id,
+        title: item.title,
+        summary: item.summary,
+        url: item.url,
+        category: item.category,
+        sourceType: item.sourceType,
+        changeType: item.change_type || null,
+        sourceLabel: item.sourceLabel,
+        publishedAt: item.publishedAt
+      }))
+    })
+  ].join('\n')
+}
+
+function unwrapTriagePayload(payload) {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  if (payload && Array.isArray(payload.items)) {
+    return payload.items
+  }
+
+  throw new Error('CLI triage output did not contain an items array')
 }
 
 function clampScore(value) {
@@ -227,6 +332,10 @@ function buildReason(item, layer, ageHours) {
   }
 
   if (layer === 'skills_tutorials') {
+    if (item.sourceType === 'html_page') {
+      return 'Official docs update worth skimming for new workflow or automation patterns.'
+    }
+
     return 'Practical pattern or example you could apply this week.'
   }
 
@@ -239,8 +348,32 @@ function buildAction(item, layer) {
   }
 
   if (layer === 'skills_tutorials') {
+    if (item.sourceType === 'html_page') {
+      return `Skim "${item.title}" and note any workflow changes worth adopting.`
+    }
+
     return `Save "${item.title}" for focused implementation reading.`
   }
 
   return null
+}
+
+function rewriteTitle(item) {
+  if (item.sourceType === 'github_commits' && item.title.startsWith('Anthropic Cookbook Commits: ')) {
+    return item.title.replace('Anthropic Cookbook Commits: ', 'Anthropic Cookbook update: ')
+  }
+
+  if (item.sourceType === 'html_page' && item.change_type === 'updated') {
+    return `${item.sourceLabel} updated`
+  }
+
+  return item.title
+}
+
+function rewriteSummary(item) {
+  if (item.sourceType === 'html_page' && item.change_type === 'updated') {
+    return item.summary ? `Updated official page. ${item.summary}` : 'Updated official docs page.'
+  }
+
+  return item.summary
 }
