@@ -1,6 +1,6 @@
 ---
 name: morning-github
-description: GitHub sub-agent — three-step workflow (gather via connector/API script, analyze notifications/PRs, stage draft review comments via Claude in Chrome). Supports both GitHub.com and Corporate GitHub. Supports Morning Brief and Deep Dive modes.
+description: GitHub sub-agent — three-step workflow (gather via connector/API script, analyze notifications/PRs, stage draft PR reviews via Claude in Chrome and issue comment drafts as local MD fragments). Supports both GitHub.com and Corporate GitHub. Supports Morning Brief and Deep Dive modes.
 allowed-tools: bash, computer
 ---
 
@@ -49,9 +49,9 @@ For review-requested PRs, enrich with:
 
 **Identify draft targets:** PRs where a review is requested and `draft_enabled: true`.
 
-### Step 3 — DRAFT (slow, targeted — if draft_enabled)
+### Step 3 — DRAFT (mixed mechanism — if draft_enabled)
 
-For each PR review draft target, use Claude in Chrome:
+**PR reviews → Claude in Chrome** (GitHub's "pending review" provides persistence):
 
 1. Navigate to the PR on GitHub
 2. Go to the Files Changed tab
@@ -67,6 +67,21 @@ For each PR review draft target, use Claude in Chrome:
 - If CI is failing: "CI is failing — will need that resolved before merge"
 - If it's a draft PR: note you'll review when marked ready
 - 2-3 sentences — you haven't read the full diff yet
+
+**Issue comment replies → local MD fragment** (no draft persistence on navigation):
+
+Write a file to `{vault}/drafts/{date}-github-{repo-slug}-{issue-number}-comment.md`
+
+```markdown
+# Draft: GitHub {org}/{repo} #{number} comment
+**Issue:** [{org}/{repo}#{number}]({issue-url}) — {issue-title}
+**Context:** {1-line summary of what prompted this draft}
+**Date:** {YYYY-MM-DD}
+
+---
+
+{draft comment text}
+```
 
 ### Output
 
@@ -89,8 +104,8 @@ Return to orchestrator:
   Review requested. CI failing: `build`, `test`. → [Draft staged]
 
 ### Staged Drafts (2)
-1. myorg/my-repo #482 → Review comment: will take a look, CI green
-2. myorg/infra #91 → Review comment: noting CI failures
+- [ ] myorg/my-repo #482 → Review staged in browser · [Open PR](https://github.com/myorg/my-repo/pull/482)
+- [ ] [[2026-03-19-github-myorg-infra-91-comment]] → [Open issue](https://git.corp.adobe.com/...)
 ```
 
 ---

@@ -239,15 +239,17 @@ echo "npx --no -- commitlint --edit \$1" > .husky/commit-msg
 
 | Tool | Gather (Layer 2) | Draft (Layer 3) | Config |
 |---|---|---|---|
-| Slack | Connector or `fetch-slack.js` | Claude in Chrome | `slack-sections.json` |
-| Outlook | M365 connector or browser fallback | Claude in Chrome | `outlook-rules.json` |
-| JIRA DC | `fetch-jira.js` (REST API) | Claude in Chrome | `jira-filters.json` |
+| Slack | Connector or `fetch-slack.js` | Claude in Chrome (compose box persists) | `slack-sections.json` |
+| Outlook | M365 connector or browser fallback | Claude in Chrome (auto-saves to Drafts) | `outlook-rules.json` |
+| JIRA DC | `fetch-jira.js` (REST API) | Local MD fragment — no browser drafting (no draft persistence) | `jira-filters.json` |
 | Confluence DC | `fetch-confluence.js` (REST API) | None (read-only) | `confluence-spaces.json` |
-| GitHub.com | GitHub connector or `fetch-github-com.js` | Claude in Chrome | `github-repos.json` |
-| GitHub Corp | `fetch-github-corp.js` (REST API) | Claude in Chrome | `github-repos.json` |
+| GitHub.com | GitHub connector or `fetch-github-com.js` | Local MD fragment — PR reviews only via browser (issue comments don't persist) | `github-repos.json` |
+| GitHub Corp | `fetch-github-corp.js` (REST API) | Local MD fragment — PR reviews only via browser (issue comments don't persist) | `github-repos.json` |
 | AI Radar | `fetch-ai-radar.js` (RSS + GitHub API) | None (read-only) | `ai-radar-sources.json` |
 
 When a connector is available and working, prefer it over the script. The script is the fallback.
+
+**Draft persistence rule (see ADR-001):** Tools with native draft persistence (Slack, Outlook) use browser compose staging. Tools without it (JIRA, GitHub issue comments) write local Markdown fragments to `{vault}/drafts/YYYY-MM-DD-{tool}-{id}-comment.md` and surface them in the daily note. GitHub PR reviews are the one exception — GitHub's "pending review" feature provides persistence, so browser staging is acceptable there.
 
 ---
 

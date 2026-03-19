@@ -1,7 +1,7 @@
 ---
 name: morning-jira
-description: JIRA DC sub-agent — three-step workflow (gather via REST API script, analyze tickets/discussions, stage draft comments via Claude in Chrome). Supports Morning Brief and Deep Dive modes.
-allowed-tools: bash, computer
+description: JIRA DC sub-agent — three-step workflow (gather via REST API script, analyze tickets/discussions, stage draft comments as local Markdown fragments). Supports Morning Brief and Deep Dive modes.
+allowed-tools: bash
 ---
 
 # Morning JIRA
@@ -46,15 +46,26 @@ Classify each ticket:
 
 **Identify draft targets:** "Needs Your Input" tickets where a comment reply is clearly expected.
 
-### Step 3 — DRAFT (slow, targeted — if draft_enabled)
+### Step 3 — DRAFT (local MD fragment — if draft_enabled)
 
-For each draft target, use Claude in Chrome:
+JIRA has no draft persistence — content typed into the comment box is lost on navigation. Do NOT open the browser for drafting.
 
-1. Navigate to the ticket in JIRA's web UI
-2. Find the comment box (usually "Add a comment" at the bottom)
-3. Click to activate the comment editor
-4. Type a draft comment
-5. **STOP — do NOT click Save, Submit, or Add**
+For each draft target, write a local Markdown file:
+
+**Filename:** `{vault}/drafts/{date}-jira-{ticket-key}-comment.md`
+**Example:** `2026-03-19-jira-SITES-38240-comment.md`
+
+**File format:**
+```markdown
+# Draft: JIRA {ticket-key} comment
+**Ticket:** [{ticket-key}]({ticket-url}) — {ticket-title}
+**Context:** {1-line summary of what prompted this draft}
+**Date:** {YYYY-MM-DD}
+
+---
+
+{draft comment text}
+```
 
 **Draft guidance:**
 - Address the specific question in the most recent relevant comment
@@ -75,16 +86,16 @@ Return to orchestrator:
 
 ```markdown
 ### Needs Your Input
-- 🔴 **[ENG-482](https://jira.co/browse/ENG-482)** In Progress — Alice is blocked on token refresh edge case → [Draft staged]
+- 🔴 **[ENG-482](https://jira.co/browse/ENG-482)** In Progress — Alice is blocked on token refresh edge case → [[2026-03-19-jira-ENG-482-comment]]
   *(High · updated 2h ago)*
-- 🔴 **[PLAT-89](https://jira.co/browse/PLAT-89)** Blocked — decision needed on staging environment → [Draft staged]
+- 🔴 **[PLAT-89](https://jira.co/browse/PLAT-89)** Blocked — decision needed on staging environment → [[2026-03-19-jira-PLAT-89-comment]]
 
 ### Updated / FYI
 - ℹ️ **[ENG-501](https://jira.co/browse/ENG-501)** — New subtask: "Add retry logic to webhook handler"
 
 ### Staged Drafts (2)
-1. ENG-482 → Caching approach recommendation
-2. PLAT-89 → Unblock decision with proposed path
+- [ ] [[2026-03-19-jira-ENG-482-comment]] → [Open ticket](https://jira.co/browse/ENG-482)
+- [ ] [[2026-03-19-jira-PLAT-89-comment]] → [Open ticket](https://jira.co/browse/PLAT-89)
 ```
 
 ---

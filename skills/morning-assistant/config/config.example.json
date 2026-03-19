@@ -35,7 +35,7 @@
     "jira": {
       "enabled": true,
       "gather_method": "script",
-      "draft_method": "browser",
+      "draft_method": "md_fragment",
       "draft_enabled": true,
       "url": "https://jira.yourcompany.com"
     },
@@ -50,14 +50,14 @@
       "enabled": true,
       "gather_method": "connector",
       "gather_fallback": "script",
-      "draft_method": "browser",
+      "draft_method": "browser_pr_reviews_md_fragment_issues",
       "draft_enabled": true,
       "url": "https://github.com"
     },
     "github_corp": {
       "enabled": true,
       "gather_method": "script",
-      "draft_method": "browser",
+      "draft_method": "browser_pr_reviews_md_fragment_issues",
       "draft_enabled": true,
       "url": "https://github.yourcompany.com"
     },

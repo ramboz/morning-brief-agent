@@ -1,26 +1,27 @@
 /**
  * Shared fetch utility for Atlassian (JIRA DC + Confluence DC) REST APIs.
- * Handles basic auth and common error patterns.
+ * Uses Personal Access Token (PAT) Bearer auth — no username required.
+ * PATs for self-hosted DC are created at:
+ *   JIRA:       https://jira.yourcompany.com/secure/ViewProfile.jspa → Personal Access Tokens
+ *   Confluence: https://confluence.yourcompany.com/secure/ViewProfile.jspa → Personal Access Tokens
  */
 
 /**
- * Make an authenticated request to an Atlassian DC instance.
+ * Make an authenticated request to an Atlassian DC instance using Bearer PAT auth.
  * @param {string} baseUrl - Instance base URL (e.g. https://jira.yourcompany.com)
  * @param {string} path - API path (e.g. /rest/api/2/search)
- * @param {string} user - Username or email
- * @param {string} token - API token or password
- * @param {object} [options] - Additional fetch options
+ * @param {string} token - Personal Access Token
+ * @param {object} [options] - Additional fetch options (method, body, headers, etc.)
  * @returns {Promise<object>} Parsed JSON response
- * @throws {Error} On network or auth failure
+ * @throws {Error} On network or HTTP error. HTTP errors have `err.status` set to the HTTP status code.
  */
-export async function atlassianFetch(baseUrl, path, user, token, options = {}) {
+export async function atlassianFetch(baseUrl, path, token, options = {}) {
   const url = `${baseUrl}${path}`
-  const auth = Buffer.from(`${user}:${token}`).toString('base64')
 
   const res = await fetch(url, {
     ...options,
     headers: {
-      'Authorization': `Basic ${auth}`,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       ...options.headers
@@ -29,7 +30,9 @@ export async function atlassianFetch(baseUrl, path, user, token, options = {}) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(`${res.status} ${res.statusText} — ${url}\n${body.slice(0, 200)}`)
+    const err = new Error(`${res.status} ${res.statusText} — ${url}\n${body.slice(0, 200)}`)
+    err.status = res.status
+    throw err
   }
 
   return res.json()

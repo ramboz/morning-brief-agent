@@ -6,7 +6,7 @@ The Morning Assistant v2 is a hybrid personal productivity agent combining **fas
 
 Implementation should proceed as a series of **thin vertical slices**, not broad platform work. Each slice should earn its place by producing real fetch, useful triage, Obsidian-ready Markdown, and a reproducible fixture.
 
-The key insight: browser automation is only essential for one thing — **putting draft text into the compose box of each tool**. Everything else (reading messages, searching tickets, fetching notifications) is faster and more reliable via APIs and connectors. The architecture reflects this: gather fast, draft in-browser only when needed.
+The key insight: browser automation is only essential for tools with **native draft persistence** (Slack compose box, Outlook Drafts folder, GitHub pending reviews). For tools without draft persistence (JIRA, GitHub issue comments), drafts are written as local Markdown fragments to the Obsidian vault instead. Everything else (reading messages, searching tickets, fetching notifications) is faster and more reliable via APIs and connectors. See [ADR-001](decisions/ADR-001-draft-staging-mechanism.md).
 
 ### Two Modes of Operation
 
@@ -75,9 +75,9 @@ The key insight: browser automation is only essential for one thing — **puttin
 | **Slack** | Cowork connector or Slack API via script | Claude in Chrome | Connector for read/search; browser for compose box |
 | **Outlook** | Cowork M365 connector, or browser fallback | Claude in Chrome | Connector preferred; browser unblocks while Graph approval pending |
 | **Teams** | Cowork M365 connector, or browser fallback | N/A (read-only for now) | Surface mentions/activity; draft staging deferred |
-| **JIRA DC** | REST API via helper script | Claude in Chrome | Self-hosted — no connector. v1 spec (`specs/06-jira.md`) defines the API calls |
+| **JIRA DC** | REST API via helper script | **Local MD fragment** (no browser — JIRA has no draft persistence) | Self-hosted — no connector. v1 spec (`specs/06-jira.md`) defines the API calls |
 | **Confluence DC** | REST API via helper script | N/A (read-only) | Self-hosted — no connector. v1 spec (`specs/07-confluence.md`) defines the API calls |
-| **GitHub.com** | Cowork GitHub connector or API via script | Claude in Chrome | Connector for notifications/PRs; browser for review compose box |
+| **GitHub.com** | Cowork GitHub connector or API via script | Claude in Chrome (PR reviews only — pending review persists); **Local MD fragment** for issue comments | Connector for notifications/PRs; browser for PR review compose box only |
 | **GitHub Corp** | REST API via helper script | Claude in Chrome | Self-hosted — no connector. v1 spec (`specs/08-github.md`) defines the API calls |
 
 ### Speed Profile
@@ -627,7 +627,7 @@ Presented conversationally in Cowork. Saved to vault only on request.
     "jira": {
       "enabled": true,
       "gather_method": "script",
-      "draft_method": "browser",
+      "draft_method": "md_fragment",
       "draft_enabled": true,
       "url": "https://jira.yourcompany.com"
     },
@@ -642,14 +642,14 @@ Presented conversationally in Cowork. Saved to vault only on request.
       "enabled": true,
       "gather_method": "connector",
       "gather_fallback": "script",
-      "draft_method": "browser",
+      "draft_method": "browser_pr_reviews_md_fragment_issues",
       "draft_enabled": true,
       "url": "https://github.com"
     },
     "github_corp": {
       "enabled": true,
       "gather_method": "script",
-      "draft_method": "browser",
+      "draft_method": "browser_pr_reviews_md_fragment_issues",
       "draft_enabled": true,
       "url": "https://github.yourcompany.com"
     },
