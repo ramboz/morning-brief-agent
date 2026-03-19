@@ -4,6 +4,8 @@
 
 The Morning Assistant v2 is a hybrid personal productivity agent combining **fast API/connector-based data gathering** with **targeted browser automation for draft staging**. It runs on **Cowork + Claude in Chrome**, orchestrated through skills and lightweight scripts.
 
+Implementation should proceed as a series of **thin vertical slices**, not broad platform work. Each slice should earn its place by producing real fetch, useful triage, Obsidian-ready Markdown, and a reproducible fixture.
+
 The key insight: browser automation is only essential for one thing — **putting draft text into the compose box of each tool**. Everything else (reading messages, searching tickets, fetching notifications) is faster and more reliable via APIs and connectors. The architecture reflects this: gather fast, draft in-browser only when needed.
 
 ### Two Modes of Operation
@@ -452,22 +454,27 @@ The user asks a question in Cowork at any time:
 
 ### Phase 7 — AI Radar
 
-**Goal**: Nightly RSS/GitHub trending fetch, Claude-powered triage, daily note section.
+**Goal**: First content vertical slice. Nightly curated-source fetch, Claude-powered triage, daily note section, reproducible fixture.
 
 **Gather** (`scripts/fetch-ai-radar.js`):
-- RSS/Atom feeds from model providers, tooling blogs, practitioners
-- GitHub trending filtered by AI/agent keywords
-- HuggingFace daily papers
-- GitHub releases for MCP spec and related repos
+- RSS/Atom feeds from a small curated set of model/tooling/practitioner sources
+- GitHub releases for MCP-related repos
+- Optional GitHub trending if it proves high-signal in practice
+- Keep the initial source list intentionally small
 
 **Triage** (Claude API call within script):
 - Classify each item: today_signal / skills_tutorials / strategic_radar / skip
 - Score relevance against `relevance_context` and `project_keywords`
 - Flag items with direct project relevance (📌)
+- Generate an explicit action/decision layer for the daily read
 
 **Daily note section**:
 ```markdown
 ## 🤖 AI Radar
+
+### What Should I Do?
+- Evaluate the MCP release notes for changes that matter to your architecture.
+- Save the most relevant tutorial or post for this week's implementation time.
 
 ### Today's Signal
 - 📌 **Anthropic releases Claude 4 with extended thinking** — Directly relevant: evaluate for summarization upgrade.
@@ -483,7 +490,7 @@ The user asks a question in Cowork at any time:
 - **Shift toward model-native tool calling** — Growing trend away from framework abstractions.
 
 ---
-*Sources: 12 feeds checked · 47 items fetched · 8 after triage · Last run: 06:00*
+*Sources: 5 checked · 14 items fetched · 6 after triage · Last run: 06:00*
 ```
 
 ### Phase 8 — Polish & Optimization

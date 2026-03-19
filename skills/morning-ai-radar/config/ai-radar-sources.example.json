@@ -2,6 +2,7 @@
   "enabled": true,
   "fetch_hour_utc": 4,
   "dedup_window_days": 7,
+  "lookback_days": 7,
   "max_items_per_layer": {
     "today_signal": 5,
     "skills_tutorials": 5,
@@ -14,7 +15,12 @@
     "claude",
     "anthropic",
     "agent",
+    "agents",
     "cowork",
+    "codex",
+    "claude code",
+    "subagent",
+    "subagents",
     "langchain",
     "llamaindex",
     "automation",
@@ -23,70 +29,24 @@
     "workflow",
     "orchestration",
     "tool use",
+    "evals",
+    "evaluation",
     "rag",
     "agentic"
   ],
+  "focus_topics": [
+    "claude skills",
+    "claude code",
+    "subagents",
+    "tool use",
+    "mcp",
+    "workspace automation",
+    "agent harness",
+    "evals",
+    "coding agents",
+    "orchestration"
+  ],
   "sources": [
-    {
-      "id": "anthropic-news",
-      "label": "Anthropic News",
-      "url": "https://www.anthropic.com/news",
-      "type": "rss",
-      "category": "model_api",
-      "enabled": true,
-      "notes": "Primary source — any release here is auto-promoted to today_signal"
-    },
-    {
-      "id": "openai-blog",
-      "label": "OpenAI Blog",
-      "url": "https://openai.com/blog/rss",
-      "type": "rss",
-      "category": "model_api",
-      "enabled": true,
-      "notes": "Track competitor releases even if Claude-native"
-    },
-    {
-      "id": "google-ai-blog",
-      "label": "Google AI Blog",
-      "url": "https://blog.google/technology/ai/rss",
-      "type": "rss",
-      "category": "model_api",
-      "enabled": true
-    },
-    {
-      "id": "mistral-blog",
-      "label": "Mistral Blog",
-      "url": "https://mistral.ai/news/rss",
-      "type": "rss",
-      "category": "model_api",
-      "enabled": false,
-      "notes": "Enable if you want to track open-weight model releases"
-    },
-    {
-      "id": "huggingface-papers",
-      "label": "HuggingFace Daily Papers",
-      "url": "https://huggingface.co/api/daily_papers",
-      "type": "hf_papers",
-      "category": "research",
-      "enabled": true,
-      "notes": "Filtered to upvotes >= 10 and keyword match. High noise otherwise."
-    },
-    {
-      "id": "langchain-blog",
-      "label": "LangChain Blog",
-      "url": "https://blog.langchain.dev/rss",
-      "type": "rss",
-      "category": "tooling",
-      "enabled": true
-    },
-    {
-      "id": "llamaindex-blog",
-      "label": "LlamaIndex Blog",
-      "url": "https://www.llamaindex.ai/blog/rss",
-      "type": "rss",
-      "category": "tooling",
-      "enabled": true
-    },
     {
       "id": "simon-willison",
       "label": "Simon Willison's Weblog",
@@ -94,52 +54,19 @@
       "type": "atom",
       "category": "practitioner",
       "enabled": true,
-      "notes": "Best single human signal for practical AI tooling. High volume, high quality."
-    },
-    {
-      "id": "latent-space",
-      "label": "Latent Space",
-      "url": "https://www.latent.space/feed",
-      "type": "rss",
-      "category": "practitioner",
-      "enabled": true,
-      "notes": "Podcast + newsletter. Excellent for strategic radar layer."
-    },
-    {
-      "id": "hamel-husain",
-      "label": "Hamel Husain",
-      "url": "https://hamel.dev/feed.xml",
-      "type": "rss",
-      "category": "practitioner",
-      "enabled": true,
-      "notes": "MLOps and evals practitioner. Low volume, very high signal."
-    },
-    {
-      "id": "lilian-weng",
-      "label": "Lilian Weng (OpenAI)",
-      "url": "https://lilianweng.github.io/index.xml",
-      "type": "rss",
-      "category": "practitioner",
-      "enabled": true,
-      "notes": "Deep technical dives. Rare but essential when she posts."
-    },
-    {
-      "id": "eugene-yan",
-      "label": "Eugene Yan",
-      "url": "https://eugeneyan.com/feed.xml",
-      "type": "rss",
-      "category": "practitioner",
-      "enabled": true,
-      "notes": "Applied ML and agent design patterns."
-    },
-    {
-      "id": "ahead-of-ai",
-      "label": "Ahead of AI (Sebastian Raschka)",
-      "url": "https://magazine.sebastianraschka.com/feed",
-      "type": "rss",
-      "category": "practitioner",
-      "enabled": true,
-      "notes": "Weekly. Technical depth on papers and trends."
+      "notes": "Best single human signal for practical AI tooling. Filter aggressively for coding-agent topics.",
+      "required_keywords": [
+        "claude",
+        "codex",
+        "coding agent",
+        "subagent",
+        "agentic",
+        "mcp",
+        "tool use",
+        "eval",
+        "automation",
+        "workspace"
+      ]
     },
     {
       "id": "mcp-spec-releases",
@@ -157,32 +84,74 @@
       "type": "github_releases",
       "category": "tooling",
       "enabled": true,
-      "notes": "Official MCP server connectors — new connectors may unblock integrations."
-    },
-    {
-      "id": "github-trending-python",
-      "label": "GitHub Trending (Python, daily)",
-      "url": "https://github.com/trending/python?since=daily",
-      "type": "github_trending",
-      "category": "tooling",
-      "enabled": true
-    },
-    {
-      "id": "github-trending-js",
-      "label": "GitHub Trending (JavaScript, daily)",
-      "url": "https://github.com/trending/javascript?since=daily",
-      "type": "github_trending",
-      "category": "tooling",
-      "enabled": true
+      "notes": "Useful for spotting new official connectors that may unblock integrations."
     },
     {
       "id": "anthropic-cookbook",
-      "label": "Anthropic Cookbook (GitHub releases)",
+      "label": "Anthropic Cookbook Commits",
       "url": "https://api.github.com/repos/anthropics/anthropic-cookbook/commits",
       "type": "github_commits",
       "category": "skills_tutorials",
       "enabled": true,
-      "notes": "New notebooks = new patterns you can adopt immediately."
+      "notes": "Fresh implementation patterns you can often apply quickly.",
+      "required_keywords": [
+        "claude",
+        "agent",
+        "tool",
+        "eval",
+        "prompt",
+        "automation",
+        "mcp",
+        "migration"
+      ]
+    },
+    {
+      "id": "claude-skills-docs",
+      "label": "Claude Code Skills Docs",
+      "url": "https://docs.claude.com/en/docs/claude-code/skills",
+      "type": "html_page",
+      "category": "skills_tutorials",
+      "enabled": true,
+      "notes": "Official Skills docs. Page watch emits when the page meaningfully changes.",
+      "watch_selector": "main",
+      "required_keywords": [
+        "skill",
+        "claude code",
+        "workflow",
+        "tool"
+      ]
+    },
+    {
+      "id": "claude-code-mcp-docs",
+      "label": "Claude Code MCP Docs",
+      "url": "https://docs.anthropic.com/en/docs/claude-code/mcp",
+      "type": "html_page",
+      "category": "tooling",
+      "enabled": true,
+      "notes": "Official MCP usage docs for Claude Code.",
+      "watch_selector": "main",
+      "required_keywords": [
+        "mcp",
+        "claude code",
+        "tool",
+        "server"
+      ]
+    },
+    {
+      "id": "openai-harness-engineering",
+      "label": "OpenAI Harness Engineering",
+      "url": "https://openai.com/index/harness-engineering/",
+      "type": "html_page",
+      "category": "tooling",
+      "enabled": true,
+      "notes": "Official engineering framing for building good agent harnesses.",
+      "watch_selector": "main",
+      "required_keywords": [
+        "harness",
+        "agent",
+        "workflow",
+        "tool"
+      ]
     }
   ]
 }

@@ -1,12 +1,12 @@
 ---
 name: morning-ai-radar
-description: AI news and tooling radar — fetches curated RSS/GitHub content, triages with Claude, injects an AI Radar section into the daily note. Read-only, no draft staging.
+description: AI news and tooling radar — fetches a small curated source set, triages with Claude, injects an AI Radar section into the daily note. Read-only, no draft staging.
 allowed-tools: bash
 ---
 
 # Morning AI Radar
 
-Fetch curated AI/agent ecosystem content from RSS feeds, GitHub trending, and research papers. Run a Claude-powered relevance triage. Inject a structured **AI Radar** section into the daily note.
+Fetch curated AI/agent ecosystem content from a small source list. Run a Claude-powered relevance triage with a safe fallback. Inject a structured **AI Radar** section into the daily note.
 
 This is a read-only skill — no browser automation, no draft staging.
 
@@ -32,8 +32,7 @@ node {scripts_path}/fetch-ai-radar.js --brief
 The script handles all data fetching:
 - RSS/Atom feeds via rss-parser
 - GitHub releases via API
-- GitHub trending via HTML scraping
-- HuggingFace daily papers via API
+- Optional GitHub trending via HTML scraping
 - Deduplication against the rolling cache
 
 It returns structured JSON with triaged items classified into layers:
@@ -55,6 +54,10 @@ For each surviving item:
 ```markdown
 ## 🤖 AI Radar
 
+### What Should I Do?
+- Evaluate the MCP release notes for changes that matter to your architecture.
+- Save the most relevant tutorial or post for this week's implementation time.
+
 ### Today's Signal
 - 📌 **Anthropic releases Claude 4 with extended thinking** — Directly relevant: evaluate for summarization upgrade.
   [→ Read](https://anthropic.com/...)
@@ -72,7 +75,7 @@ For each surviving item:
 - **MCP server ecosystem maturing fast** — 40+ official connectors now available.
 
 ---
-*Sources: 12 feeds checked · 47 items fetched · 8 after triage · Last run: 06:00*
+*Sources: 5 checked · 14 items fetched · 6 after triage · Last run: 06:00*
 ```
 
 If zero items after triage: `_Nothing significant today._`

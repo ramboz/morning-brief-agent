@@ -3,12 +3,15 @@
 ## Overview
 
 The AI Radar is a nightly data-gathering module that fetches curated content from a
-configurable list of RSS feeds and GitHub trending, runs a Claude-powered relevance
+small configurable list of RSS feeds, GitHub releases, and curated HTML page watches, runs a Claude-powered relevance
 and triage pass, and injects a structured **AI Radar** section into the Obsidian daily
 note alongside the work signals.
 
 The goal is not raw news aggregation — it is **actionable signal for a frontier
-engineer building agent systems**. Every item surfaces in one of three layers:
+engineer building agent systems**. Build v1 intentionally narrow: small source list,
+explicit action layer, fixture-backed reproducibility, and graceful fallback behavior.
+
+Every item surfaces in one of three layers:
 
 | Layer | Cadence | Purpose |
 |---|---|---|
@@ -21,10 +24,10 @@ engineer building agent systems**. Every item surfaces in one of three layers:
 ## Module Location
 
 ```
-src/sources/aiRadar.js
+scripts/fetch-ai-radar.js
 ```
 
-Follows the same standalone-runner + fixture pattern as all other source modules.
+Follows the same standalone-runner + fixture pattern as the other helper scripts.
 
 ---
 
@@ -41,39 +44,15 @@ Fast-moving. Checked daily. Any release or update here is automatically promoted
 
 | Source | Feed URL | Type |
 |---|---|---|
-| Anthropic News | `https://www.anthropic.com/news` | RSS |
-| OpenAI Blog | `https://openai.com/blog/rss` | RSS |
-| Google AI Blog | `https://blog.google/technology/ai/rss` | RSS |
-| Hugging Face Papers | `https://huggingface.co/papers` (API) | JSON |
-| Mistral Blog | `https://mistral.ai/news/rss` | RSS |
-
-#### Agent & Tooling Ecosystem
-The core signal layer for your build path. Items here are scored against your current
-project context (see Relevance Scoring below).
-
-| Source | Feed URL | Type |
-|---|---|---|
-| LangChain Blog | `https://blog.langchain.dev/rss` | RSS |
-| LlamaIndex Blog | `https://www.llamaindex.ai/blog/rss` | RSS |
 | Simon Willison's Blog | `https://simonwillison.net/atom/everything` | Atom |
-| MCP Spec (GitHub releases) | GitHub API — `modelcontextprotocol/specification` | GitHub Releases |
-| Composio Blog | `https://composio.dev/blog/rss` | RSS |
-
-#### Practitioner Voices
-High signal-to-noise. Lower volume, higher depth. Items here go to **Skills &
-Tutorials** or **Strategic Radar** depending on content.
-
-| Source | Feed URL | Type |
-|---|---|---|
-| Latent Space | `https://www.latent.space/feed` | RSS |
-| Hamel Husain | `https://hamel.dev/feed.xml` | RSS |
-| Lilian Weng | `https://lilianweng.github.io/index.xml` | RSS |
-| Eugene Yan | `https://eugeneyan.com/feed.xml` | RSS |
-| Sebastian Raschka (Ahead of AI) | `https://magazine.sebastianraschka.com/feed` | RSS |
+| MCP Spec Releases | GitHub API — `modelcontextprotocol/specification` | GitHub Releases |
+| Claude Code Skills Docs | `https://docs.claude.com/en/docs/claude-code/skills` | HTML Page Watch |
+| Claude Code MCP Docs | `https://docs.anthropic.com/en/docs/claude-code/mcp` | HTML Page Watch |
+| OpenAI Harness Engineering | `https://openai.com/index/harness-engineering/` | HTML Page Watch |
 
 #### GitHub Trending
-Fetched via the unofficial GitHub trending endpoint (no auth required). Filtered to
-topics: `llm`, `agents`, `mcp`, `claude`, `openai`, `rag`, `langchain`.
+Optional for v1. Fetched via the unofficial GitHub trending endpoint (no auth required).
+Filter to topics: `llm`, `agents`, `mcp`, `claude`, `openai`, `rag`, `langchain`.
 
 ```
 https://github.com/trending/javascript?since=daily
@@ -82,10 +61,7 @@ https://github.com/trending/python?since=daily
 
 Parsed via `cheerio` (HTML scraping) — the GitHub trending page has no official API.
 
-#### Newsletters (Digest Format)
-These don't have reliable RSS. Handle as optional manual-entry sources: the config
-supports a `type: "manual"` source where you can paste a URL or content for on-demand
-inclusion. Not fetched automatically.
+Keep newsletters and manual-entry sources out of the first slice.
 
 ---
 
@@ -109,54 +85,13 @@ inclusion. Not fetched automatically.
     "langchain", "automation", "obsidian", "node.js", "workflow", "orchestration"
   ],
   "sources": [
-    {
-      "id": "anthropic-news",
-      "label": "Anthropic News",
-      "url": "https://www.anthropic.com/news",
-      "type": "rss",
-      "category": "model_api",
-      "enabled": true
-    },
-    {
-      "id": "simon-willison",
-      "label": "Simon Willison",
-      "url": "https://simonwillison.net/atom/everything",
-      "type": "atom",
-      "category": "practitioner",
-      "enabled": true
-    },
-    {
-      "id": "latent-space",
-      "label": "Latent Space",
-      "url": "https://www.latent.space/feed",
-      "type": "rss",
-      "category": "practitioner",
-      "enabled": true
-    },
-    {
-      "id": "mcp-releases",
-      "label": "MCP Spec Releases",
-      "url": "https://api.github.com/repos/modelcontextprotocol/specification/releases",
-      "type": "github_releases",
-      "category": "tooling",
-      "enabled": true
-    },
-    {
-      "id": "github-trending-python",
-      "label": "GitHub Trending (Python)",
-      "url": "https://github.com/trending/python?since=daily",
-      "type": "github_trending",
-      "category": "tooling",
-      "enabled": true
-    },
-    {
-      "id": "github-trending-js",
-      "label": "GitHub Trending (JavaScript)",
-      "url": "https://github.com/trending/javascript?since=daily",
-      "type": "github_trending",
-      "category": "tooling",
-      "enabled": true
-    }
+    { "id": "simon-willison", "label": "Simon Willison", "url": "https://simonwillison.net/atom/everything", "type": "atom", "category": "practitioner", "enabled": true },
+    { "id": "mcp-releases", "label": "MCP Spec Releases", "url": "https://api.github.com/repos/modelcontextprotocol/specification/releases", "type": "github_releases", "category": "tooling", "enabled": true },
+    { "id": "mcp-server-releases", "label": "MCP Servers Releases", "url": "https://api.github.com/repos/modelcontextprotocol/servers/releases", "type": "github_releases", "category": "tooling", "enabled": true },
+    { "id": "anthropic-cookbook", "label": "Anthropic Cookbook Commits", "url": "https://api.github.com/repos/anthropics/anthropic-cookbook/commits", "type": "github_commits", "category": "skills_tutorials", "enabled": true },
+    { "id": "claude-skills-docs", "label": "Claude Code Skills Docs", "url": "https://docs.claude.com/en/docs/claude-code/skills", "type": "html_page", "category": "skills_tutorials", "enabled": true },
+    { "id": "claude-code-mcp-docs", "label": "Claude Code MCP Docs", "url": "https://docs.anthropic.com/en/docs/claude-code/mcp", "type": "html_page", "category": "tooling", "enabled": true },
+    { "id": "openai-harness-engineering", "label": "OpenAI Harness Engineering", "url": "https://openai.com/index/harness-engineering/", "type": "html_page", "category": "tooling", "enabled": true }
   ]
 }
 ```
@@ -209,16 +144,17 @@ Use `cheerio` to parse the HTML trending page. Extract per-repo:
 
 Filter by topic keywords defined in `project_keywords` config. Keep top 5 matches.
 
-### HuggingFace Papers
+### HTML Page Watch
 
-```
-GET https://huggingface.co/api/daily_papers
-```
+Use `type: "html_page"` for curated docs or blog pages that do not provide a usable feed.
 
-Returns a JSON array of papers with `title`, `abstract`, `upvotes`, `paper.id`.
-Filter to papers with `upvotes >= 10` and abstract matching project_keywords.
+The fetcher:
+- downloads the page HTML,
+- extracts title, summary, and watched body text,
+- computes a content hash,
+- emits an item only when the watched content changes.
 
----
+This makes official docs and product pages viable radar sources without RSS.
 
 ## Relevance Scoring
 
@@ -255,7 +191,8 @@ User:
 {JSON.stringify(items)}
 ```
 
-The Claude API call uses `claude-sonnet-4-20250514`, `max_tokens: 2000`.
+The Claude API call uses the configured model or a sensible default, with
+`max_tokens: 2000`.
 
 ### Post-Triage
 
@@ -293,6 +230,10 @@ Anchor comment: `<!-- AGENT:ai-radar -->`
 ```markdown
 ## 🤖 AI Radar
 
+### What Should I Do?
+- Evaluate the MCP release for architecture-impacting changes.
+- Save the most directly relevant tutorial or post for this week's build time.
+
 ### Today's Signal
 - 📌 **Anthropic releases Claude 4 with extended thinking** — New model with 200k context
   and improved tool use. Directly relevant: evaluate for summarization upgrade in this project.
@@ -314,7 +255,7 @@ Anchor comment: `<!-- AGENT:ai-radar -->`
 - **MCP server ecosystem maturing fast** — 40+ official connectors now available.
 
 ---
-*Sources: 12 feeds checked · 47 items fetched · 8 after triage · Last run: 06:00*
+*Sources: 5 checked · 14 items fetched · 6 after triage · Last run: 06:00*
 ```
 
 The **On Your Radar** section is only rendered on Mondays (weekly digest cadence). On

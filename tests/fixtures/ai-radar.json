@@ -1,0 +1,94 @@
+{
+  "stats": {
+    "sourcesChecked": 7,
+    "sourceErrors": 0,
+    "itemsFetched": 4,
+    "dedupedCount": 4,
+    "dedupedRemoved": 0,
+    "itemsAfterTriage": 4
+  },
+  "triage_mode": "heuristic",
+  "warnings": [],
+  "output_paths": {
+    "markdown": "/Users/ramboz/Projects/misc/morning-brief-agent/output/ai-radar/2026-03-19.md",
+    "latest_markdown": "/Users/ramboz/Projects/misc/morning-brief-agent/output/ai-radar/latest.md",
+    "json": "/Users/ramboz/Projects/misc/morning-brief-agent/output/ai-radar/2026-03-19.json",
+    "latest_json": "/Users/ramboz/Projects/misc/morning-brief-agent/output/ai-radar/latest.json"
+  },
+  "items": {
+    "today_signal": [],
+    "skills_tutorials": [
+      {
+        "id": "anthropic-cookbook:6d8146dffb7223b913f144046ee2b8ff8df15790",
+        "sourceId": "anthropic-cookbook",
+        "sourceLabel": "Anthropic Cookbook Commits",
+        "sourceType": "github_commits",
+        "category": "skills_tutorials",
+        "title": "Anthropic Cookbook Commits: add OpenAI migration guide + SRE README + minor sync",
+        "url": "https://github.com/anthropics/claude-cookbooks/commit/6d8146dffb7223b913f144046ee2b8ff8df15790",
+        "summary": "feat(claude_agent_sdk): add OpenAI migration guide + SRE README + minor sync (#449) * docs: add Notebook 03 SRE agent to README + minor sync from private - Add Notebook 03 (Site Reliability Agent) section to claude_agent_sdk/README.md The cookbook was published in #391 but the README was never updated - Add site_reliability_agent/ to the agent implementations list - .gitignore: ignore .claude/skills/*/tmp/ directories - CLAUDE.md: clarify API key guidance (dotenv.load_dotenv pattern) * feat(c...",
+        "publishedAt": "2026-03-18T19:00:48Z",
+        "layer": "skills_tutorials",
+        "score": 10,
+        "reason": "Practical pattern or example you could apply this week.",
+        "build_relevance": "Touches claude, anthropic, agent.",
+        "action": "Save \"Anthropic Cookbook Commits: add OpenAI migration guide + SRE README + minor sync\" for focused implementation reading."
+      },
+      {
+        "id": "claude-skills-docs:f92fcc0f77ad",
+        "sourceId": "claude-skills-docs",
+        "sourceLabel": "Claude Code Skills Docs",
+        "sourceType": "html_page",
+        "category": "skills_tutorials",
+        "title": "Extend Claude with skills - Claude Code Docs",
+        "url": "https://docs.claude.com/en/docs/claude-code/skills",
+        "summary": "Create, manage, and share skills to extend Claude's capabilities in Claude Code. Includes custom commands and bundled skills.",
+        "publishedAt": "2026-03-19T09:28:20.803Z",
+        "layer": "skills_tutorials",
+        "score": 8,
+        "reason": "Practical pattern or example you could apply this week.",
+        "build_relevance": "Touches claude, claude code.",
+        "action": "Save \"Extend Claude with skills - Claude Code Docs\" for focused implementation reading."
+      }
+    ],
+    "strategic_radar": [
+      {
+        "id": "claude-code-mcp-docs:f92fcc0f77ad",
+        "sourceId": "claude-code-mcp-docs",
+        "sourceLabel": "Claude Code MCP Docs",
+        "sourceType": "html_page",
+        "category": "tooling",
+        "title": "Connect Claude Code to tools via MCP - Claude Code Docs",
+        "url": "https://docs.anthropic.com/en/docs/claude-code/mcp",
+        "summary": "Learn how to connect Claude Code to your tools with the Model Context Protocol.",
+        "publishedAt": "2026-03-19T09:28:20.803Z",
+        "layer": "strategic_radar",
+        "score": 10,
+        "reason": "Broader signal worth tracking from Claude Code MCP Docs.",
+        "build_relevance": "Touches mcp, model context protocol, claude.",
+        "action": null
+      },
+      {
+        "id": "openai-harness-engineering:8fcf1c414391",
+        "sourceId": "openai-harness-engineering",
+        "sourceLabel": "OpenAI Harness Engineering",
+        "sourceType": "html_page",
+        "category": "tooling",
+        "title": "Harness engineering: leveraging Codex in an agent-first world",
+        "url": "https://openai.com/index/harness-engineering/",
+        "summary": "By Ryan Lopopolo, Member of the Technical Staff",
+        "publishedAt": "2026-03-11T10:00:00.000Z",
+        "layer": "strategic_radar",
+        "score": 8,
+        "reason": "Broader signal worth tracking from OpenAI Harness Engineering.",
+        "build_relevance": "Touches agent, codex, rag.",
+        "action": null
+      }
+    ]
+  },
+  "actions": [
+    "Save \"Anthropic Cookbook Commits: add OpenAI migration guide + SRE README + minor sync\" for focused implementation reading.",
+    "Save \"Extend Claude with skills - Claude Code Docs\" for focused implementation reading."
+  ],
+  "markdown": "## 🤖 AI Radar\n\n### What Should I Do?\n- Save \"Anthropic Cookbook Commits: add OpenAI migration guide + SRE README + minor sync\" for focused implementation reading.\n- Save \"Extend Claude with skills - Claude Code Docs\" for focused implementation reading.\n\n### Skills & Tutorials\n- 📌 **Anthropic Cookbook Commits: add OpenAI migration guide + SRE README + minor sync** — Practical pattern or example you could apply this week. Directly relevant: Touches claude, anthropic, agent.\n  [→ Read](https://github.com/anthropics/claude-cookbooks/commit/6d8146dffb7223b913f144046ee2b8ff8df15790)\n- 📌 **Extend Claude with skills - Claude Code Docs** — Practical pattern or example you could apply this week. Directly relevant: Touches claude, claude code.\n  [→ Read](https://docs.claude.com/en/docs/claude-code/skills)\n\n### Worth Watching\n- 📌 **Connect Claude Code to tools via MCP - Claude Code Docs** — Broader signal worth tracking from Claude Code MCP Docs. Directly relevant: Touches mcp, model context protocol, claude.\n  [→ Read](https://docs.anthropic.com/en/docs/claude-code/mcp)\n- 📌 **Harness engineering: leveraging Codex in an agent-first world** — Broader signal worth tracking from OpenAI Harness Engineering. Directly relevant: Touches agent, codex, rag.\n  [→ Read](https://openai.com/index/harness-engineering/)\n\n---\n*Sources: 7 checked · 4 items fetched · 4 after triage · Last run: 10:28*"
+}

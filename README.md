@@ -10,6 +10,19 @@ A personal productivity agent that scans your work tools, produces a structured 
 
 **Deep Dive (Pull)** — On-demand. Ask "What's the latest on Project X?" and get a cross-tool timeline with optional draft follow-ups.
 
+## Delivery model
+
+The project is being built as a set of narrow vertical slices.
+
+Each slice must work end-to-end:
+- fetch real inputs,
+- triage them against your context,
+- render Obsidian-ready Markdown,
+- save a reproducible fixture,
+- stay small enough to ship quickly.
+
+The first slice is **AI Radar** because it provides daily value without depending on browser draft staging.
+
 ---
 
 ## Architecture — Three Layers
@@ -100,7 +113,23 @@ Each helper script is independently runnable:
 ```bash
 node scripts/fetch-jira.js --brief           # Lookback scan
 node scripts/fetch-jira.js --search "auth"    # Deep Dive search
+node scripts/fetch-ai-radar.js --brief        # AI Radar digest JSON to stdout
+node scripts/fetch-ai-radar.js --brief --save-fixture
 ```
+
+`fetch-ai-radar.js` also writes reviewable output files on each run:
+- `output/ai-radar/YYYY-MM-DD.md`
+- `output/ai-radar/latest.md`
+- `output/ai-radar/YYYY-MM-DD.json`
+- `output/ai-radar/latest.json`
+
+Use `--save-fixture` when you want to refresh the checked-in sample files in `tests/fixtures/`.
+
+AI Radar source types currently include:
+- `rss` / `atom`
+- `github_releases`
+- `github_commits`
+- `html_page` for curated docs/blog pages without feeds
 
 ---
 
@@ -116,18 +145,18 @@ Non-negotiable. The agent enforces these without exception:
 
 ---
 
-## Phase plan
+## Slice roadmap
 
-| Phase | Goal |
+| Slice | Goal |
 |---|---|
-| 0 | Validation spike — API access, browser draft staging, sub-agents, file write |
-| 1 | Orchestrator + read-only brief (no drafts) |
-| 2 | Slack (full: read + search + draft) |
-| 3 | Outlook/Teams (full: read + search + draft) |
-| 4 | JIRA DC (full: read + search + draft) |
-| 5 | Confluence DC (read + search only) |
-| 6 | GitHub (full: read + search + draft, both instances) |
-| 7 | AI Radar (RSS/trending fetch + triage) |
+| 0 | Validation spike — confirm access paths and file writes |
+| 1 | AI Radar — curated sources, triage, Markdown digest, fixture |
+| 2 | Orchestrator + read-only brief shell |
+| 3 | Slack (full: read + search + draft) |
+| 4 | Outlook/Teams (full: read + search + draft) |
+| 5 | JIRA DC (full: read + search + draft) |
+| 6 | Confluence DC (read + search only) |
+| 7 | GitHub (full: read + search + draft, both instances) |
 | 8 | Polish (parallelism, Deep Dive improvements, connector upgrades) |
 
 ---
