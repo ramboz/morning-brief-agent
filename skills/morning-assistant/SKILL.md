@@ -123,7 +123,13 @@ Write to: `{vault_path}/{daily_notes_folder}/{YYYY-MM-DD}.md`
 For skipped tools: `_Skipped — {reason}_`
 For empty sections: `_Nothing to report._`
 
-## Step 4 — Stage drafts (per-tool delivery)
+## Step 4 — Clean up old drafts, then stage new ones
+
+### Draft cleanup (runs first)
+
+Run `node {scripts_path}/cleanup-drafts.js --vault {vault_path} --days 3` to remove draft fragments older than 3 days. This keeps the `{vault}/drafts/` folder tidy. Log the result (N deleted, N kept) but don't block the brief if cleanup fails.
+
+### Stage drafts (per-tool delivery)
 
 For each tool that identified draft targets in Step 2, stage drafts using the tool's delivery method. Only stage drafts for tools where `draft_enabled: true` in config.
 
