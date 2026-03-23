@@ -12,6 +12,10 @@
  *   - summary:   One-line summary of what the original message asked
  *   - draft:     The draft reply text (in Slack mrkdwn format)
  *   - target:    Who the reply is directed at (e.g. "@gillies")
+ *   - mentions:  Optional map of display names to Slack user IDs for proper @-mentions
+ *                e.g. {"@gillies": "W5LSJ5HN0", "@ftathagat": "U08E9QMRZV3"}
+ *                Names in the draft text will be replaced with <@USER_ID> so they
+ *                become real mentions when copy-pasted into the target channel.
  *
  * Posts a formatted draft message to the authenticated user's own DM (self-chat).
  * The user reviews, then copies the draft text to the target channel.
@@ -58,6 +62,30 @@ async function findSelfDm(slack, userId) {
 }
 
 /**
+ * Replace @name references in text with proper Slack <@USER_ID> mentions.
+ * @param {string} text - Draft text
+ * @param {object} mentions - Map of display names to user IDs, e.g. {"@gillies": "W5LSJ5HN0"}
+ * @returns {string} Text with proper mention markup
+ */
+function applyMentions(text, mentions) {
+  if (!mentions || typeof mentions !== 'object') return text
+  let result = text
+  for (const [name, userId] of Object.entries(mentions)) {
+    if (!userId) continue
+    // Replace both "@name" and "name" variants (case-insensitive)
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(escapedName, 'gi'), `<@${userId}>`)
+    // Also handle without @ prefix
+    const bare = name.replace(/^@/, '')
+    if (bare !== name) {
+      const escapedBare = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      result = result.replace(new RegExp(`@${escapedBare}`, 'gi'), `<@${userId}>`)
+    }
+  }
+  return result
+}
+
+/**
  * Format a draft message for the self-DM channel.
  * @param {object} input - Draft input from stdin
  * @returns {string} Formatted Slack mrkdwn message
@@ -83,9 +111,12 @@ function formatDraftMessage(input) {
     parts.push(`\n> ${input.summary}`)
   }
 
+  // Apply mention replacements to draft text
+  const draftText = applyMentions(input.draft || '_No draft text provided_', input.mentions)
+
   // Divider + draft
   parts.push('\n---')
-  parts.push(input.draft || '_No draft text provided_')
+  parts.push(draftText)
   parts.push('---')
 
   // Footer
@@ -139,6 +170,19 @@ async function main() {
       unfurl_links: false,
       unfurl_media: false
     })
+
+    // Mark the self-DM as unread by rewinding the read cursor to just before
+    // our message. This gives the user a notification badge in the Slack app.
+    try {
+      // Use a timestamp slightly before our message (subtract 1 microsecond)
+      const parts = result.ts.split('.')
+      const beforeTs = `${parts[0]}.${String(parseInt(parts[1], 10) - 1).padStart(6, '0')}`
+      await slack.conversations.mark({ channel: selfDmId, ts: beforeTs })
+      console.error(`[${TOOL}] Marked self-DM as unread`)
+    } catch (markErr) {
+      // Non-fatal — draft is still posted, just won't show unread badge
+      console.error(`[${TOOL}] Could not mark as unread: ${markErr.message}`)
+    }
 
     const workspaceUrl = auth.url || 'https://app.slack.com/'
     const draftPermalink = `${workspaceUrl}archives/${selfDmId}/p${result.ts.replace('.', '')}`
