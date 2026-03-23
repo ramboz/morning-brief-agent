@@ -448,8 +448,79 @@ async function runSearch(slack, query) {
   return { query, results, total: res.messages?.total || results.length }
 }
 
+/**
+ * Context mode: fetch full thread context for a specific message.
+ * Used by the orchestrator before generating a draft reply.
+ * @param {WebClient} slack
+ * @param {string} channelId
+ * @param {string} threadTs - Thread parent timestamp
+ * @param {string} workspaceUrl
+ * @returns {Promise<object>}
+ */
+async function runContext(slack, channelId, threadTs, workspaceUrl) {
+  // Fetch full thread
+  const thread = await slack.conversations.replies({
+    channel: channelId,
+    ts: threadTs,
+    limit: 100
+  })
+
+  const messages = []
+  for (const msg of (thread.messages || [])) {
+    const user = await resolveUser(slack, msg.user || '')
+    messages.push({
+      ts: msg.ts,
+      user,
+      text: resolveText(msg.text),
+      permalink: makePermalink(workspaceUrl, channelId, msg.ts),
+      isParent: msg.ts === threadTs
+    })
+  }
+
+  // Fetch recent channel context (last 20 messages around the thread)
+  let channelContext = []
+  try {
+    const hist = await slack.conversations.history({
+      channel: channelId,
+      limit: 20,
+      latest: threadTs
+    })
+    for (const msg of (hist.messages || [])) {
+      if (msg.subtype) continue
+      const user = await resolveUser(slack, msg.user || '')
+      channelContext.push({
+        ts: msg.ts,
+        user,
+        text: resolveText(msg.text)
+      })
+    }
+  } catch {
+    // Channel context is best-effort
+  }
+
+  // Get channel info
+  let channelName = ''
+  try {
+    const info = await slack.conversations.info({ channel: channelId })
+    channelName = info.channel?.name || ''
+  } catch {
+    // fallback
+  }
+
+  return {
+    channelId,
+    channelName,
+    channelUrl: makeChannelUrl(workspaceUrl, channelId),
+    threadTs,
+    threadUrl: makePermalink(workspaceUrl, channelId, threadTs),
+    messages,
+    channelContext
+  }
+}
+
 async function main() {
   const { mode, query, lookbackHours } = parseArgs()
+  const args = process.argv.slice(2)
 
   const token = process.env.SLACK_USER_TOKEN
   if (!token) {
@@ -473,6 +544,21 @@ async function main() {
     const workspaceUrl = auth.url || 'https://app.slack.com/'
 
     let data
+
+    // --context <channel_id> <thread_ts> — fetch full thread for draft generation
+    const ctxIdx = args.indexOf('--context')
+    if (ctxIdx !== -1) {
+      const channelId = args[ctxIdx + 1]
+      const threadTs = args[ctxIdx + 2]
+      if (!channelId || !threadTs) {
+        console.log(JSON.stringify(envelope(TOOL, 'context', null, ['--context requires <channel_id> <thread_ts>'])))
+        return
+      }
+      data = await runContext(slack, channelId, threadTs, workspaceUrl)
+      console.log(JSON.stringify(envelope(TOOL, 'context', data)))
+      return
+    }
+
     if (mode === 'search') {
       if (!query) {
         console.log(JSON.stringify(envelope(TOOL, mode, null, ['--search requires a query string'])))
