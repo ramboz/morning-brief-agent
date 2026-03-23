@@ -20,7 +20,21 @@ export const DEFAULT_CONFIG = {
 }
 
 /**
- * Make an authenticated request to the GitHub API using native fetch.
+ * Standard headers for GitHub API requests.
+ * @param {string} token
+ * @param {string} [accept]
+ * @returns {object}
+ */
+function apiHeaders(token, accept = 'application/vnd.github+json') {
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Accept': accept,
+    'X-GitHub-Api-Version': '2022-11-28'
+  }
+}
+
+/**
+ * Make an authenticated GET request to the GitHub API using native fetch.
  * @param {string} baseUrl - API base URL (e.g. https://api.github.com)
  * @param {string} token - GitHub PAT
  * @param {string} path - API path (e.g. /notifications)
@@ -34,13 +48,7 @@ export async function githubGet(baseUrl, token, path, params = {}) {
   ).toString()
   const url = `${baseUrl}${path}${qs ? '?' + qs : ''}`
 
-  const res = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28'
-    }
-  })
+  const res = await fetch(url, { headers: apiHeaders(token) })
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
@@ -308,4 +316,272 @@ export async function runSearch(baseUrl, token, instanceConfig, query, instanceL
   }))
 
   return { instance: instanceLabel, query, results: notifications }
+}
+
+/**
+ * Make an authenticated POST request to the GitHub API.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} path - API path (e.g. /repos/owner/repo/pulls/1/reviews)
+ * @param {object} body - JSON body
+ * @returns {Promise<{data: any, headers: Headers}>}
+ * @throws {Error} On network or HTTP error
+ */
+export async function githubPost(baseUrl, token, path, body) {
+  const url = `${baseUrl}${path}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { ...apiHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    const err = new Error(`${res.status} ${res.statusText} — ${url}\n${text.slice(0, 200)}`)
+    err.status = res.status
+    throw err
+  }
+
+  const data = await res.json()
+  return { data, headers: res.headers }
+}
+
+/**
+ * Fetch raw diff for a pull request.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} owner
+ * @param {string} repo
+ * @param {number} prNumber
+ * @returns {Promise<string>} Unified diff text
+ */
+export async function fetchPrDiff(baseUrl, token, owner, repo, prNumber) {
+  const url = `${baseUrl}/repos/${owner}/${repo}/pulls/${prNumber}`
+  const res = await fetch(url, {
+    headers: apiHeaders(token, 'application/vnd.github.diff')
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    const err = new Error(`${res.status} ${res.statusText} — diff fetch\n${text.slice(0, 200)}`)
+    err.status = res.status
+    throw err
+  }
+
+  return res.text()
+}
+
+/**
+ * Fetch review comments on a PR (not issue comments — these are inline on the diff).
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} owner
+ * @param {string} repo
+ * @param {number} prNumber
+ * @returns {Promise<object[]>}
+ */
+export async function fetchPrReviewComments(baseUrl, token, owner, repo, prNumber) {
+  try {
+    const { data } = await githubGet(baseUrl, token,
+      `/repos/${owner}/${repo}/pulls/${prNumber}/comments`, { per_page: 50 })
+    return data
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Fetch issue/PR comments (conversation tab comments, not inline diff comments).
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} owner
+ * @param {string} repo
+ * @param {number} issueNumber
+ * @returns {Promise<object[]>}
+ */
+export async function fetchIssueComments(baseUrl, token, owner, repo, issueNumber) {
+  try {
+    const { data } = await githubGet(baseUrl, token,
+      `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, { per_page: 50 })
+    return data
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Parse linked issue/ticket references from a PR body or title.
+ * Supports: Fix #123, Closes #123, Resolves #123, PROJ-123 (JIRA-style)
+ * @param {string} text - PR body or title
+ * @param {string} defaultOwner - Default repo owner for bare #123 references
+ * @param {string} defaultRepo - Default repo name for bare #123 references
+ * @returns {{ github: Array<{owner: string, repo: string, number: number}>, jira: string[] }}
+ */
+export function parseLinkedIssues(text) {
+  if (!text) return { github: [], jira: [] }
+
+  const github = []
+  const jira = []
+
+  // GitHub: Fix #123, Closes #123, Resolves #123, fixes org/repo#123
+  const ghPattern = /(?:fix(?:es|ed)?|close[sd]?|resolve[sd]?)\s+(?:([a-z0-9_.-]+)\/([a-z0-9_.-]+))?#(\d+)/gi
+  let match
+  while ((match = ghPattern.exec(text)) !== null) {
+    github.push({
+      owner: match[1] || null,
+      repo: match[2] || null,
+      number: parseInt(match[3], 10)
+    })
+  }
+
+  // JIRA: PROJ-123 style keys (at least 2 uppercase letters, dash, digits)
+  const jiraPattern = /\b([A-Z]{2,}-\d+)\b/g
+  while ((match = jiraPattern.exec(text)) !== null) {
+    if (!jira.includes(match[1])) jira.push(match[1])
+  }
+
+  return { github, jira }
+}
+
+/**
+ * Fetch full context for a PR — diff, description, comments, reviews, linked issues.
+ * Used for generating draft PR reviews.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} owner
+ * @param {string} repo
+ * @param {number} prNumber
+ * @param {string} toolName
+ * @returns {Promise<object>}
+ */
+export async function fetchPrContext(baseUrl, token, owner, repo, prNumber, toolName) {
+  console.error(`[${toolName}] Fetching PR context for ${owner}/${repo}#${prNumber}`)
+
+  // Fetch PR details, diff, review comments, and conversation comments in parallel
+  const [prResult, diff, reviewComments, issueComments] = await Promise.all([
+    githubGet(baseUrl, token, `/repos/${owner}/${repo}/pulls/${prNumber}`),
+    fetchPrDiff(baseUrl, token, owner, repo, prNumber),
+    fetchPrReviewComments(baseUrl, token, owner, repo, prNumber),
+    fetchIssueComments(baseUrl, token, owner, repo, prNumber)
+  ])
+
+  const pr = prResult.data
+  const linked = parseLinkedIssues(`${pr.title ?? ''} ${pr.body ?? ''}`)
+
+  // Fetch linked GitHub issues (same repo only for #N references)
+  const linkedIssues = []
+  for (const ref of linked.github) {
+    const refOwner = ref.owner || owner
+    const refRepo = ref.repo || repo
+    try {
+      const { data } = await githubGet(baseUrl, token,
+        `/repos/${refOwner}/${refRepo}/issues/${ref.number}`)
+      linkedIssues.push({
+        number: ref.number,
+        owner: refOwner,
+        repo: refRepo,
+        title: data.title,
+        state: data.state,
+        body: stripMarkdown(data.body ?? '').slice(0, 500),
+        url: data.html_url
+      })
+    } catch (err) {
+      console.error(`[${toolName}] Could not fetch linked issue ${refOwner}/${refRepo}#${ref.number}: ${err.message}`)
+    }
+  }
+
+  return {
+    type: 'PullRequest',
+    owner,
+    repo,
+    number: prNumber,
+    title: pr.title,
+    author: pr.user?.login,
+    state: pr.merged ? 'merged' : pr.state,
+    isDraft: pr.draft ?? false,
+    url: pr.html_url,
+    body: pr.body ?? '',
+    diff,
+    diffStat: {
+      additions: pr.additions ?? 0,
+      deletions: pr.deletions ?? 0,
+      changedFiles: pr.changed_files ?? 0
+    },
+    baseBranch: pr.base?.ref,
+    headBranch: pr.head?.ref,
+    reviewComments: reviewComments.map(c => ({
+      author: c.user?.login,
+      body: c.body?.slice(0, 500),
+      path: c.path,
+      line: c.line ?? c.original_line,
+      createdAt: c.created_at
+    })),
+    conversationComments: issueComments.map(c => ({
+      author: c.user?.login,
+      body: c.body?.slice(0, 500),
+      createdAt: c.created_at
+    })),
+    linkedIssues,
+    linkedJiraKeys: linked.jira
+  }
+}
+
+/**
+ * Fetch full context for an issue — body, comments, labels.
+ * Used for generating draft issue comment replies.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} owner
+ * @param {string} repo
+ * @param {number} issueNumber
+ * @param {string} toolName
+ * @returns {Promise<object>}
+ */
+export async function fetchIssueContext(baseUrl, token, owner, repo, issueNumber, toolName) {
+  console.error(`[${toolName}] Fetching issue context for ${owner}/${repo}#${issueNumber}`)
+
+  const [issueResult, comments] = await Promise.all([
+    githubGet(baseUrl, token, `/repos/${owner}/${repo}/issues/${issueNumber}`),
+    fetchIssueComments(baseUrl, token, owner, repo, issueNumber)
+  ])
+
+  const issue = issueResult.data
+  return {
+    type: 'Issue',
+    owner,
+    repo,
+    number: issueNumber,
+    title: issue.title,
+    author: issue.user?.login,
+    state: issue.state,
+    url: issue.html_url,
+    body: issue.body ?? '',
+    labels: (issue.labels ?? []).map(l => l.name),
+    assignees: (issue.assignees ?? []).map(a => a.login),
+    comments: comments.map(c => ({
+      author: c.user?.login,
+      body: c.body?.slice(0, 500),
+      createdAt: c.created_at
+    }))
+  }
+}
+
+/**
+ * Run context mode: fetch enriched context for a specific PR or issue.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} owner
+ * @param {string} repo
+ * @param {string} type - 'pr' or 'issue'
+ * @param {number} number - PR or issue number
+ * @param {string} instanceLabel
+ * @param {string} toolName
+ * @returns {Promise<object>}
+ */
+export async function runContext(baseUrl, token, owner, repo, type, number, instanceLabel, toolName) {
+  if (type === 'pr') {
+    return fetchPrContext(baseUrl, token, owner, repo, number, toolName)
+  } else {
+    return fetchIssueContext(baseUrl, token, owner, repo, number, toolName)
+  }
 }

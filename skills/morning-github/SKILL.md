@@ -1,6 +1,6 @@
 ---
 name: morning-github
-description: GitHub sub-agent — three-step workflow (gather via connector/API script, analyze notifications/PRs, stage draft PR reviews via Claude in Chrome and issue comment drafts as local MD fragments). Supports both GitHub.com and Corporate GitHub. Supports Morning Brief and Deep Dive modes.
+description: GitHub sub-agent — three-step workflow (gather via connector/API script, analyze notifications/PRs, stage draft PR reviews via pending review API and issue comment drafts as local MD fragments). Supports both GitHub.com and Corporate GitHub. Supports Morning Brief and Deep Dive modes.
 allowed-tools: bash, computer
 ---
 
@@ -48,40 +48,45 @@ For review-requested PRs, enrich with:
 - Most recent 2-3 review comments
 
 **Identify draft targets:** PRs where a review is requested and `draft_enabled: true`.
+Also: Issues where the user is mentioned or assigned and a response looks expected.
 
-### Step 3 — DRAFT (mixed mechanism — if draft_enabled)
+### Step 3 — DRAFT (API-based — if draft_enabled)
 
-**PR reviews → Claude in Chrome** (GitHub's "pending review" provides persistence):
+**PR reviews → Pending review via GitHub API** (native draft mechanism, zero risk):
 
-1. Navigate to the PR on GitHub
-2. Go to the Files Changed tab
-3. Find the overall review comment box at the bottom
-4. Click into the review text area
-5. Type a draft review comment
-6. **Do NOT select Approve or Request Changes** — leave as "Comment" only
-7. **STOP — do NOT click "Submit review"**
+1. **Fetch PR context:** Run the script with `--context <owner> <repo> pr <number>` to get:
+   - Full diff, PR description, conversation comments, inline review comments
+   - Linked GitHub issues (parsed from "Fix #123" / "Closes #123" in PR body)
+   - Linked JIRA ticket keys (parsed from "SITES-1234" patterns in PR body/title)
 
-**Draft review guidance:**
-- Acknowledge the PR ("Thanks for the PR — taking a look")
-- Note what you'll focus on based on the PR title/description
-- If CI is failing: "CI is failing — will need that resolved before merge"
-- If it's a draft PR: note you'll review when marked ready
-- 2-3 sentences — you haven't read the full diff yet
+2. **Enrich with linked issues:** If `linkedJiraKeys` is non-empty and JIRA is available, fetch those tickets via `node {scripts_path}/fetch-jira.js --search "key = SITES-1234"` to add business context (ticket title, description, acceptance criteria).
+
+3. **Generate review:** Using the pr-review skill's framework (multi-perspective: Architecture, SRE, Security, QA, Product), generate a full review of the PR. Include:
+   - Summary (what the PR does, overall assessment)
+   - Strengths (genuine positives)
+   - Issues (Blockers / Should Fix / Nice to Have) with file:line references
+   - Verdict (Ready to merge / With fixes / No)
+
+   If a linked JIRA ticket or GitHub issue was found, check whether the implementation matches the stated requirements.
+
+4. **Stage pending review:** Pipe the review body to `stage-github-review.js`:
+   ```bash
+   echo '{"owner":"org","repo":"name","number":123,"body":"...review...","instance":"com"}' | node {scripts_path}/stage-github-review.js
+   ```
+   For corporate GitHub, set `"instance":"corp"`.
+
+   The review stays invisible to others until the user clicks "Submit review" in the GitHub UI. The user can edit the review before submitting.
 
 **Issue comment replies → local MD fragment** (no draft persistence on navigation):
 
-Write a file to `{vault}/drafts/{date}-github-{repo-slug}-{issue-number}-comment.md`
+1. **Fetch issue context:** Run `--context <owner> <repo> issue <number>` to get the issue body, all comments, labels, and assignees.
 
-```markdown
-# Draft: GitHub {org}/{repo} #{number} comment
-**Issue:** [{org}/{repo}#{number}]({issue-url}) — {issue-title}
-**Context:** {1-line summary of what prompted this draft}
-**Date:** {YYYY-MM-DD}
+2. **Generate reply draft:** Based on the issue context, generate a response.
 
----
-
-{draft comment text}
-```
+3. **Write to vault:** Pipe to `stage-local-draft.js`:
+   ```bash
+   echo '{"tool":"github","target":"org/repo#123","url":"https://...","title":"...","context":"...","draft":"..."}' | node {scripts_path}/stage-local-draft.js --vault {vault_path}
+   ```
 
 ### Output
 
@@ -94,17 +99,17 @@ Return to orchestrator:
 ```markdown
 ### github.com
 - 🔴 **feat: add OAuth2 support** — `myorg/my-repo` [#482](https://github.com/myorg/my-repo/pull/482)
-  Review requested by Alice. CI: ✅ → [Draft staged]
+  Review requested by Alice. CI: ✅ → [Pending review staged]
   *(2h ago)*
 - ℹ️ **fix: null pointer in auth flow** — `myorg/my-repo` [#478](...)
   Your PR has 2 new comments from Alice.
 
 ### Corporate GitHub
 - 🔴 **INFRA-482 migration script** — `myorg/infra` [#91](...)
-  Review requested. CI failing: `build`, `test`. → [Draft staged]
+  Review requested. CI failing: `build`, `test`. → [Pending review staged]
 
 ### Staged Drafts (2)
-- [ ] myorg/my-repo #482 → Review staged in browser · [Open PR](https://github.com/myorg/my-repo/pull/482)
+- [ ] myorg/my-repo #482 → Pending review staged · [Open PR](https://github.com/myorg/my-repo/pull/482)
 - [ ] [[2026-03-19-github-myorg-infra-91-comment]] → [Open issue](https://git.corp.adobe.com/...)
 ```
 
@@ -133,8 +138,9 @@ Return a direct, conversational answer with PR numbers, links, and context.
 | Corporate GitHub won't load | Skip, report "Corporate GitHub unreachable — check VPN?" |
 | 0 unread notifications | Report "Nothing to report." — not an error |
 | PR page fails to load | Include notification title only, skip enrichment |
-| Review textarea not found | Skip draft, log, continue |
+| Context fetch fails for drafting | Skip draft for that item, continue with next |
+| Pending review creation fails | Log error, fall back to local MD fragment |
 
 ## Safety constraint
 
-**Never merge PRs, push code, close issues, approve reviews, or request changes.** Stage draft review comments only (as "Comment", never "Approve" or "Request changes"). The user reads the diff and submits.
+**Never merge PRs, push code, close issues, approve reviews, or request changes.** Stage draft review comments only via pending review API (no event = pending). The user reads the diff and submits.
