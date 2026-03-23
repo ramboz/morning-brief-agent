@@ -40,9 +40,13 @@ const userCache = new Map()
  * @param {string} ts - Slack timestamp e.g. "1774231595.570069"
  * @returns {string}
  */
-function makePermalink(workspaceUrl, channelId, ts) {
+function makePermalink(workspaceUrl, channelId, ts, threadTs = null) {
   const tsNoDot = ts.replace('.', '')
-  return `${workspaceUrl}archives/${channelId}/p${tsNoDot}`
+  const base = `${workspaceUrl}archives/${channelId}/p${tsNoDot}`
+  if (threadTs && threadTs !== ts) {
+    return `${base}?thread_ts=${threadTs}&cid=${channelId}`
+  }
+  return base
 }
 
 /**
@@ -182,7 +186,7 @@ async function fetchMentions(slack, userId, since, channelNameById, workspaceUrl
         user,
         text: resolveText(match.text),
         threadTs: match.thread_ts && match.thread_ts !== match.ts ? match.thread_ts : null,
-        permalink: match.permalink || makePermalink(workspaceUrl, channelId, match.ts)
+        permalink: match.permalink || makePermalink(workspaceUrl, channelId, match.ts, match.thread_ts)
       })
     }
     return mentions
@@ -245,7 +249,7 @@ async function fetchThreadUpdates(slack, userId, since, channelNameById, workspa
             ts: r.ts,
             user,
             text: resolveText(r.text),
-            permalink: makePermalink(workspaceUrl, channelId, r.ts)
+            permalink: makePermalink(workspaceUrl, channelId, r.ts, match.thread_ts)
           })
         }
 
@@ -347,11 +351,12 @@ async function fetchChannelHistories(slack, priorityChannels, userId, since, ign
           if (!includeBotMessage(msg, botExceptionKeywords)) continue
         }
         const user = await resolveUser(slack, msg.user || msg.bot_id || 'bot')
+        const msgThreadTs = msg.thread_ts && msg.thread_ts !== msg.ts ? msg.thread_ts : null
         messages.push({
           ts: msg.ts,
           user,
           text: resolveText(msg.text),
-          permalink: makePermalink(workspaceUrl, ch.id, msg.ts),
+          permalink: makePermalink(workspaceUrl, ch.id, msg.ts, msgThreadTs),
           replyCount: msg.reply_count || 0,
           reactions: (msg.reactions || []).map(r => ({ name: r.name, count: r.count }))
         })
@@ -472,7 +477,7 @@ async function runContext(slack, channelId, threadTs, workspaceUrl) {
       ts: msg.ts,
       user,
       text: resolveText(msg.text),
-      permalink: makePermalink(workspaceUrl, channelId, msg.ts),
+      permalink: makePermalink(workspaceUrl, channelId, msg.ts, msg.ts === threadTs ? null : threadTs),
       isParent: msg.ts === threadTs
     })
   }
