@@ -1,12 +1,12 @@
 ---
 name: morning-confluence
-description: Confluence DC sub-agent — three-step workflow (gather via REST API script, analyze page changes/mentions, no draft staging). Read-only. Supports Morning Brief and Deep Dive modes.
+description: Confluence DC sub-agent — three-step workflow (gather via REST API script, analyze page changes/mentions, stage draft page comments as local Markdown fragments). Read-only — never edits pages directly. Supports Morning Brief and Deep Dive modes.
 allowed-tools: bash, computer
 ---
 
 # Morning Confluence
 
-Read-only — never edit pages or add comments.
+Read-only — never edit pages or add comments directly. Draft page comments are written as local Markdown fragments for the user to review and post manually.
 
 ## Load config
 
@@ -65,13 +65,49 @@ await writeFile(join(dir, 'wiki-state.json'), JSON.stringify(state, null, 2));
 "
 ```
 
-**No draft staging** — Confluence is strictly read-only.
+### Step 3 — DRAFT (local MD fragment — if draft_enabled)
+
+Confluence is read-only — we never edit pages or post comments via API. But the user may want to draft page comments for items where they were @mentioned or where a discussion needs their input.
+
+For each draft target (pages where user was mentioned with a question, or decision pages needing review feedback):
+
+#### 3a. Enrich context
+
+Run: `node {scripts_path}/fetch-confluence.js --context <pageId>`
+
+This fetches the full page with all comments, so the draft has enough context.
+
+#### 3b. Generate draft text
+
+Write a draft page comment in plain text or simple Confluence wiki markup.
+
+#### 3c. Stage as local MD fragment
+
+Pipe to: `node {scripts_path}/stage-local-draft.js --vault {vault_path}`
+
+Input (JSON on stdin):
+```json
+{
+  "tool": "confluence",
+  "target": "3679259926",
+  "url": "https://wiki.corp.adobe.com/...",
+  "title": "Page Title",
+  "context": "Ravi mentioned you asking for review of auth approach",
+  "draft": "The draft comment text"
+}
+```
+
+Writes to: `{vault}/drafts/YYYY-MM-DD-confluence-{pageId}-comment.md`
+
+**Skip drafting for:** Pages with no question directed at user; minor formatting edits; pages the user themselves edited.
+
+See: `docs/decisions/ADR-002-draft-generation-and-delivery.md`
 
 ### Output
 
 Return to orchestrator:
 - Daily note section (formatted markdown)
-- No draft targets
+- Draft targets list (if any)
 
 ### Daily note section format
 
@@ -113,4 +149,4 @@ Return a direct, conversational answer with page titles, excerpts, and links.
 
 ## Safety constraint
 
-**Never edit pages or add comments.** If the editor opens accidentally, close without saving.
+**Never edit pages or add comments via the Confluence API or browser.** Draft comments are written as local Markdown files only — the user reviews and posts them manually. If the editor opens accidentally, close without saving.

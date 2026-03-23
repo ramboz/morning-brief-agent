@@ -50,22 +50,17 @@ Classify each ticket:
 
 JIRA has no draft persistence — content typed into the comment box is lost on navigation. Do NOT open the browser for drafting.
 
-For each draft target, write a local Markdown file:
+For each draft target:
 
-**Filename:** `{vault}/drafts/{date}-jira-{ticket-key}-comment.md`
-**Example:** `2026-03-19-jira-SITES-38240-comment.md`
+#### 3a. Enrich context
 
-**File format:**
-```markdown
-# Draft: JIRA {ticket-key} comment
-**Ticket:** [{ticket-key}]({ticket-url}) — {ticket-title}
-**Context:** {1-line summary of what prompted this draft}
-**Date:** {YYYY-MM-DD}
+Run: `node {scripts_path}/fetch-jira.js --context <TICKET-KEY>`
 
----
+This fetches the full ticket with ALL comments (not just the last 3), description, status, assignee, and labels — giving enough context for a quality draft.
 
-{draft comment text}
-```
+#### 3b. Generate draft text
+
+Using the enriched context, write a draft JIRA comment in plain text.
 
 **Draft guidance:**
 - Address the specific question in the most recent relevant comment
@@ -74,7 +69,27 @@ For each draft target, write a local Markdown file:
 - Status request: write a brief, accurate status update
 - Never fabricate technical details
 
+#### 3c. Stage as local MD fragment
+
+Pipe to: `node {scripts_path}/stage-local-draft.js --vault {vault_path}`
+
+Input (JSON on stdin):
+```json
+{
+  "tool": "jira",
+  "target": "SITES-38280",
+  "url": "https://jira.corp.adobe.com/browse/SITES-38280",
+  "title": "Target Offer Management Servlet",
+  "context": "Alice asked about token refresh approach",
+  "draft": "The draft comment text"
+}
+```
+
+Writes to: `{vault}/drafts/YYYY-MM-DD-jira-{TICKET-KEY}-comment.md`
+
 **Skip drafting for:** Tickets with no question directed at user; tickets needing info the agent doesn't have.
+
+See: `docs/decisions/ADR-002-draft-generation-and-delivery.md`
 
 ### Output
 

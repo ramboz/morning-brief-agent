@@ -6,6 +6,7 @@
  * Modes:
  *   --brief              Lookback scan: recently updated pages in watched spaces
  *   --search "query"     Deep Dive: CQL search by keyword
+ *   --context <pageId>   Fetch page with all comments (for draft enrichment)
  *
  * Standalone: node scripts/fetch-confluence.js --brief
  * Reference:  specs/07-confluence.md
@@ -267,6 +268,56 @@ async function runSearch(baseUrl, token, spaces, query) {
   }
 }
 
+/**
+ * Run the context mode: fetch a single page with all comments for draft enrichment.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} pageId - Confluence page ID
+ * @returns {Promise<object>} Full page context with comments
+ */
+async function runContext(baseUrl, token, pageId) {
+  // Fetch page content
+  const page = await confluenceGet(baseUrl, token, `/rest/api/content/${pageId}`, {
+    expand: 'version,space,body.excerpt,ancestors,body.storage'
+  })
+
+  const spaceKey = page.space?.key ?? ''
+  const titleSlug = encodeURIComponent((page.title ?? '').replace(/ /g, '+'))
+  const url = page._links?.webui
+    ? `${baseUrl}${page._links.webui}`
+    : `${baseUrl}/display/${spaceKey}/${titleSlug}`
+
+  // Fetch page comments
+  let comments = []
+  try {
+    const commentData = await confluenceGet(baseUrl, token,
+      `/rest/api/content/${pageId}/child/comment`,
+      { expand: 'body.storage,version', limit: 50 }
+    )
+    comments = (commentData.results ?? []).map(c => ({
+      author: c.version?.by?.displayName ?? c.version?.by?.username ?? 'unknown',
+      body: stripHtml(c.body?.storage?.value ?? '').slice(0, 500),
+      createdAt: c.version?.when ?? null
+    }))
+  } catch (err) {
+    console.error(`[${TOOL}] Failed to fetch comments for page ${pageId}:`, err.message)
+  }
+
+  return {
+    id: page.id,
+    title: page.title ?? '',
+    space: page.space?.name ?? spaceKey,
+    spaceKey,
+    url,
+    lastModifiedBy: page.version?.by?.displayName ?? 'unknown',
+    lastModifiedAt: page.version?.when ?? null,
+    version: page.version?.number ?? null,
+    breadcrumb: buildBreadcrumb(page.ancestors ?? []),
+    excerpt: stripHtml(page.body?.excerpt?.value ?? '').slice(0, 500),
+    comments
+  }
+}
+
 async function main() {
   const { mode, query, lookbackHours } = parseArgs()
 
@@ -324,9 +375,17 @@ async function main() {
 
   const username = currentUser?.username ?? currentUser?.displayName ?? ''
 
+  // Check for --context mode (not handled by parseArgs)
+  const contextIdx = process.argv.indexOf('--context')
+  const contextPageId = contextIdx !== -1 ? process.argv[contextIdx + 1] : null
+
   try {
     let data
-    if (mode === 'search') {
+    if (contextPageId) {
+      data = await runContext(baseUrl, token, contextPageId)
+      console.log(JSON.stringify(envelope(TOOL, 'context', data)))
+      return
+    } else if (mode === 'search') {
       if (!query) {
         console.log(JSON.stringify(envelope(TOOL, mode, null, ['--search requires a query string'])))
         return

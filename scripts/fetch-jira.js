@@ -6,6 +6,7 @@
  * Modes:
  *   --brief              Lookback scan: assigned tickets, commented, mentioned
  *   --search "query"     Deep Dive: JQL search by keyword
+ *   --context SITES-123  Fetch full ticket with all comments (for draft enrichment)
  *
  * Standalone: node scripts/fetch-jira.js --brief
  * Reference:  specs/06-jira.md
@@ -216,6 +217,43 @@ async function runSearch(baseUrl, token, projects, query) {
   }
 }
 
+/**
+ * Run the context mode: fetch a single ticket with ALL comments for draft enrichment.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} ticketKey - e.g. "SITES-38280"
+ * @returns {Promise<object>} Full ticket context
+ */
+async function runContext(baseUrl, token, ticketKey) {
+  const allFields = 'summary,status,priority,assignee,reporter,updated,comment,labels,issuetype,parent,description'
+  const data = await jiraGet(baseUrl, token, `/rest/api/2/issue/${ticketKey}`, {
+    fields: allFields,
+    expand: 'renderedFields'
+  })
+
+  const f = data.fields ?? {}
+  const comments = (f.comment?.comments ?? []).map(c => ({
+    author: c.author?.displayName ?? c.author?.name ?? 'unknown',
+    body: stripJiraMarkup(c.body ?? ''),
+    createdAt: c.created
+  }))
+
+  return {
+    key: data.key,
+    summary: f.summary ?? '',
+    description: stripJiraMarkup(f.description ?? '').slice(0, 2000),
+    type: f.issuetype?.name ?? 'Unknown',
+    status: f.status?.name ?? 'Unknown',
+    priority: f.priority?.name ?? 'Unknown',
+    assignee: f.assignee?.displayName ?? f.assignee?.name ?? 'Unassigned',
+    reporter: f.reporter?.displayName ?? f.reporter?.name ?? 'unknown',
+    labels: f.labels ?? [],
+    updatedAt: f.updated,
+    url: `${baseUrl}/browse/${data.key}`,
+    comments
+  }
+}
+
 async function main() {
   const { mode, query, lookbackHours } = parseArgs()
 
@@ -292,9 +330,17 @@ async function main() {
     // Other HTTP errors from the probe — fall through and let individual queries handle
   }
 
+  // Check for --context mode (not handled by parseArgs)
+  const contextIdx = process.argv.indexOf('--context')
+  const contextKey = contextIdx !== -1 ? process.argv[contextIdx + 1] : null
+
   try {
     let data
-    if (mode === 'search') {
+    if (contextKey) {
+      data = await runContext(baseUrl, token, contextKey)
+      console.log(JSON.stringify(envelope(TOOL, 'context', data)))
+      return
+    } else if (mode === 'search') {
       if (!query) {
         console.log(JSON.stringify(envelope(TOOL, mode, null, ['--search requires a query string'])))
         return
