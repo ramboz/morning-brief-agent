@@ -8,11 +8,12 @@
   "tools": {
     "slack": {
       "enabled": true,
-      "gather_method": "connector",
-      "gather_fallback": "browser",
-      "draft_method": "browser",
+      "gather_method": "script",
+      "gather_fallback": "connector",
+      "draft_method": "slack_dm",
       "draft_enabled": true,
-      "url": "https://app.slack.com"
+      "url": "https://app.slack.com",
+      "note": "Drafts posted to self-DM via stage-slack-draft.js. Requires chat:write + im:write scopes."
     },
     "outlook": {
       "enabled": true,
@@ -22,7 +23,8 @@
       "draft_enabled": true,
       "auto_archive": true,
       "auto_delete": false,
-      "url": "https://outlook.office.com"
+      "url": "https://outlook.office.com",
+      "note": "Phase 3 — blocked on Azure App permissions. Browser compose auto-saves to Drafts."
     },
     "teams": {
       "enabled": true,
@@ -35,37 +37,49 @@
     "jira": {
       "enabled": true,
       "gather_method": "script",
-      "draft_method": "md_fragment",
+      "draft_method": "local_md",
       "draft_enabled": true,
-      "url": "https://jira.yourcompany.com"
+      "url": "https://jira.yourcompany.com",
+      "note": "Drafts written to {vault}/drafts/ as MD fragments via stage-local-draft.js."
     },
     "confluence": {
       "enabled": true,
       "gather_method": "script",
-      "draft_method": "none",
+      "draft_method": "local_md",
       "draft_enabled": false,
-      "url": "https://confluence.yourcompany.com"
+      "url": "https://confluence.yourcompany.com",
+      "note": "Read-only by default. Enable draft_enabled to generate page comment drafts as local MD fragments."
     },
     "github_com": {
       "enabled": true,
-      "gather_method": "connector",
-      "gather_fallback": "script",
-      "draft_method": "browser_pr_reviews_md_fragment_issues",
+      "gather_method": "script",
+      "gather_fallback": "connector",
+      "draft_method": "github_api",
       "draft_enabled": true,
-      "url": "https://github.com"
+      "url": "https://github.com",
+      "note": "PR reviews: pending review via API (stage-github-review.js). Issue comments: local MD fragments."
     },
     "github_corp": {
       "enabled": true,
       "gather_method": "script",
-      "draft_method": "browser_pr_reviews_md_fragment_issues",
+      "draft_method": "github_api",
       "draft_enabled": true,
-      "url": "https://github.yourcompany.com"
+      "url": "https://github.yourcompany.com",
+      "note": "Same as github_com but uses GITHUB_CORP_TOKEN and GITHUB_CORP_BASE_URL."
     },
     "ai_radar": {
       "enabled": true,
       "gather_method": "script",
       "draft_method": "none",
-      "draft_enabled": false
+      "draft_enabled": false,
+      "note": "Read-only. RSS/GitHub trending triage. No draft staging."
     }
+  },
+  "_draft_methods": {
+    "slack_dm": "Post to self-DM channel via Slack API (stage-slack-draft.js)",
+    "local_md": "Write Markdown fragment to {vault}/drafts/ (stage-local-draft.js)",
+    "github_api": "PR reviews: pending review via GitHub API (stage-github-review.js). Issues: local MD.",
+    "browser": "Claude in Chrome compose box (auto-saves to tool's native drafts)",
+    "none": "No draft staging for this tool"
   }
 }
