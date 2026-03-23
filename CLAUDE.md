@@ -239,7 +239,7 @@ echo "npx --no -- commitlint --edit \$1" > .husky/commit-msg
 
 | Tool | Gather (Layer 2) | Draft (Layer 3) | Config |
 |---|---|---|---|
-| Slack | Connector or `fetch-slack.js` | Claude in Chrome (compose box persists) | `slack-sections.json` |
+| Slack | Connector or `fetch-slack.js` | DM-to-self via `stage-slack-draft.js` (API, zero send risk) | `slack-sections.json` |
 | Outlook | M365 connector or browser fallback | Claude in Chrome (auto-saves to Drafts) | `outlook-rules.json` |
 | JIRA DC | `fetch-jira.js` (REST API) | Local MD fragment — no browser drafting (no draft persistence) | `jira-filters.json` |
 | Confluence DC | `fetch-confluence.js` (REST API) | None (read-only) | `confluence-spaces.json` |
@@ -249,7 +249,7 @@ echo "npx --no -- commitlint --edit \$1" > .husky/commit-msg
 
 When a connector is available and working, prefer it over the script. The script is the fallback.
 
-**Draft persistence rule (see ADR-001):** Tools with native draft persistence (Slack, Outlook) use browser compose staging. Tools without it (JIRA, GitHub issue comments) write local Markdown fragments to `{vault}/drafts/YYYY-MM-DD-{tool}-{id}-comment.md` and surface them in the daily note. GitHub PR reviews are the one exception — GitHub's "pending review" feature provides persistence, so browser staging is acceptable there.
+**Draft delivery rule (see ADR-002):** Slack uses DM-to-self via API (`stage-slack-draft.js`) — zero send risk, already formatted in mrkdwn. JIRA and GitHub issue comments write local Markdown fragments to `{vault}/drafts/YYYY-MM-DD-{tool}-{id}-comment.md` and surface them in the daily note. GitHub PR reviews use GitHub's native "pending review" feature via API. Outlook uses browser compose (auto-saves to Drafts). All drafts are surfaced in the daily note's Staged Drafts table.
 
 ---
 

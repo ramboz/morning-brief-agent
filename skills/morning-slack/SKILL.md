@@ -48,22 +48,46 @@ From the gathered data, classify and prioritize:
 
 **Identify draft targets:** Mentions/DMs where a reply is clearly expected (direct question, ongoing thread where user is awaited).
 
-### Step 3 — DRAFT (slow, targeted — if draft_enabled)
+### Step 3 — DRAFT (API-based — if draft_enabled)
 
-For each draft target, use Claude in Chrome:
+For each draft target identified in Step 2:
 
-1. Navigate to the specific thread, channel, or DM in Slack
-2. Click into the compose box at the bottom
-3. Type a draft reply
-4. **STOP — do NOT press Enter or click Send**
-5. Leave the text in the compose box
+#### 3a. Enrich context
 
-**Draft guidance:**
+Run: `node {scripts_path}/fetch-slack.js --context <channel_id> <thread_ts>`
+
+This fetches the full thread (all replies, participants, timestamps) so the draft has enough context to be "ready to paste."
+
+#### 3b. Generate draft text
+
+Using the enriched context, generate a draft reply in **Slack mrkdwn format**:
 - Keep it short (2-4 sentences), match the conversation tone
 - If insufficient context: "Thanks — I'll look into this and get back to you shortly."
 - Never fabricate technical facts or decisions
+- Use Slack mrkdwn: `*bold*`, `_italic_`, `<url|text>` links, `@username` mentions
 
 **Do NOT draft for:** FYI messages, announcements, ambiguous contexts.
+
+#### 3c. Stage via DM-to-self
+
+Pipe the draft to: `node {scripts_path}/stage-slack-draft.js`
+
+Input (JSON on stdin):
+```json
+{
+  "channel": "#channel-name",
+  "permalink": "https://slack.com/archives/C.../p...",
+  "summary": "One-line summary of what was asked",
+  "draft": "The draft reply text in Slack mrkdwn",
+  "target": "@username"
+}
+```
+
+The script posts a formatted draft to the user's own DM channel (self-chat). Zero send risk — it's a message to yourself. The user reviews, then copies the draft text to the target channel.
+
+Returns: `{ permalink, selfDmId, ts }` — use the permalink in the daily note's Staged Drafts table.
+
+See: `docs/decisions/ADR-002-draft-generation-and-delivery.md`
 
 ### Output
 
@@ -93,9 +117,9 @@ Return to orchestrator:
 _12 channels had activity. No mentions._
 
 ### Staged Drafts (3)
-1. #eng-general → Reply to Alice re: deployment plan
-2. #incidents → Acknowledgment of post-mortem assignment
-3. DM Bob Smith → Confirm sync tomorrow
+1. #eng-general → Reply to Alice re: deployment plan → [View draft in DMs](dm-permalink)
+2. #incidents → Acknowledgment of post-mortem assignment → [View draft in DMs](dm-permalink)
+3. DM Bob Smith → Confirm sync tomorrow → [View draft in DMs](dm-permalink)
 ```
 
 ---
@@ -119,4 +143,6 @@ Return a direct, conversational answer with message excerpts and context.
 | Connector/API unavailable | Try gather_fallback, then report error |
 | Login screen (browser) | Stop, report "Slack requires login" |
 | Channel not found | Skip, continue |
-| Compose box not accessible | Skip draft, log, continue |
+| SLACK_USER_TOKEN missing chat:write/im:write scopes | Skip drafts, log scope error, continue |
+| stage-slack-draft.js fails | Skip that draft, log error, continue with next |
+| --context returns empty thread | Draft with limited context, note in draft message |

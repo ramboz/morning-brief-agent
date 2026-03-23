@@ -123,13 +123,60 @@ Write to: `{vault_path}/{daily_notes_folder}/{YYYY-MM-DD}.md`
 For skipped tools: `_Skipped — {reason}_`
 For empty sections: `_Nothing to report._`
 
-## Step 4 — Stage drafts (Layer 3 — slow, targeted)
+## Step 4 — Stage drafts (per-tool delivery)
 
-For each sub-agent that identified draft targets, use Claude in Chrome to stage drafts in the tool's compose UI. Run sequentially (one tool at a time).
+For each tool that identified draft targets in Step 2, stage drafts using the tool's delivery method. Only stage drafts for tools where `draft_enabled: true` in config.
 
-Each sub-agent's SKILL.md defines how to navigate to the target and compose the draft. The orchestrator coordinates the order.
+### Draft delivery methods by tool
 
-**Only stage drafts for tools where `draft_enabled: true` and `draft_method: "browser"`.**
+| Tool | Method | How |
+|---|---|---|
+| Slack | **DM-to-self** (API) | Enrich context → generate draft → post to self-DM via `stage-slack-draft.js` |
+| JIRA | **Local MD fragment** | Write draft comment to `{vault}/drafts/YYYY-MM-DD-jira-{KEY}-comment.md` |
+| GitHub Issues | **Local MD fragment** | Write draft comment to `{vault}/drafts/YYYY-MM-DD-github-{repo}-{num}-comment.md` |
+| GitHub PRs | **Pending review** (API) | Stage review comments via GitHub API (pending, not submitted) |
+| Confluence | None | Read-only — no drafts |
+| Outlook | **Browser** (deferred) | Claude in Chrome to compose draft email (Phase 3) |
+
+See: `docs/decisions/ADR-002-draft-generation-and-delivery.md`
+
+### Slack draft pipeline
+
+For each Slack draft target (mentions/DMs where a reply is expected):
+
+1. **Enrich context**: Run `node {scripts_path}/fetch-slack.js --context <channel_id> <thread_ts>` to fetch the full thread
+2. **Generate draft**: Using the enriched context, write a reply in Slack mrkdwn format (short, professional, matches conversation tone)
+3. **Stage**: Pipe JSON to `node {scripts_path}/stage-slack-draft.js` via stdin:
+   ```json
+   {"channel":"#channel-name","permalink":"https://...","summary":"...","draft":"...","target":"@user"}
+   ```
+4. **Record**: Capture the returned DM permalink for the Staged Drafts table in the daily note
+
+### JIRA / GitHub issue draft pipeline (local MD fragments)
+
+1. Write a markdown file to `{vault}/drafts/` with frontmatter (tool, target, url, context, generated timestamp)
+2. Body is the draft comment text, ready to copy-paste
+3. Record the file link in the Staged Drafts table
+
+### Draft quality guidelines
+
+- **Ready to paste** with minimal edits — not a summary, an actual reply
+- Professional tone matching the user's style
+- Never fabricate technical facts or decisions
+- If insufficient context: "Thanks — I'll look into this and get back to you shortly."
+- Do NOT draft for: FYI messages, announcements, ambiguous contexts
+
+### Update daily note with draft results
+
+After all drafts are staged, update the `<!-- AGENT:drafts_summary -->` section:
+
+```markdown
+| # | Tool | Target | Draft | Status |
+|---|---|---|---|---|
+| 1 | Slack | [#channel → @user](permalink) | [View in DMs](dm-permalink) | 📝 Review |
+| 2 | JIRA | [SITES-123](jira-url) | [[YYYY-MM-DD-jira-SITES-123-comment]] | 📝 Review |
+| 3 | GitHub | [repo #42](pr-url) | Pending review staged | 📝 Review |
+```
 
 ## Step 5 — Save state and report
 
@@ -187,7 +234,11 @@ Present conversationally in Cowork. No daily note written unless the user asks t
 After presenting results, ask:
 > "Want me to draft responses for any of these?"
 
-If yes, use Claude in Chrome for the specific items.
+If yes, use the tool-appropriate draft method (see Step 4 in Morning Brief Mode):
+- Slack → DM-to-self via `stage-slack-draft.js`
+- JIRA / GitHub Issues → local MD fragment in vault
+- GitHub PRs → pending review via API
+- Outlook → Claude in Chrome (when available)
 
 ---
 
