@@ -6,6 +6,8 @@
  * Reference: specs/08-github.md
  */
 
+import { withRetry } from './config.js'
+
 /** Default config used when config file is missing */
 export const DEFAULT_CONFIG = {
   notifications: {
@@ -48,17 +50,19 @@ export async function githubGet(baseUrl, token, path, params = {}) {
   ).toString()
   const url = `${baseUrl}${path}${qs ? '?' + qs : ''}`
 
-  const res = await fetch(url, { headers: apiHeaders(token) })
+  return withRetry(async () => {
+    const res = await fetch(url, { headers: apiHeaders(token) })
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    const err = new Error(`${res.status} ${res.statusText} — ${url}\n${body.slice(0, 200)}`)
-    err.status = res.status
-    throw err
-  }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      const err = new Error(`${res.status} ${res.statusText} — ${url}\n${body.slice(0, 200)}`)
+      err.status = res.status
+      throw err
+    }
 
-  const data = await res.json()
-  return { data, headers: res.headers }
+    const data = await res.json()
+    return { data, headers: res.headers }
+  }, { label: `github:${path}` })
 }
 
 /**
@@ -329,21 +333,24 @@ export async function runSearch(baseUrl, token, instanceConfig, query, instanceL
  */
 export async function githubPost(baseUrl, token, path, body) {
   const url = `${baseUrl}${path}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { ...apiHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  })
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    const err = new Error(`${res.status} ${res.statusText} — ${url}\n${text.slice(0, 200)}`)
-    err.status = res.status
-    throw err
-  }
+  return withRetry(async () => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { ...apiHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
 
-  const data = await res.json()
-  return { data, headers: res.headers }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      const err = new Error(`${res.status} ${res.statusText} — ${url}\n${text.slice(0, 200)}`)
+      err.status = res.status
+      throw err
+    }
+
+    const data = await res.json()
+    return { data, headers: res.headers }
+  }, { label: `github:POST:${path}` })
 }
 
 /**

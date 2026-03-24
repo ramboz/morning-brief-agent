@@ -6,8 +6,11 @@
  *   Confluence: https://confluence.yourcompany.com/secure/ViewProfile.jspa → Personal Access Tokens
  */
 
+import { withRetry } from './config.js'
+
 /**
  * Make an authenticated request to an Atlassian DC instance using Bearer PAT auth.
+ * Automatically retries once on transient failures (network errors, 502/503/429).
  * @param {string} baseUrl - Instance base URL (e.g. https://jira.yourcompany.com)
  * @param {string} path - API path (e.g. /rest/api/2/search)
  * @param {string} token - Personal Access Token
@@ -18,22 +21,24 @@
 export async function atlassianFetch(baseUrl, path, token, options = {}) {
   const url = `${baseUrl}${path}`
 
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      ...options.headers
+  return withRetry(async () => {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        ...options.headers
+      }
+    })
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      const err = new Error(`${res.status} ${res.statusText} — ${url}\n${body.slice(0, 200)}`)
+      err.status = res.status
+      throw err
     }
-  })
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    const err = new Error(`${res.status} ${res.statusText} — ${url}\n${body.slice(0, 200)}`)
-    err.status = res.status
-    throw err
-  }
-
-  return res.json()
+    return res.json()
+  }, { label: `atlassian:${path}` })
 }

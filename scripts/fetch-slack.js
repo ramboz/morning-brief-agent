@@ -29,6 +29,9 @@ const TOOL = 'slack'
 /** Rate limit helper — 1.2s between Tier 3 calls (50 req/min) */
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 
+/** Concurrency limit for channel history fetches (Tier 3: 50 req/min) */
+const CHANNEL_BATCH_SIZE = 5
+
 /** In-memory cache for user ID → display name resolution */
 const userCache = new Map()
 
@@ -282,50 +285,102 @@ async function fetchThreadUpdates(slack, userId, since, channelNameById, workspa
  * @returns {Promise<object[]>}
  */
 async function fetchDMs(slack, userId, since, workspaceUrl) {
-  const dms = []
   const oldest = (since.getTime() / 1000).toString()
 
   try {
     const res = await slack.conversations.list({ types: 'im,mpim', limit: 100 })
-    for (const dm of (res.channels || [])) {
-      try {
-        await sleep(1200)
-        const hist = await slack.conversations.history({ channel: dm.id, oldest, limit: 50 })
-        if (!hist.messages?.length) continue
+    const dmChannels = res.channels || []
+    const dms = []
 
-        const messages = []
-        for (const msg of hist.messages) {
-          if (msg.subtype) continue
-          const user = await resolveUser(slack, msg.user || '')
-          messages.push({
-            ts: msg.ts,
-            isFromMe: msg.user === userId,
-            user,
-            text: resolveText(msg.text),
-            permalink: makePermalink(workspaceUrl, dm.id, msg.ts)
-          })
-        }
-        if (!messages.length) continue
+    // Fetch DM histories in parallel batches
+    for (let i = 0; i < dmChannels.length; i += CHANNEL_BATCH_SIZE) {
+      const batch = dmChannels.slice(i, i + CHANNEL_BATCH_SIZE)
+      const batchResults = await Promise.allSettled(
+        batch.map(async (dm) => {
+          const hist = await slack.conversations.history({ channel: dm.id, oldest, limit: 50 })
+          if (!hist.messages?.length) return null
 
-        const otherUserId = dm.user || (dm.members || []).find(id => id !== userId)
-        const withUser = otherUserId
-          ? await resolveUser(slack, otherUserId)
-          : { id: 'group', name: dm.name || 'Group DM' }
+          const messages = []
+          for (const msg of hist.messages) {
+            if (msg.subtype) continue
+            const user = await resolveUser(slack, msg.user || '')
+            messages.push({
+              ts: msg.ts,
+              isFromMe: msg.user === userId,
+              user,
+              text: resolveText(msg.text),
+              permalink: makePermalink(workspaceUrl, dm.id, msg.ts)
+            })
+          }
+          if (!messages.length) return null
 
-        dms.push({ dmId: dm.id, url: makeChannelUrl(workspaceUrl, dm.id), withUser, messages })
-      } catch (err) {
-        console.error(`[slack] DM fetch failed (${dm.id}):`, err.message)
+          const otherUserId = dm.user || (dm.members || []).find(id => id !== userId)
+          const withUser = otherUserId
+            ? await resolveUser(slack, otherUserId)
+            : { id: 'group', name: dm.name || 'Group DM' }
+
+          return { dmId: dm.id, url: makeChannelUrl(workspaceUrl, dm.id), withUser, messages }
+        })
+      )
+      for (const r of batchResults) {
+        if (r.status === 'fulfilled' && r.value) dms.push(r.value)
+        else if (r.status === 'rejected') console.error(`[slack] DM fetch failed:`, r.reason?.message)
       }
+      if (i + CHANNEL_BATCH_SIZE < dmChannels.length) await sleep(1200)
     }
+
+    return dms
   } catch (err) {
     console.error('[slack] DMs list failed:', err.message)
+    return []
   }
-  return dms
 }
 
 /**
- * Fetch full message history for priority channels (sequential, rate-limited).
- * Filters out the authenticated user's own messages.
+ * Fetch history for a single channel.
+ * @param {WebClient} slack
+ * @param {{ id: string, name: string, section: string }} ch
+ * @param {string} userId
+ * @param {string} oldest
+ * @param {boolean} ignoreBots
+ * @param {string[]} botExceptionKeywords
+ * @param {string} workspaceUrl
+ * @returns {Promise<object>}
+ */
+async function fetchSingleChannel(slack, ch, userId, oldest, ignoreBots, botExceptionKeywords, workspaceUrl) {
+  const hist = await slack.conversations.history({ channel: ch.id, oldest, limit: 200 })
+  const messages = []
+
+  for (const msg of (hist.messages || [])) {
+    if (msg.user === userId) continue // filter own messages
+    if ((msg.subtype === 'bot_message' || msg.bot_id) && ignoreBots) {
+      if (!includeBotMessage(msg, botExceptionKeywords)) continue
+    }
+    const user = await resolveUser(slack, msg.user || msg.bot_id || 'bot')
+    const msgThreadTs = msg.thread_ts && msg.thread_ts !== msg.ts ? msg.thread_ts : null
+    messages.push({
+      ts: msg.ts,
+      user,
+      text: resolveText(msg.text),
+      permalink: makePermalink(workspaceUrl, ch.id, msg.ts, msgThreadTs),
+      replyCount: msg.reply_count || 0,
+      reactions: (msg.reactions || []).map(r => ({ name: r.name, count: r.count }))
+    })
+  }
+
+  return {
+    id: ch.id,
+    name: ch.name,
+    url: makeChannelUrl(workspaceUrl, ch.id),
+    section: ch.section,
+    messages,
+    threadReplies: []
+  }
+}
+
+/**
+ * Fetch full message history for priority channels in parallel batches.
+ * Processes CHANNEL_BATCH_SIZE channels concurrently to respect rate limits.
  * @param {WebClient} slack
  * @param {{ id: string, name: string, section: string }[]} priorityChannels
  * @param {string} userId
@@ -339,39 +394,22 @@ async function fetchChannelHistories(slack, priorityChannels, userId, since, ign
   const oldest = (since.getTime() / 1000).toString()
   const results = []
 
-  for (const ch of priorityChannels) {
-    try {
-      await sleep(1200)
-      const hist = await slack.conversations.history({ channel: ch.id, oldest, limit: 200 })
-      const messages = []
-
-      for (const msg of (hist.messages || [])) {
-        if (msg.user === userId) continue // filter own messages
-        if ((msg.subtype === 'bot_message' || msg.bot_id) && ignoreBots) {
-          if (!includeBotMessage(msg, botExceptionKeywords)) continue
-        }
-        const user = await resolveUser(slack, msg.user || msg.bot_id || 'bot')
-        const msgThreadTs = msg.thread_ts && msg.thread_ts !== msg.ts ? msg.thread_ts : null
-        messages.push({
-          ts: msg.ts,
-          user,
-          text: resolveText(msg.text),
-          permalink: makePermalink(workspaceUrl, ch.id, msg.ts, msgThreadTs),
-          replyCount: msg.reply_count || 0,
-          reactions: (msg.reactions || []).map(r => ({ name: r.name, count: r.count }))
-        })
+  for (let i = 0; i < priorityChannels.length; i += CHANNEL_BATCH_SIZE) {
+    const batch = priorityChannels.slice(i, i + CHANNEL_BATCH_SIZE)
+    const batchResults = await Promise.allSettled(
+      batch.map(ch => fetchSingleChannel(slack, ch, userId, oldest, ignoreBots, botExceptionKeywords, workspaceUrl))
+    )
+    for (let j = 0; j < batchResults.length; j++) {
+      const r = batchResults[j]
+      if (r.status === 'fulfilled') {
+        results.push(r.value)
+      } else {
+        console.error(`[slack] Channel history failed (${batch[j].name}):`, r.reason?.message)
       }
-
-      results.push({
-        id: ch.id,
-        name: ch.name,
-        url: makeChannelUrl(workspaceUrl, ch.id),
-        section: ch.section,
-        messages,
-        threadReplies: []
-      })
-    } catch (err) {
-      console.error(`[slack] Channel history failed (${ch.name}):`, err.message)
+    }
+    // Rate-limit pause between batches (not after the last one)
+    if (i + CHANNEL_BATCH_SIZE < priorityChannels.length) {
+      await sleep(1200)
     }
   }
   return results

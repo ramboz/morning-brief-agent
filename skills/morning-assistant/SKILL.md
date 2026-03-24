@@ -28,8 +28,19 @@ Extract:
 - `vault_path`, `daily_notes_folder`, `scripts_path`
 - `lookback_hours` (default 24; auto-72h on Mondays)
 - `tools` — per-tool config with `enabled`, `gather_method`, `draft_enabled`
+- `dry_run` — if `true` (or `--dry-run` CLI flag), skip all draft staging (Steps 1-3 run normally)
 
 Try to load: `~/.claude/skills/morning-assistant/state/last-run.json`
+
+### Stale config check
+
+For each enabled tool, check if its config file was last modified more than 30 days ago. If stale, add a warning to the daily note footer:
+
+```
+⚠️ Config warning: slack-sections.json last modified 45 days ago — channels may have changed
+```
+
+This uses the `checkConfigAge()` helper from `scripts/lib/config.js`.
 
 ## Step 1 — Gather data (Layer 2 — fast)
 
@@ -57,12 +68,14 @@ If `gather_fallback` is set and the primary method fails, try the fallback.
 
 ## Step 2 — Analyze and synthesize (Layer 1)
 
-Collect results from all sub-agents. Synthesize a ranked Action Items list (max 10):
+Collect results from all sub-agents. Synthesize a unified Action Items list (max 10), ranked by priority:
 
 1. Direct questions / explicit requests mentioning the user
 2. Items with deadlines
 3. Ongoing discussions where the user is awaited
 4. FYI / awareness items
+
+**Use relative timestamps** for all items. Instead of "2026-03-23T14:30:00Z", write "2h ago" or "yesterday". The `timeAgo()` utility from `scripts/lib/config.js` provides this formatting.
 
 ## Step 3 — Write the daily note
 
@@ -71,17 +84,14 @@ Write to: `{vault_path}/{daily_notes_folder}/{YYYY-MM-DD}.md`
 ```markdown
 # Daily Brief — {YYYY-MM-DD}
 
-## ⚡ Action Items
+## Action Items
 <!-- AGENT:action_items -->
-1. 🔴 **Reply to VP Engineering** (Email) — Q2 budget, due Friday → [Draft in Outlook]
-2. 🔴 **Review PR #482** (GitHub) — Retry logic → [Draft in GitHub]
+- [ ] 🔴 **Reply to VP Engineering** (Email) — Q2 budget, due Friday → [Draft in Outlook]
+- [ ] 🔴 **Review PR #482** (GitHub) — Retry logic, 2h ago → [Pending review staged](https://...)
+- [ ] 🟡 **Reply to Alice** (Slack) — auth migration thread, yesterday → [Draft in DMs](https://...)
+- [ ] 🟡 **Reply on SITES-1234** (JIRA) — deployment question → [[2026-03-23-jira-SITES-1234-comment]]
+- [ ] ℹ️ **Read: Q2 Planning** (Confluence) — updated by Bob (3 sections changed), 5h ago
 <!-- /AGENT:action_items -->
-
-## 📊 Staged Drafts Summary
-<!-- AGENT:drafts_summary -->
-| # | Tool | Target | Status |
-|---|---|---|---|
-<!-- /AGENT:drafts_summary -->
 
 ## 💬 Slack
 <!-- AGENT:slack -->
@@ -118,12 +128,21 @@ Write to: `{vault_path}/{daily_notes_folder}/{YYYY-MM-DD}.md`
 *Agent: Morning Assistant v2 (Cowork Hybrid)*
 ```
 
-**Re-run / smart merge:** If the file already exists, replace only content between matching `<!-- AGENT:{key} -->` / `<!-- /AGENT:{key} -->` anchors. Preserve everything else (including user edits).
+### Formatting rules
 
-For skipped tools: `_Skipped — {reason}_`
-For empty sections: `_Nothing to report._`
+**Unified Action Items checklist:** The Action Items section is a single `- [ ]` checklist combining both action items and staged drafts. Each item includes the tool source, a relative timestamp, and a link to the draft (DM permalink, vault wikilink, or PR URL). The user can tick items off in Obsidian as they work through them.
+
+**Section suppression:** If a tool returns zero items (no mentions, no updates, nothing actionable), **omit its section entirely** from the daily note. Do not include empty headers or "Nothing to report." lines — this reduces noise. Only include sections that have content.
+
+Exception: If a tool was enabled but *failed* (API error, timeout), include the section with a one-line error note: `_JIRA: unavailable — connection refused_`
+
+**Relative timestamps:** Use `timeAgo()` formatting throughout — both in action items and in per-tool sections. Examples: "2h ago", "yesterday", "3d ago".
+
+**Re-run / smart merge:** If the file already exists, replace only content between matching `<!-- AGENT:{key} -->` / `<!-- /AGENT:{key} -->` anchors. Preserve everything else (including user edits, checked checkboxes).
 
 ## Step 4 — Clean up old drafts, then stage new ones
+
+**If `dry_run` is enabled:** Skip this entire step. Add a note to the daily note footer: `_Dry-run mode — draft staging skipped_`
 
 ### Draft cleanup (runs first)
 
@@ -174,24 +193,47 @@ For each Slack draft target (mentions/DMs where a reply is expected):
 
 ### Update daily note with draft results
 
-After all drafts are staged, update the `<!-- AGENT:drafts_summary -->` section:
+After all drafts are staged, update the `<!-- AGENT:action_items -->` section. Each action item that has a draft should include the draft link inline:
 
-```markdown
-| # | Tool | Target | Draft | Status |
-|---|---|---|---|---|
-| 1 | Slack | [#channel → @user](permalink) | [View in DMs](dm-permalink) | 📝 Review |
-| 2 | JIRA | [SITES-123](jira-url) | [[YYYY-MM-DD-jira-SITES-123-comment]] | 📝 Review |
-| 3 | GitHub | [repo #42](pr-url) | Pending review staged | 📝 Review |
+- `→ [Draft in DMs](dm-permalink)` for Slack
+- `→ [[YYYY-MM-DD-jira-KEY-comment]]` for JIRA/GitHub issues (Obsidian wikilink)
+- `→ [Pending review staged](pr-url)` for GitHub PRs
+
+Items without drafts (FYI, read-only) get no draft link.
+
+## Step 5 — Save state and cache results
+
+### Save state
+Write: `~/.claude/skills/morning-assistant/state/last-run.json`
+
+### Cache brief results
+
+Write gathered data to: `~/.claude/skills/morning-assistant/state/brief-cache.json`
+
+```json
+{
+  "timestamp": "2026-03-23T08:00:00Z",
+  "lookbackHours": 24,
+  "results": {
+    "slack": { ... },
+    "jira": { ... },
+    "github_com": { ... },
+    "github_corp": { ... },
+    "confluence": { ... },
+    "ai_radar": { ... }
+  }
+}
 ```
 
-## Step 5 — Save state and report
+This cache is used by Deep Dive mode to avoid re-fetching when a Deep Dive runs within 1 hour of a brief. The cache is best-effort — if missing or stale, Deep Dive fetches fresh data.
 
-Write: `~/.claude/skills/morning-assistant/state/last-run.json`
+### Report to user
 
 Tell the user:
 - Action items found (count)
 - Drafts staged (count, per tool)
 - Tools skipped and why
+- Stale config warnings (if any)
 - Duration
 - Full path to the daily note
 
@@ -200,6 +242,12 @@ Tell the user:
 # Deep Dive Mode
 
 Route the user's question to the appropriate tool sub-agents.
+
+## Check brief cache first
+
+Before fetching, check `~/.claude/skills/morning-assistant/state/brief-cache.json`. If it exists and `timestamp` is less than 1 hour old, use the cached results for any tools that overlap with the query — skip re-fetching those tools. This makes Deep Dive nearly instant right after a morning brief.
+
+If the cache is stale or missing, fetch fresh data as normal.
 
 ## Detect target tools
 
@@ -228,7 +276,24 @@ For each target tool, spawn a sub-agent in search mode:
 
 ## Synthesize and present
 
-Build a cross-tool timeline or topic-based summary. Deduplicate across tools. Highlight:
+Build a cross-tool timeline or topic-based summary. **Deduplicate across tools** using these identity keys:
+
+| Match type | Identity key | Example |
+|---|---|---|
+| JIRA ticket | Ticket key (e.g. `SITES-1234`) | Same ticket in JIRA results and mentioned in Slack/GitHub |
+| GitHub PR/Issue | `owner/repo#number` | Same PR in GitHub notifications and referenced in JIRA/Slack |
+| Confluence page | Page ID or title | Same page in Confluence results and linked in Slack |
+
+When the same item appears in multiple tools, **merge into one entry** with combined context from all sources. Show the primary tool's details and note which other tools also referenced it:
+
+```
+- **SITES-1234: Auth migration** (JIRA + Slack + GitHub)
+  - JIRA: In Progress, assigned to Alice, 3 comments (latest: yesterday)
+  - Slack: Discussed in #backend-team (2 threads, 5h ago)
+  - GitHub: PR #91 open, CI passing
+```
+
+Highlight:
 - Key decisions made
 - Open items needing the user's input
 - Who said/did what and when
