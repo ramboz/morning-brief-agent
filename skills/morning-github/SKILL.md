@@ -77,6 +77,10 @@ Also: Issues where the user is mentioned or assigned and a response looks expect
 
    The review stays invisible to others until the user clicks "Submit review" in the GitHub UI. The user can edit the review before submitting.
 
+   **To discard a staged review:** `node {scripts_path}/discard-github-review.js --pr owner/repo#number [--instance corp]`
+   Or discard all staged reviews: `node {scripts_path}/discard-github-review.js --all`
+   IMPORTANT: The `gh` CLI cannot see or delete these reviews — it uses different auth. Always use the discard script.
+
 **Issue comment replies → local MD fragment** (no draft persistence on navigation):
 
 1. **Fetch issue context:** Run `--context <owner> <repo> issue <number>` to get the issue body, all comments, labels, and assignees.

@@ -206,6 +206,20 @@ Items without drafts (FYI, read-only) get no draft link.
 ### Save state
 Write: `~/.claude/skills/morning-assistant/state/last-run.json`
 
+Include a `github_reviews_staged` array with per-PR details so the discard script (`discard-github-review.js --all`) can find them:
+
+```json
+{
+  "timestamp": "...",
+  "github_reviews_staged": [
+    { "owner": "adobe", "repo": "spacecat-api-service", "number": 2007, "instance": "github.com", "reviewId": 12345 },
+    { "owner": "CQ", "repo": "personalization", "number": 416, "instance": "corporate", "reviewId": 67890 }
+  ],
+  "drafts_staged": { "slack": 1, "jira": 0, "github_review": 2, "github_issue": 0, "confluence": 0 },
+  ...
+}
+```
+
 ### Cache brief results
 
 Write gathered data to: `~/.claude/skills/morning-assistant/state/brief-cache.json`

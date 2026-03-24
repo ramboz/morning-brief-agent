@@ -97,30 +97,39 @@ Return to orchestrator:
 
 ### Daily note section format
 
+**CRITICAL FORMATTING RULES — apply to EVERY line, no exceptions:**
+
+1. **@-prefix ALL usernames** — write `@alice`, NEVER `alice`. Every single username in the output must start with `@`. This applies to message authors, mentions, and DM participants.
+
+2. **Deep-link EVERY message** — every message bullet MUST contain a markdown link using the `permalink` field from the gathered data. No plain-text summaries without links. Format: `@user: [summary text](permalink)`. For threads: `([N replies](permalink))`.
+
+3. **Deep-link channel names** — use the channel `url` field: `**[#channel-name](channel-url)**`
+
+4. **Suppress empty channels** — if a priority channel had zero messages in the lookback window, omit it entirely
+
+**If you write a message line without a permalink, you are doing it wrong. Go back and add the link.**
+
 ```markdown
 ### 🔴 Mentions & Threads
-- 🔴 **#eng-general** — Alice asked for review on deployment plan *(2h ago)* → [Draft staged]
-- 📌 **#roadmap** — You flagged this (:eyes:) — Q2 mobile feature decision pending
+- 🔴 **[#eng-general](channel-url)** — @alice [asked for review on deployment plan](permalink) *(2h ago)* → [Draft staged]
+- 📌 **[#roadmap](channel-url)** — You flagged this (:eyes:) — [Q2 mobile feature decision pending](permalink)
 
 ### Thread Updates
-- ℹ️ **#eng-backend** — "Optimistic locking?" — Alice and Bob pushed back, waiting for your thoughts
+- ℹ️ **[#eng-backend](channel-url)** — "Optimistic locking?" — @alice and @bob pushed back, [waiting for your thoughts](permalink)
 
 ### Direct Messages
-- **Bob Smith** — Wants to sync about Q2 planning → [Draft staged]
+- **@bob** — [Wants to sync about Q2 planning](permalink) → [Draft staged]
 
 ### Engineering
-#### #eng-general
-- Deployed v2.4.1 to production ✅
-- Postgres 16 migration discussion — no decision yet
+- **[#eng-general](channel-url)** — 5 messages
+  - @alice: [Deployed v2.4.1 to production](permalink) ✅
+  - @bob: [Postgres 16 migration discussion](permalink) — no decision yet ([3 replies](thread-permalink))
 
 ### Other Channels
 _12 channels had activity. No mentions._
-
-### Staged Drafts (3)
-1. #eng-general → Reply to Alice re: deployment plan → [View draft in DMs](dm-permalink)
-2. #incidents → Acknowledgment of post-mortem assignment → [View draft in DMs](dm-permalink)
-3. DM Bob Smith → Confirm sync tomorrow → [View draft in DMs](dm-permalink)
 ```
+
+**Self-check before returning:** Scan every line in your output. Does every username start with `@`? Does every message have a `[text](url)` link? If not, fix it before returning to the orchestrator.
 
 ---
 
