@@ -99,6 +99,7 @@ async function fetchGitHubReleases(source, { now, lookbackHours }) {
 
   return {
     items: releases
+    .filter(release => !release.prerelease && !isPreReleaseTag(release.tag_name))
     .map(release => ({
       id: `${source.id}:${release.id ?? release.tag_name}`,
       sourceId: source.id,
@@ -467,4 +468,16 @@ function hashText(value) {
 
 function isUsefulSummary(text) {
   return text.length >= 40 && !text.startsWith('By ')
+}
+
+/**
+ * Detect pre-release versions by tag name pattern.
+ * Matches: alpha, beta, rc, dev, canary, nightly, preview, next, snapshot, pre
+ * Examples: v0.117.0-alpha.12, 2.0.0-beta.3, 1.0.0-rc1
+ * @param {string} tag - The release tag name
+ * @returns {boolean}
+ */
+function isPreReleaseTag(tag) {
+  if (!tag) return false
+  return /[-.](?:alpha|beta|rc|dev|canary|nightly|preview|next|snapshot|pre)\b/i.test(tag)
 }

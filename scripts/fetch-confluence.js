@@ -219,15 +219,65 @@ async function fetchMentionedPages(baseUrl, token, spaces, username, hours) {
 }
 
 /**
- * Run the brief mode: modified pages + mention pages, deduped.
+ * Decide whether a formatted page should be surfaced in the brief.
+ *
+ * Never filters @mentioned pages — if the user was mentioned, always surface it.
+ *
+ * Two config-driven rules (both opt-in via confluence-spaces.json):
+ *
+ * 1. exclude_title_patterns — regex strings matched against the page title.
+ *    Useful for sprint ceremony pages ("Sprint 2026.W15"), auto-generated reports, etc.
+ *
+ * 2. skip_if_only_mentions + my_context_keywords — cross-product noise filter.
+ *    If a page's title+excerpt mentions a "skip" keyword but NONE of the user's
+ *    context keywords, it is filtered. If both appear (cross-product discussion),
+ *    the page surfaces normally.
+ *
+ * @param {object} page - Formatted page object (has .title, .excerpt, .reason)
+ * @param {object} config - Loaded confluence-spaces.json
+ * @returns {boolean} true = keep, false = skip
+ */
+function filterPage(page, config) {
+  // Never suppress @mention pages — user was directly addressed
+  if (page.reason === 'mentioned') return true
+
+  const title = page.title ?? ''
+  const haystack = `${title} ${page.excerpt ?? ''}`.toLowerCase()
+
+  // Rule 1: exclude by title pattern
+  const excludePatterns = config.exclude_title_patterns ?? []
+  for (const pattern of excludePatterns) {
+    try {
+      if (new RegExp(pattern, 'i').test(title)) return false
+    } catch {
+      // Malformed regex in config — skip rule silently
+    }
+  }
+
+  // Rule 2: skip if only mentions other products, not the user's context
+  const skipKeywords = config.skip_if_only_mentions ?? []
+  const myKeywords = config.my_context_keywords ?? []
+
+  if (skipKeywords.length > 0 && myKeywords.length > 0) {
+    const mentionsOther = skipKeywords.some(kw => haystack.includes(kw.toLowerCase()))
+    const mentionsMine = myKeywords.some(kw => haystack.includes(kw.toLowerCase()))
+    if (mentionsOther && !mentionsMine) return false
+  }
+
+  return true
+}
+
+/**
+ * Run the brief mode: modified pages + mention pages, deduped, filtered.
  * @param {string} baseUrl
  * @param {string} token
  * @param {string[]} spaces
  * @param {string} username
  * @param {number} hours
+ * @param {object} config - Loaded confluence-spaces.json (for filtering)
  * @returns {Promise<{pages: object[], truncated: boolean}>}
  */
-async function runBrief(baseUrl, token, spaces, username, hours) {
+async function runBrief(baseUrl, token, spaces, username, hours, config = {}) {
   const [modifiedResult, mentionedPages] = await Promise.all([
     fetchModifiedPages(baseUrl, token, spaces, hours),
     fetchMentionedPages(baseUrl, token, spaces, username, hours)
@@ -244,8 +294,16 @@ async function runBrief(baseUrl, token, spaces, username, hours) {
     pageMap.set(raw.id, { ...(existing ?? formatPage(raw, 'mentioned', baseUrl)), reason: 'mentioned' })
   }
 
+  const allPages = Array.from(pageMap.values())
+  const filtered = allPages.filter(page => filterPage(page, config))
+  const skipped = allPages.length - filtered.length
+
+  if (skipped > 0) {
+    console.error(`[${TOOL}] Filtered out ${skipped} page(s) by config rules (exclude_title_patterns / skip_if_only_mentions)`)
+  }
+
   return {
-    pages: Array.from(pageMap.values()),
+    pages: filtered,
     truncated: modifiedResult.truncated
   }
 }
@@ -392,7 +450,7 @@ async function main() {
       }
       data = await runSearch(baseUrl, token, config.spaces, query)
     } else {
-      data = await runBrief(baseUrl, token, config.spaces, username, effectiveHours)
+      data = await runBrief(baseUrl, token, config.spaces, username, effectiveHours, config)
     }
 
     console.log(JSON.stringify(envelope(TOOL, mode, data)))

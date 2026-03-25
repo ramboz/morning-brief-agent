@@ -40,13 +40,15 @@ If `ok: false`, report errors and skip Confluence.
 
 ### Step 2 — ANALYZE (fast)
 
-Filter to pages worth surfacing:
-- @mentioned the user in a comment (highest priority)
-- Decision records, runbooks, architecture docs (high-value)
-- Significant content changes (new sections, not typo fixes)
-- Related to user's work areas (infer from JIRA project keys)
+The script pre-filters pages using config rules (`exclude_title_patterns`, `skip_if_only_mentions` + `my_context_keywords`) before returning results. @mention pages are never filtered by the script — always surface those.
 
-Skip: minor formatting edits, pages the user themselves edited, irrelevant admin content.
+From the remaining results, prioritize:
+- @mentioned the user in a comment (highest priority — always keep)
+- Decision records, runbooks, architecture docs
+- Significant content changes (new sections, not typo fixes)
+- Pages related to user's work areas (infer from JIRA project keys in config)
+
+Skip: minor formatting edits, pages the user themselves edited.
 
 Deduplicate: if a page appears in both changes and mentions, mark as `mentioned`.
 

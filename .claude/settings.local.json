@@ -1,15 +1,45 @@
 {
+  "env": {
+    "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  },
   "permissions": {
     "allow": [
-      "Bash(npm install)",
-      "Bash(/opt/homebrew/bin/npm install)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@24/bin:$PATH\" npm install)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@24/bin:$PATH\" npx husky init)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@24/bin:$PATH\" node --check src/auth/msalClient.js)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@24/bin:$PATH\" node --check src/utils/flags.js)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@24/bin:$PATH\" node src/auth/msalClient.js)",
-      "Bash(git add .claude/ .env.example .gitignore .husky/ CLAUDE.md README.md commitlint.config.js package-lock.json package.json specs/ src/)",
-      "Bash(git commit:*)"
+      "Read",
+      "WebSearch",
+      "WebFetch(domain:api.slack.com)",
+      "WebFetch(domain:docs.slack.dev)",
+      "WebFetch(domain:techcrunch.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Skill(morning-assistant *)",
+      "Skill(morning-spike *)",
+      "Skill(update-config *)",
+
+      "Bash(node *)",
+
+      "Bash(export PATH *)",
+      "Bash(which *)",
+      "Bash(cat *)",
+      "Bash(echo *)",
+      "Bash(cp *)",
+      "Bash(ls *)",
+      "Bash(ls)",
+      "Bash(wc *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(curl *)",
+      "Bash(command *)",
+      "Bash(python3 *)",
+      "Bash(jq *)",
+
+      "Bash(git *)",
+      "Bash(npm *)",
+      "Bash(gh *)",
+      "Bash(brew *)",
+
+      "mcp__Control_Chrome__list_tabs",
+      "mcp__Control_Chrome__switch_to_tab",
+      "mcp__Control_Chrome__execute_javascript",
+      "mcp__Control_Chrome__get_current_tab"
     ]
   }
 }
