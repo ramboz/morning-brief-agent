@@ -32,21 +32,6 @@ Extract:
 
 Try to load: `~/.claude/skills/morning-assistant/state/last-run.json`
 
-Extract `seen_items` from last-run.json (default to empty objects if missing):
-
-```json
-{
-  "seen_items": {
-    "jira": ["SITES-1234", "ENG-482"],
-    "github": ["adobe/spacecat#2007"],
-    "confluence": ["112358"],
-    "slack": ["C12345:1234567.890"]
-  }
-}
-```
-
-These are the item IDs surfaced in the **previous** run. Any ID not in this list is new since yesterday.
-
 ### Stale config check
 
 For each enabled tool, check if its config file was last modified more than 30 days ago. If stale, add a warning to the daily note footer:
@@ -91,33 +76,6 @@ Collect results from all sub-agents. Synthesize a unified Action Items list (max
 4. FYI / awareness items
 
 **Use relative timestamps** for all items. Instead of "2026-03-23T14:30:00Z", write "2h ago" or "yesterday". The `timeAgo()` utility from `scripts/lib/config.js` provides this formatting.
-
-### Delta annotations (🆕 new since yesterday)
-
-For each tool's results, extract the stable ID for each item and compare against `seen_items` loaded in Step 0:
-
-| Tool | Stable ID format | Example |
-|---|---|---|
-| JIRA | Ticket key | `SITES-1234` |
-| GitHub | `{instance}:{owner}/{repo}#{number}` | `github.com:adobe/spacecat#2007` |
-| Confluence | Page ID (string) | `"112358"` |
-| Slack | `{channel_id}:{thread_ts}` | `"C12345:1234567.890"` |
-
-Items whose IDs are **not** in the previous run's `seen_items` for that tool get a `🆕` prefix in:
-- The unified Action Items checklist
-- The per-tool section
-
-Items that were seen before carry no special marker — they're ongoing.
-
-**Section header count annotation:** Each per-tool section header should include a count summary showing new vs total, e.g.:
-
-```markdown
-## 💬 Slack *(5 items · 2 🆕 new)*
-## 🎫 JIRA *(3 items · all new)*
-## 💻 GitHub *(4 items · 1 🆕 new)*
-```
-
-If everything is new (first run, or seen_items was empty), omit the counts — don't show "all new" for every section.
 
 ## Step 3 — Write the daily note
 
@@ -173,6 +131,24 @@ Write to: `{vault_path}/{daily_notes_folder}/{YYYY-MM-DD}.md`
 ### Formatting rules
 
 **Unified Action Items checklist:** The Action Items section is a single `- [ ]` checklist combining both action items and staged drafts. Each item includes the tool source, a relative timestamp, and a link to the draft (DM permalink, vault wikilink, or PR URL). The user can tick items off in Obsidian as they work through them.
+
+**CRITICAL — Deep links in Action Items:** Every action item MUST include a clickable deep link to the source item. Use the `url`/`permalink` fields from the gathered data:
+- Email: `[Subject](https://outlook.office.com/mail/inbox/id/...)` — use the `url` field from email data
+- Slack: `[summary](permalink)` — use the `permalink` field from message data
+- JIRA: `[SITES-1234](https://jira.corp.adobe.com/browse/SITES-1234)` — use the `url` field from issue data
+- GitHub: `[PR #482](https://github.com/...)` — use the `url` field from notification data
+- Confluence: `[Page Title](https://wiki.corp.adobe.com/...)` — use the `url` field from page data
+- Calendar: include the `onlineMeetingUrl` (Teams link) when available
+
+Example with deep links:
+```
+- [ ] 🔴 **[Review PR #482](https://github.com/org/repo/pull/482)** (GitHub) — Retry logic, 2h ago
+- [ ] 🟡 **[Reply to Alice](https://slack.com/archives/C.../p...)** (Slack) — auth migration thread, yesterday
+- [ ] 🟡 **[SITES-1234](https://jira.corp.adobe.com/browse/SITES-1234)** (JIRA) — deployment question
+- [ ] ℹ️ **[Q2 Planning](https://wiki.corp.adobe.com/...)** (Confluence) — updated by Bob, 5h ago
+```
+
+If a deep link URL is not available for an item, still include the item but without a link. Never omit an action item just because the URL is missing.
 
 **Section suppression:** If a tool returns zero items (no mentions, no updates, nothing actionable), **omit its section entirely** from the daily note. Do not include empty headers or "Nothing to report." lines — this reduces noise. Only include sections that have content.
 
@@ -243,53 +219,20 @@ After all drafts are staged, update the `<!-- AGENT:action_items -->` section. E
 
 Items without drafts (FYI, read-only) get no draft link.
 
-### Build unified draft index
-
-After all drafts are staged, run:
-
-```bash
-node {scripts_path}/build-draft-index.js \
-  --vault {vault_path} \
-  --state ~/.claude/skills/morning-assistant/state/last-run.json
-```
-
-This writes `{vault_path}/drafts/{YYYY-MM-DD}-index.md` — a single Obsidian checklist of all staged drafts (GitHub pending reviews, Slack DM drafts, and local MD fragments) with links to each.
-
-Add a link to the index at the **top** of the `<!-- AGENT:action_items -->` section:
-
-```markdown
-## Action Items
-<!-- AGENT:action_items -->
-→ [[drafts/YYYY-MM-DD-index|📋 Draft queue (N items)]] — work through these first
-
-- [ ] 🆕 🔴 **Review PR #482** ...
-```
-
-If the index contains 0 drafts, omit the queue link.
-
 ## Step 5 — Save state and cache results
 
 ### Save state
 Write: `~/.claude/skills/morning-assistant/state/last-run.json`
 
-Include a `github_reviews_staged` array (used by `discard-github-review.js --all`), a `slack_drafts_staged` array (used by `build-draft-index.js`), and a `seen_items` map (used for 🆕 delta annotations next run):
+Include a `github_reviews_staged` array with per-PR details so the discard script (`discard-github-review.js --all`) can find them:
 
 ```json
 {
   "timestamp": "...",
   "github_reviews_staged": [
-    { "owner": "adobe", "repo": "spacecat-api-service", "number": 2007, "instance": "github.com", "reviewId": 12345, "title": "Add retry logic", "url": "https://github.com/adobe/spacecat-api-service/pull/2007" },
-    { "owner": "CQ", "repo": "personalization", "number": 416, "instance": "corporate", "reviewId": 67890, "title": "Update auth middleware" }
+    { "owner": "adobe", "repo": "spacecat-api-service", "number": 2007, "instance": "github.com", "reviewId": 12345 },
+    { "owner": "CQ", "repo": "personalization", "number": 416, "instance": "corporate", "reviewId": 67890 }
   ],
-  "slack_drafts_staged": [
-    { "channel": "#eng-general", "permalink": "https://app.slack.com/...", "dm_permalink": "https://app.slack.com/...", "summary": "Reply to Alice re: deployment plan" }
-  ],
-  "seen_items": {
-    "jira": ["SITES-1234", "ENG-482"],
-    "github": ["github.com:adobe/spacecat#2007", "corporate:CQ/personalization#416"],
-    "confluence": ["112358", "987654"],
-    "slack": ["C12345:1234567.890", "C67890:9876543.210"]
-  },
   "drafts_staged": { "slack": 1, "jira": 0, "github_review": 2, "github_issue": 0, "confluence": 0 },
   ...
 }
