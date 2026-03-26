@@ -18,13 +18,22 @@ Extract: `auto_archive`, `auto_delete`, `draft_tone`, `outlook_url`.
 
 ### Step 1 — GATHER (fast)
 
-**If gather_method = "connector":** Use the Cowork M365 connector to fetch:
-- Inbox emails within lookback window (sender, subject, preview, TO/CC)
-- Teams activity feed (mentions, thread replies)
+**Primary method — Graph API script:**
 
-**If gather_method = "browser" (fallback):** Navigate to Outlook Web App via Claude in Chrome. Check for login. Scan inbox, open each email to read sender/subject/body. Check Teams activity feed.
+```bash
+node scripts/fetch-outlook.js --brief
+```
 
-**Limit to 50 emails.** If more, note truncation.
+This returns structured JSON with:
+- `emails` — inbox messages within lookback window (triaged: action_required, fyi, newsletter, marketing, automated_alert, junk)
+- `calendar` — today's events with Teams meeting flags
+- `transcripts` — recent meeting transcript files (.vtt) found via SharePoint search
+- `triageSummary` — counts per triage category
+- `emailsTruncated` — true if >50 emails in window
+
+**Fallback — Cowork M365 connector:** If the script fails (auth expired, VPN required), use the M365 connector to fetch inbox emails and Teams activity.
+
+**Last resort — browser:** Navigate to Outlook Web App via Claude in Chrome. Scan inbox manually.
 
 ### Step 2 — ANALYZE (fast)
 
@@ -106,8 +115,15 @@ Return to orchestrator:
 
 Answer the user's question about email or Teams. No draft staging unless asked.
 
-**gather_method = "connector":** Use M365 connector with search filters (sender, keyword, date).
-**gather_method = "browser":** Navigate to Outlook search, enter keywords and date filters.
+**Primary method — Graph API script:**
+
+```bash
+node scripts/fetch-outlook.js --search "query terms"
+```
+
+Returns emails, SharePoint files, and transcript matches.
+
+**Fallback:** M365 connector with search filters, or browser search.
 
 Return a direct, conversational answer with relevant excerpts.
 
@@ -117,6 +133,7 @@ Return a direct, conversational answer with relevant excerpts.
 
 | Scenario | Action |
 |---|---|
+| Script auth expired | Re-run `node scripts/diag-outlook.js` to re-authenticate, then retry |
 | Connector unavailable | Try browser fallback, then report error |
 | Login screen | Stop, report "Outlook requires login" |
 | Archive action fails | Log, continue with other emails |

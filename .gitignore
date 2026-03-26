@@ -24,3 +24,5 @@ logs/ai-radar-seen.json
 
 # macOS
 .DS_Store
+
+token.json

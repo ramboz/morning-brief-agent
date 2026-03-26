@@ -240,6 +240,27 @@ export async function graphFetch(accessToken, url) {
  * @param {object} body - JSON body
  * @returns {Promise<object>} Parsed JSON response
  */
+/**
+ * Download a file's content from OneDrive/SharePoint as text.
+ * @param {string} accessToken
+ * @param {string} driveId - The drive containing the file
+ * @param {string} itemId - The driveItem ID
+ * @returns {Promise<string>} File content as text
+ */
+export async function graphDownload(accessToken, driveId, itemId) {
+  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content`
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    redirect: 'follow',
+  })
+  if (!res.ok) {
+    const err = new Error(`Graph download ${res.status} ${res.statusText} — drives/${driveId}/items/${itemId}`)
+    err.status = res.status
+    throw err
+  }
+  return res.text()
+}
+
 export async function graphPost(accessToken, url, body) {
   return withRetry(async () => {
     const res = await fetch(url, {
