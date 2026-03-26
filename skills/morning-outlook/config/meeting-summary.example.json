@@ -1,0 +1,28 @@
+{
+  "vault_meetings_folder": "Meetings",
+  "model": "claude-sonnet-4-20250514",
+  "max_transcript_chars": 200000,
+  "project_tags": {
+    "cwv": "Core Web Vitals",
+    "pzn": "Personalization (Adobe Target)",
+    "aso": "Auto-optimize / Sites Optimizer",
+    "experimentation": "Contextual Experimentation",
+    "gtm": "GTM Lib (launch/tag management)",
+    "martech": "MarTech Lib",
+    "a11y": "Accessibility",
+    "project-42": "Project 42"
+  },
+  "known_customers": ["SAP", "Blackrock", "Bulk.com", "Sunstargum"],
+  "employer": "Adobe",
+  "recap_keywords": ["meeting notes", "meeting summary", "recording and notes", "recap", "meeting recap"],
+  "recap_lookback_hours": 48,
+  "note": [
+    "Copy to meeting-summary.json and customize.",
+    "vault_meetings_folder: subfolder under VAULT_PATH where meeting notes are written.",
+    "project_tags: allowed tag codes → descriptions. Claude will only use these tags.",
+    "known_customers: list of external companies. Claude also detects new ones from attendees.",
+    "employer: your company name — attendees from this org are not flagged as customers.",
+    "recap_keywords: email subject keywords to detect meeting recap emails. Set to [] to disable.",
+    "recap_lookback_hours: how far back to search for recap emails (default: 48h, since recaps arrive late)."
+  ]
+}
