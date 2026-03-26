@@ -29,6 +29,7 @@ const TOKEN_PATH = resolve(process.env.MSAL_TOKEN_PATH ?? './token.json');
 const PORT       = 3000;
 const REDIRECT_URI = `http://localhost:${PORT}`;
 
+// Start with minimal scopes — add more after basic access is confirmed
 const SCOPES = [
   'https://graph.microsoft.com/User.Read',
   'https://graph.microsoft.com/Mail.Read',
@@ -36,10 +37,23 @@ const SCOPES = [
 ];
 
 const GRAPH_ENDPOINTS = [
+  // Identity
   { label: 'Profile (me)',        url: 'https://graph.microsoft.com/v1.0/me' },
+
+  // Mail
   { label: 'Inbox folder',        url: 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox' },
   { label: 'Messages (top 1)',    url: 'https://graph.microsoft.com/v1.0/me/messages?$top=1&$select=subject,from,receivedDateTime' },
   { label: 'Mail folders (list)', url: 'https://graph.microsoft.com/v1.0/me/mailFolders?$top=5' },
+
+  // Calendar / Teams meetings
+  { label: 'Calendar events (today)', url: `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${new Date().toISOString().slice(0,10)}T00:00:00Z&endDateTime=${new Date().toISOString().slice(0,10)}T23:59:59Z&$top=5&$select=subject,start,end,isOnlineMeeting,onlineMeetingUrl` },
+  { label: 'Online meetings (list)', url: 'https://graph.microsoft.com/v1.0/me/onlineMeetings' },
+
+  // OneDrive — where Teams stores recordings & transcripts
+  { label: 'OneDrive root', url: 'https://graph.microsoft.com/v1.0/me/drive/root/children?$top=10&$select=name,folder,size' },
+  { label: 'OneDrive Recordings folder', url: 'https://graph.microsoft.com/v1.0/me/drive/root:/Recordings:/children?$select=name,size,createdDateTime,file&$top=10&$orderby=createdDateTime desc' },
+  { label: 'OneDrive search .vtt', url: "https://graph.microsoft.com/v1.0/me/drive/root/search(q='.vtt')?$top=5&$select=name,size,createdDateTime,parentReference,webUrl" },
+  { label: 'OneDrive search transcript', url: "https://graph.microsoft.com/v1.0/me/drive/root/search(q='transcript')?$top=5&$select=name,size,createdDateTime,parentReference,webUrl" },
 ];
 
 // ── PKCE helpers ──────────────────────────────────────────────────────────────
@@ -229,6 +243,20 @@ const accessToken = await getAccessToken();
 const results = [];
 for (const { label, url } of GRAPH_ENDPOINTS) {
   results.push(await diagCall(label, url, accessToken));
+}
+
+// If OneDrive search found .vtt files, try to read the content of the first one
+const vttResult = results.find(r => r.label === 'OneDrive search .vtt');
+if (vttResult?.status === 200 && vttResult.body?.value?.length > 0) {
+  const first = vttResult.body.value[0];
+  console.error(`[diag-outlook] Found VTT file: "${first.name}" — testing content download...`);
+  results.push(await diagCall(
+    `VTT content preview: "${first.name}"`,
+    `https://graph.microsoft.com/v1.0/me/drive/items/${first.id}/content`,
+    accessToken
+  ));
+} else {
+  console.error('[diag-outlook] No .vtt files found in OneDrive search.');
 }
 
 console.log(JSON.stringify({ timestamp: new Date().toISOString(), results }, null, 2));
