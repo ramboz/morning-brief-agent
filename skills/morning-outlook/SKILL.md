@@ -88,17 +88,24 @@ Return to orchestrator:
 
 ### Daily note section format
 
+**Deep-link EVERY email** — each email item MUST include a clickable link using the `url` field from the script output. Format: `[Subject or sender](url)`.
+
 ```markdown
 ### Action Required
-- 🔴 **VP Engineering** — Q2 budget review, due Friday → [Draft staged]
-- 🔴 **Alice Chen** — PR #482 merge conflict → [Draft staged]
+- 🔴 **[VP Engineering — Q2 budget review](https://outlook.office.com/mail/inbox/id/...)** — due Friday → [Draft staged]
+- 🔴 **[Alice Chen — PR #482 merge conflict](https://outlook.office.com/mail/inbox/id/...)** → [Draft staged]
 
 ### FYI / Reading
-- ℹ️ **Platform Team** — New CI/CD pipeline docs
-- ℹ️ **HR** — Updated remote work policy, effective April 1
+- ℹ️ **[Platform Team — New CI/CD pipeline docs](https://outlook.office.com/mail/inbox/id/...)**
+- ℹ️ **[HR — Updated remote work policy](https://outlook.office.com/mail/inbox/id/...)** — effective April 1
 
 ### Auto-Archived (12)
 - 8 build alerts, 3 newsletters, 1 calendar update
+
+### 📅 Calendar
+| Time | Meeting | Notes |
+|---|---|---|
+| 15:00 | Sync on auto-optimize | Mihai Corlan [Teams](teams-url) |
 
 ### 💬 Teams Activity
 - **#architecture-council** — Mentioned in API versioning discussion
@@ -108,6 +115,8 @@ Return to orchestrator:
 1. Reply to VP Engineering → Budget review acknowledgment
 2. Reply to Alice Chen → Merge conflict resolution
 ```
+
+**Calendar timezone:** The script outputs calendar times already converted to local timezone (from `timezone` in `outlook-rules.json`). Display times as-is — do NOT convert again.
 
 ---
 

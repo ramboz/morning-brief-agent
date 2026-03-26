@@ -2,6 +2,8 @@
   "url": "https://confluence.yourcompany.com",
   "spaces": ["ENG", "PRODUCT", "COMPANY"],
   "lookback_hours_override": null,
+  "min_change_chars": 50,
+  "max_diff_pages": 15,
 
   "exclude_title_patterns": [
     "Sprint \\d{4}\\.W\\d+",
@@ -18,8 +20,10 @@
   "note": [
     "Copy to confluence-spaces.json and fill in your settings.",
     "spaces: space keys appear in the URL — /display/SPACEKEY/Page+Title",
-    "exclude_title_patterns: regex strings matched against page titles (case-insensitive). Pages whose titles match are always skipped. Useful for sprint ceremony pages, auto-generated reports, etc.",
+    "min_change_chars: pages with fewer changed characters than this are filtered as trivial (default: 50). Set to 0 to disable.",
+    "max_diff_pages: max pages to fetch version diffs for (default: 15). Keeps brief fast.",
+    "exclude_title_patterns: regex strings matched against page titles (case-insensitive).",
     "my_context_keywords: your primary product/project names. Used together with skip_if_only_mentions.",
-    "skip_if_only_mentions: other products/teams that are noisy for you. A page is skipped if its title+excerpt mentions any of these keywords but NONE of my_context_keywords. If it mentions both (cross-product discussion), it surfaces normally. @mention pages are never filtered regardless of keywords."
+    "skip_if_only_mentions: other products/teams that are noisy for you."
   ]
 }

@@ -1,5 +1,6 @@
 {
   "outlook_url": "https://outlook.office.com",
+  "timezone": "Europe/Paris",
   "auto_archive": true,
   "auto_delete": false,
   "draft_language": "English",
@@ -15,5 +16,8 @@
     "alert_senders": [],
     "note": "Add known newsletter/alert sender domains here for faster classification"
   },
-  "note": "Copy to outlook-rules.json and fill in your settings"
+  "note": [
+    "Copy to outlook-rules.json and fill in your settings.",
+    "timezone: IANA timezone for calendar display (e.g. 'Europe/Paris', 'America/New_York'). Defaults to UTC."
+  ]
 }

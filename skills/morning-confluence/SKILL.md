@@ -42,13 +42,15 @@ If `ok: false`, report errors and skip Confluence.
 
 The script pre-filters pages using config rules (`exclude_title_patterns`, `skip_if_only_mentions` + `my_context_keywords`) before returning results. @mention pages are never filtered by the script — always surface those.
 
+The script also enriches pages with `changeSummary` (a human-readable description of what changed) and `totalChange` (a numeric score). Pages with trivial changes (below `min_change_chars` in config) are already filtered out by the script.
+
 From the remaining results, prioritize:
 - @mentioned the user in a comment (highest priority — always keep)
 - Decision records, runbooks, architecture docs
 - Significant content changes (new sections, not typo fixes)
 - Pages related to user's work areas (infer from JIRA project keys in config)
 
-Skip: minor formatting edits, pages the user themselves edited.
+Skip: pages the user themselves edited.
 
 Deduplicate: if a page appears in both changes and mentions, mark as `mentioned`.
 
@@ -113,18 +115,24 @@ Return to orchestrator:
 
 ### Daily note section format
 
+**Include the `changeSummary`** from the script output for every page. This tells the user what actually changed, not just that it was modified.
+
 ```markdown
 ### Pages Needing Attention
 - 📝 **[Auth Service Architecture](https://confluence.co/display/ENG/...)** — `ENG`
-  Alice added a token refresh edge case section — may affect your area
+  ~45 words added, ~12 removed — Alice added a token refresh edge case section
   *(Engineering > Backend · v14 · 2h ago)*
 
 - 🔔 **[Deployment Runbook](https://confluence.co/display/OPS/...)** — `OPS` *(you were mentioned)*
   "Can @you review the rollback section before we publish?"
   *(Operations · v3 · 3h ago)*
+
+- 📝 **[Q2 Roadmap](https://confluence.co/display/PROD/...)** — `PROD`
+  new page
+  *(Product · v1 · 5h ago)*
 ```
 
-If nothing to report: `_Nothing to report._`
+If nothing to report (all pages were trivial): `_N pages updated — all trivial changes filtered._`
 
 ---
 

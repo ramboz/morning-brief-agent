@@ -140,17 +140,47 @@ function mapEmail(msg, rules, myEmail) {
 // ── Calendar helpers ─────────────────────────────────────────────────────────
 
 /**
+ * Convert a UTC datetime string to local time in the given IANA timezone.
+ * Returns an ISO-like string (YYYY-MM-DDTHH:MM:SS) in local time.
+ * @param {string} utcDatetime - UTC datetime from Graph API (e.g. "2026-03-26T14:00:00.0000000")
+ * @param {string} timezone - IANA timezone (e.g. "Europe/Paris")
+ * @returns {string} Local datetime string
+ */
+function toLocalTime(utcDatetime, timezone) {
+  if (!utcDatetime || !timezone) return utcDatetime
+  try {
+    // Graph API returns datetime without Z suffix but it's UTC
+    const dt = utcDatetime.endsWith('Z') ? utcDatetime : utcDatetime + 'Z'
+    const date = new Date(dt)
+    // Format in the target timezone
+    const parts = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: timezone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).formatToParts(date)
+    const get = (type) => parts.find(p => p.type === type)?.value ?? ''
+    return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}`
+  } catch {
+    return utcDatetime
+  }
+}
+
+/**
  * Map a Graph calendar event to our output format.
  * @param {object} evt - Graph event object
+ * @param {string} [timezone] - IANA timezone for local time conversion
  * @returns {object}
  */
-function mapEvent(evt) {
+function mapEvent(evt, timezone) {
+  const start = timezone ? toLocalTime(evt.start?.dateTime, timezone) : evt.start?.dateTime
+  const end = timezone ? toLocalTime(evt.end?.dateTime, timezone) : evt.end?.dateTime
   return {
     id: evt.id,
     subject: evt.subject ?? '(no subject)',
-    start: evt.start?.dateTime,
-    end: evt.end?.dateTime,
-    timeZone: evt.start?.timeZone ?? 'UTC',
+    start,
+    end,
+    timeZone: timezone || evt.start?.timeZone || 'UTC',
     isOnlineMeeting: evt.isOnlineMeeting ?? false,
     onlineMeetingUrl: evt.onlineMeetingUrl || null,
     organizer: {
@@ -249,8 +279,9 @@ async function runBrief(token, config, lookbackHours) {
     const select = 'id,subject,start,end,isOnlineMeeting,onlineMeetingUrl,organizer,location,isAllDay,isCancelled'
     const url = `${GRAPH}/me/calendarView?startDateTime=${todayStart}&endDateTime=${todayEnd}&$select=${select}&$top=30&$orderby=start/dateTime`
     const result = await graphFetch(token, url)
-    events = (result.value ?? []).map(mapEvent).filter(e => !e.isCancelled)
-    console.error(`[outlook] Fetched ${events.length} calendar events for today`)
+    const tz = config.timezone || null
+    events = (result.value ?? []).map(e => mapEvent(e, tz)).filter(e => !e.isCancelled)
+    console.error(`[outlook] Fetched ${events.length} calendar events for today${tz ? ` (tz: ${tz})` : ''}`)
   } catch (err) {
     errors.push(`Calendar fetch failed: ${err.message}`)
     console.error('[outlook] Calendar fetch failed:', err.message)

@@ -219,6 +219,102 @@ async function fetchMentionedPages(baseUrl, token, spaces, username, hours) {
 }
 
 /**
+ * Fetch body.storage for a specific version of a page.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} pageId
+ * @param {number} version
+ * @returns {Promise<string>} Plain text content (HTML stripped)
+ */
+async function fetchVersionBody(baseUrl, token, pageId, version) {
+  const page = await confluenceGet(baseUrl, token, `/rest/api/content/${pageId}`, {
+    version,
+    expand: 'body.storage',
+    status: version > 0 ? 'historical' : undefined,
+  })
+  return stripHtml(page.body?.storage?.value ?? '')
+}
+
+/**
+ * Compute a simple text diff summary between two versions.
+ * Returns character counts and a human-readable summary.
+ * @param {string} oldText - Previous version text (stripped)
+ * @param {string} newText - Current version text (stripped)
+ * @returns {{ addedChars: number, removedChars: number, totalChange: number, summary: string }}
+ */
+function computeChangeSummary(oldText, newText) {
+  const oldLen = oldText.length
+  const newLen = newText.length
+  const lenDiff = newLen - oldLen
+
+  // Simple word-level diff for summary
+  const oldWords = new Set(oldText.toLowerCase().split(/\s+/).filter(Boolean))
+  const newWords = new Set(newText.toLowerCase().split(/\s+/).filter(Boolean))
+  const addedWords = [...newWords].filter(w => !oldWords.has(w))
+  const removedWords = [...oldWords].filter(w => !newWords.has(w))
+
+  const addedChars = Math.max(0, lenDiff)
+  const removedChars = Math.max(0, -lenDiff)
+  const totalChange = Math.abs(lenDiff) + Math.min(addedWords.length, removedWords.length) * 5
+
+  let summary
+  if (addedWords.length === 0 && removedWords.length === 0) {
+    summary = 'minor formatting/whitespace change'
+  } else if (removedWords.length === 0) {
+    summary = `added ~${addedWords.length} new words (+${newLen - oldLen} chars)`
+  } else if (addedWords.length === 0) {
+    summary = `removed ~${removedWords.length} words (${oldLen - newLen} chars)`
+  } else {
+    summary = `~${addedWords.length} words added, ~${removedWords.length} removed (net ${lenDiff > 0 ? '+' : ''}${lenDiff} chars)`
+  }
+
+  return { addedChars, removedChars, totalChange, summary }
+}
+
+/**
+ * Enrich pages with version diff summaries. Fetches previous version body
+ * for each page and computes change stats. Pages at version 1 get no diff.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {object[]} pages - Formatted page objects
+ * @param {number} maxPages - Max pages to fetch diffs for
+ * @returns {Promise<object[]>} Pages with `changeSummary` added
+ */
+async function enrichWithDiffs(baseUrl, token, pages, maxPages = 15) {
+  const toEnrich = pages.filter(p => p.version && p.version > 1).slice(0, maxPages)
+  const skipped = pages.filter(p => !p.version || p.version <= 1)
+
+  // Mark new pages (version 1)
+  for (const p of skipped) {
+    p.changeSummary = p.version === 1 ? 'new page' : null
+    p.totalChange = Infinity // always surface new pages
+  }
+
+  // Fetch diffs in parallel
+  const enriched = await Promise.all(toEnrich.map(async (page) => {
+    try {
+      const [currentText, prevText] = await Promise.all([
+        fetchVersionBody(baseUrl, token, page.id, page.version),
+        fetchVersionBody(baseUrl, token, page.id, page.version - 1),
+      ])
+      const diff = computeChangeSummary(prevText, currentText)
+      return { ...page, changeSummary: diff.summary, totalChange: diff.totalChange }
+    } catch (err) {
+      console.error(`[${TOOL}] Diff failed for page ${page.id} (${page.title}): ${err.message}`)
+      return { ...page, changeSummary: null, totalChange: Infinity } // surface on error
+    }
+  }))
+
+  // Pages beyond maxPages limit — no diff, always surface
+  const remaining = pages
+    .filter(p => p.version && p.version > 1)
+    .slice(maxPages)
+    .map(p => ({ ...p, changeSummary: null, totalChange: Infinity }))
+
+  return [...enriched, ...skipped, ...remaining]
+}
+
+/**
  * Decide whether a formatted page should be surfaced in the brief.
  *
  * Never filters @mentioned pages — if the user was mentioned, always surface it.
@@ -296,14 +392,35 @@ async function runBrief(baseUrl, token, spaces, username, hours, config = {}) {
 
   const allPages = Array.from(pageMap.values())
   const filtered = allPages.filter(page => filterPage(page, config))
-  const skipped = allPages.length - filtered.length
+  const skippedByRules = allPages.length - filtered.length
 
-  if (skipped > 0) {
-    console.error(`[${TOOL}] Filtered out ${skipped} page(s) by config rules (exclude_title_patterns / skip_if_only_mentions)`)
+  if (skippedByRules > 0) {
+    console.error(`[${TOOL}] Filtered out ${skippedByRules} page(s) by config rules (exclude_title_patterns / skip_if_only_mentions)`)
+  }
+
+  // Enrich with version diffs and filter trivial changes
+  const maxDiffPages = config.max_diff_pages ?? 15
+  const minChangeChars = config.min_change_chars ?? 0
+  let enriched = filtered
+
+  if (minChangeChars > 0) {
+    enriched = await enrichWithDiffs(baseUrl, token, filtered, maxDiffPages)
+    const beforeCount = enriched.length
+    enriched = enriched.filter(p => {
+      // Never filter @mentioned pages
+      if (p.reason === 'mentioned') return true
+      // Keep pages where diff couldn't be computed
+      if (p.totalChange === Infinity) return true
+      return p.totalChange >= minChangeChars
+    })
+    const trivialCount = beforeCount - enriched.length
+    if (trivialCount > 0) {
+      console.error(`[${TOOL}] Filtered out ${trivialCount} page(s) with trivial changes (< ${minChangeChars} chars)`)
+    }
   }
 
   return {
-    pages: filtered,
+    pages: enriched,
     truncated: modifiedResult.truncated
   }
 }
