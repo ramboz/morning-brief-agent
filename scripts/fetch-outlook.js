@@ -287,11 +287,17 @@ async function runBrief(token, config, lookbackHours) {
     console.error('[outlook] Calendar fetch failed:', err.message)
   }
 
-  // ── Meeting transcripts (recent .vtt files via SharePoint search) ──
+  // ── Meeting transcripts (recent .vtt files in Teams Recordings folders) ──
   let transcripts = []
   try {
-    transcripts = await searchTranscripts(token, 'filetype:vtt', 10)
-    console.error(`[outlook] Found ${transcripts.length} recent transcripts`)
+    const rawTranscripts = await searchTranscripts(token, 'filetype:vtt path:Recordings', 20)
+    // Filter to only files modified within the lookback window (not old training/subtitle files)
+    const cutoff = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
+    transcripts = rawTranscripts.filter(t => {
+      if (!t.modifiedAt) return false
+      return new Date(t.modifiedAt) >= cutoff
+    })
+    console.error(`[outlook] Found ${transcripts.length} recent transcripts (${rawTranscripts.length} raw hits filtered by date)`)
   } catch (err) {
     errors.push(`Transcript search failed: ${err.message}`)
     console.error('[outlook] Transcript search failed:', err.message)
