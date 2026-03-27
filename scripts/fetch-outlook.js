@@ -193,7 +193,48 @@ function mapEvent(evt, timezone) {
   }
 }
 
-// ── Transcript helpers ───────────────────────────────────────────────────────
+// ── Transcript / recording helpers ───────────────────────────────────────────
+
+/**
+ * Search SharePoint for MP4 recordings matching a list of meeting subjects.
+ * Used as a fallback when VTT transcripts are not accessible (attendee, not organizer).
+ * @param {string} token
+ * @param {string[]} subjects - Meeting subject lines from yesterday's calendar
+ * @param {number} lookbackHours
+ * @returns {Promise<object[]>}
+ */
+async function searchRecordings(token, subjects, lookbackHours) {
+  if (!subjects.length) return []
+  const cutoff = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
+  const results = []
+  for (const subject of subjects) {
+    // Use the first ~30 chars of the subject as the search term (enough to be specific)
+    const term = subject.slice(0, 40).replace(/['"]/g, '')
+    try {
+      const r = await graphPost(token, `${GRAPH}/search/query`, {
+        requests: [{ entityTypes: ['driveItem'], query: { queryString: `"${term}" filetype:mp4` }, from: 0, size: 3 }],
+      })
+      const hits = r.value?.[0]?.hitsContainers?.[0]?.hits ?? []
+      for (const hit of hits) {
+        const res = hit.resource
+        if (!res?.lastModifiedDateTime || new Date(res.lastModifiedDateTime) < cutoff) continue
+        // Only include files that look like Teams recordings (name contains subject words)
+        if (!res.name?.toLowerCase().includes(term.split(/\s+/)[0].toLowerCase())) continue
+        results.push({
+          subject,
+          name: res.name ?? '',
+          recordedAt: res.lastModifiedDateTime ?? '',
+          webUrl: res.webUrl ?? '',
+          organizer: res.createdBy?.user?.displayName ?? '',
+        })
+        break // one recording per meeting subject is enough
+      }
+    } catch (err) {
+      console.error(`[outlook] Recording search failed for "${term}":`, err.message)
+    }
+  }
+  return results
+}
 
 /**
  * Search SharePoint for recent meeting transcripts (.vtt files).
@@ -273,15 +314,27 @@ async function runBrief(token, config, lookbackHours) {
 
   // ── Calendar (today) ──
   let events = []
+  let yesterdayOnlineMeetings = []
   try {
+    const tz = config.timezone || null
     const todayStart = new Date().toISOString().slice(0, 10) + 'T00:00:00Z'
     const todayEnd = new Date().toISOString().slice(0, 10) + 'T23:59:59Z'
     const select = 'id,subject,start,end,isOnlineMeeting,onlineMeetingUrl,organizer,location,isAllDay,isCancelled'
     const url = `${GRAPH}/me/calendarView?startDateTime=${todayStart}&endDateTime=${todayEnd}&$select=${select}&$top=30&$orderby=start/dateTime`
     const result = await graphFetch(token, url)
-    const tz = config.timezone || null
     events = (result.value ?? []).map(e => mapEvent(e, tz)).filter(e => !e.isCancelled)
     console.error(`[outlook] Fetched ${events.length} calendar events for today${tz ? ` (tz: ${tz})` : ''}`)
+
+    // Also fetch yesterday's online meetings for recording search
+    const yDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const yStart = yDate + 'T00:00:00Z'
+    const yEnd = yDate + 'T23:59:59Z'
+    const yResult = await graphFetch(token, `${GRAPH}/me/calendarView?startDateTime=${yStart}&endDateTime=${yEnd}&$select=${select}&$top=30&$orderby=start/dateTime`)
+    yesterdayOnlineMeetings = (yResult.value ?? [])
+      .filter(e => e.isOnlineMeeting && !e.isCancelled)
+      .map(e => e.subject)
+      .filter(Boolean)
+    console.error(`[outlook] Found ${yesterdayOnlineMeetings.length} online meetings yesterday`)
   } catch (err) {
     errors.push(`Calendar fetch failed: ${err.message}`)
     console.error('[outlook] Calendar fetch failed:', err.message)
@@ -303,11 +356,25 @@ async function runBrief(token, config, lookbackHours) {
     console.error('[outlook] Transcript search failed:', err.message)
   }
 
+  // ── Meeting recordings fallback (MP4s from yesterday's online meetings) ──
+  // Used when VTT transcripts are inaccessible (attendee, not organizer).
+  let recordings = []
+  if (transcripts.length === 0 && yesterdayOnlineMeetings.length > 0) {
+    try {
+      recordings = await searchRecordings(token, yesterdayOnlineMeetings, lookbackHours)
+      console.error(`[outlook] Found ${recordings.length} meeting recordings (MP4 fallback)`)
+    } catch (err) {
+      errors.push(`Recording search failed: ${err.message}`)
+      console.error('[outlook] Recording search failed:', err.message)
+    }
+  }
+
   return {
     emails,
     emailsTruncated,
     calendar: events,
     transcripts,
+    recordings,
     triageSummary: summarizeTriage(emails),
     errors,
   }

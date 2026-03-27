@@ -136,6 +136,16 @@ Return to orchestrator:
 
 Omit the "Meeting Summaries" section if no transcripts were found or summarized. Each entry links to the Obsidian meeting note using the `vault_path` returned by `summarize-meeting.js`.
 
+If `transcripts` is empty but `recordings` is non-empty, skip Step 1b (no VTT to summarize) and instead render a **Meeting Recordings** section:
+
+```markdown
+### 🎬 Meeting Recordings (yesterday)
+- **[2xWeekly]ASO Auto-Optimize Check-In** — [Watch recording](https://adobe-my.sharepoint.com/...) *(transcript unavailable — not organizer)*
+- **[Weekly] ASO ESE/Engineering Sync** — [Watch recording](https://adobe-my.sharepoint.com/...) *(transcript unavailable — not organizer)*
+```
+
+Use the `webUrl` field from each recording object as the link. Note that auto-summarization is unavailable for these — the user must watch the recording manually.
+
 **Calendar timezone:** The script outputs calendar times already converted to local timezone (from `timezone` in `outlook.json`). Display times as-is — do NOT convert again.
 
 ---
