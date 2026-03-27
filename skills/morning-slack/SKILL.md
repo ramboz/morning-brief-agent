@@ -8,7 +8,7 @@ allowed-tools: bash, computer
 
 ## Load config
 
-Read: `~/.claude/skills/morning-slack/config/slack-sections.json`
+Read: `{scripts_path}/../config/slack.json`
 
 Extract: `sections` (priority channel groups), `emoji_triage.signals`, `ignore_bots`.
 

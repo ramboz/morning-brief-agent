@@ -1,6 +1,8 @@
 # Actual config files (contain personal info — commit only .example.json versions)
 skills/*/config/*.json
 !skills/*/config/*.example.json
+config/*.json
+!config/*.example.json
 
 # State files (runtime state, not source of truth)
 skills/morning-assistant/state/wiki-state.json

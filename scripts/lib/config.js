@@ -1,6 +1,6 @@
 /**
  * Config loader utility for helper scripts.
- * Reads JSON config files from the skills directory.
+ * Reads JSON config files from the project-level config/ directory.
  */
 
 import { readFile, stat } from 'node:fs/promises'
@@ -8,24 +8,23 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const CONFIG_DIR = join(__dirname, '..', '..', 'config')
 
 /**
- * Load a JSON config file from a skill's config directory.
- * @param {string} skillName - e.g. 'morning-jira'
- * @param {string} configFile - e.g. 'jira-filters.json'
+ * Load a JSON config file from the project config/ directory.
+ * @param {string} toolName - e.g. 'jira', 'slack', 'confluence', 'github', 'outlook', 'meetings', 'ai-radar', 'main'
  * @returns {Promise<object>} Parsed config object
  * @throws {Error} If config file is missing or invalid
  */
-export async function loadConfig(skillName, configFile) {
-  const skillsDir = join(__dirname, '..', '..', 'skills')
-  const configPath = join(skillsDir, skillName, 'config', configFile)
+export async function loadConfig(toolName) {
+  const configPath = join(CONFIG_DIR, `${toolName}.json`)
 
   try {
     const raw = await readFile(configPath, 'utf-8')
     return JSON.parse(raw)
   } catch (err) {
     if (err.code === 'ENOENT') {
-      throw new Error(`Config missing: ${configPath} — copy the .example.json and fill in your values`)
+      throw new Error(`Config missing: ${configPath} — copy ${toolName}.example.json and fill in your values`)
     }
     throw new Error(`Config invalid: ${configPath} — ${err.message}`)
   }
@@ -100,9 +99,8 @@ export async function withRetry(fn, { retries = 1, delayMs = 2000, label = '' } 
  * @param {number} [maxDays=30] - Maximum age in days before warning
  * @returns {Promise<{ stale: boolean, ageDays: number }|null>} null if file doesn't exist
  */
-export async function checkConfigAge(skillName, configFile, maxDays = 30) {
-  const skillsDir = join(__dirname, '..', '..', 'skills')
-  const configPath = join(skillsDir, skillName, 'config', configFile)
+export async function checkConfigAge(toolName, maxDays = 30) {
+  const configPath = join(CONFIG_DIR, `${toolName}.json`)
   try {
     const s = await stat(configPath)
     const ageDays = Math.floor((Date.now() - s.mtimeMs) / (1000 * 60 * 60 * 24))

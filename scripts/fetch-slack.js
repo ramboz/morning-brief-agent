@@ -428,7 +428,7 @@ async function runBrief(slack, userId, lookbackHours, workspaceUrl) {
 
   let config = { sections: [], ignore_bots: true, bot_exception_keywords: [] }
   try {
-    config = await loadConfig('morning-slack', 'slack-sections.json')
+    config = await loadConfig('slack')
   } catch (err) {
     console.error('[slack]', err.message, '— skipping channel summaries, still fetching mentions and DMs')
   }

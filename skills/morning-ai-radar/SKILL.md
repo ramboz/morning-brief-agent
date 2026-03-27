@@ -12,10 +12,10 @@ This is a read-only skill — no browser automation, no draft staging.
 
 ## Load config
 
-Read: `~/.claude/skills/morning-ai-radar/config/ai-radar-sources.json`
+Read: `{scripts_path}/../config/ai-radar.json`
 
 If missing, stop:
-> AI Radar config missing — copy ai-radar-sources.example.json and fill in your settings.
+> AI Radar config missing — copy ai-radar.example.json and fill in your settings.
 
 If `enabled: false`, skip silently.
 

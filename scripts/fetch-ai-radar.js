@@ -39,7 +39,7 @@ async function main() {
 
   let config
   try {
-    config = await loadConfig('morning-ai-radar', 'ai-radar-sources.json')
+    config = await loadConfig('ai-radar')
   } catch (err) {
     console.log(JSON.stringify(envelope(TOOL, mode, null, [err.message])))
     process.exit(0)

@@ -8,7 +8,7 @@ allowed-tools: bash, computer
 
 ## Load config
 
-Read: `~/.claude/skills/morning-outlook/config/outlook-rules.json`
+Read: `{scripts_path}/../config/outlook.json`
 
 Extract: `auto_archive`, `auto_delete`, `draft_tone`, `outlook_url`.
 
@@ -116,7 +116,7 @@ Return to orchestrator:
 2. Reply to Alice Chen → Merge conflict resolution
 ```
 
-**Calendar timezone:** The script outputs calendar times already converted to local timezone (from `timezone` in `outlook-rules.json`). Display times as-is — do NOT convert again.
+**Calendar timezone:** The script outputs calendar times already converted to local timezone (from `timezone` in `outlook.json`). Display times as-is — do NOT convert again.
 
 ---
 

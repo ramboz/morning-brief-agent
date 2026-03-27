@@ -511,7 +511,7 @@ async function main() {
   // Load config
   let config
   try {
-    config = await loadConfig('morning-confluence', 'confluence-spaces.json')
+    config = await loadConfig('confluence')
   } catch {
     console.log(JSON.stringify(envelope(TOOL, mode, null, [
       'Confluence config missing or no spaces configured — create skills/morning-confluence/config/confluence-spaces.json'

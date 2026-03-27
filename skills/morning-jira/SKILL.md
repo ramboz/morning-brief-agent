@@ -8,12 +8,12 @@ allowed-tools: bash
 
 ## Load config
 
-Read: `~/.claude/skills/morning-jira/config/jira-filters.json`
+Read: `{scripts_path}/../config/jira.json`
 
 Extract: `url` (JIRA base URL), `projects` (array of project keys), `lookback_hours_override`.
 
 If config is missing or `projects` is empty, stop:
-> JIRA config missing — please create `jira-filters.json` from the example.
+> JIRA config missing — please create `jira.json` from `jira.example.json`.
 
 ---
 

@@ -55,7 +55,7 @@ async function main() {
   // Load config — optional, use defaults if missing
   let instanceConfig = DEFAULT_CONFIG
   try {
-    const config = await loadConfig('morning-github', 'github-repos.json')
+    const config = await loadConfig('github')
     instanceConfig = config.github_com ?? config['github.com'] ?? DEFAULT_CONFIG
   } catch {
     console.error(`[${TOOL}] Config not found, using defaults (all notification types enabled, no org filter)`)

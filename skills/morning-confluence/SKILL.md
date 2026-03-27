@@ -10,7 +10,7 @@ Read-only — never edit pages or add comments directly. Draft page comments are
 
 ## Load config
 
-Read: `~/.claude/skills/morning-confluence/config/confluence-spaces.json`
+Read: `{scripts_path}/../config/confluence.json`
 
 Extract: `url` (Confluence base URL), `spaces` (array of space keys), `lookback_hours_override`.
 

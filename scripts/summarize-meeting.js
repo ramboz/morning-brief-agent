@@ -580,7 +580,7 @@ async function main() {
 
   // Load config (optional — falls back to defaults if missing)
   try {
-    CONFIG = await loadConfig('morning-outlook', 'meeting-summary.json')
+    CONFIG = await loadConfig('meetings')
     console.error(`[meeting] Config loaded (${Object.keys(CONFIG.project_tags || {}).length} project tags, ${(CONFIG.known_customers || []).length} known customers)`)
   } catch {
     console.error('[meeting] No meeting-summary.json config found — using defaults')

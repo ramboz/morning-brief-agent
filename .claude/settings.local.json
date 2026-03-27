@@ -13,9 +13,7 @@
       "Skill(morning-assistant *)",
       "Skill(morning-spike *)",
       "Skill(update-config *)",
-
       "Bash(node *)",
-
       "Bash(export PATH *)",
       "Bash(which *)",
       "Bash(cat *)",
@@ -30,16 +28,26 @@
       "Bash(command *)",
       "Bash(python3 *)",
       "Bash(jq *)",
-
       "Bash(git *)",
       "Bash(npm *)",
       "Bash(gh *)",
       "Bash(brew *)",
-
       "mcp__Control_Chrome__list_tabs",
       "mcp__Control_Chrome__switch_to_tab",
       "mcp__Control_Chrome__execute_javascript",
-      "mcp__Control_Chrome__get_current_tab"
+      "mcp__Control_Chrome__get_current_tab",
+      "Bash(chmod +x /Users/ramboz/Projects/misc/morning-brief-agent/scripts/fetch-outlook.js)",
+      "Bash(chmod +x /Users/ramboz/Projects/misc/morning-brief-agent/scripts/summarize-meeting.js)",
+      "Read(//Users/ramboz/.nvm/versions/node/**)",
+      "Read(//Users/ramboz/.local/bin/**)",
+      "Bash(mdfind -name claude -onlyin /usr/local)",
+      "Bash(CLAUDE_BIN=/Users/ramboz/.nvm/versions/node/v22.16.0/bin/claude node scripts/summarize-meeting.js --search \"SecurFinancial Discovery\" --dry-run)",
+      "Bash(CLAUDE_BIN=/Users/ramboz/.nvm/versions/node/v22.16.0/bin/claude node scripts/summarize-meeting.js --search \"SecurFinancial Discovery\")",
+      "Skill(morning-assistant)",
+      "Skill(morning-assistant:*)",
+      "Bash(CLAUDE_BIN=/Users/ramboz/.nvm/versions/node/v22.16.0/bin/claude node scripts/summarize-meeting.js --search \"personalization tech sync\" --dry-run)",
+      "Bash(cp /Users/ramboz/Projects/misc/morning-brief-agent/skills/morning-outlook/SKILL.md /Users/ramboz/.claude/skills/morning-outlook/SKILL.md)",
+      "Bash(cp /Users/ramboz/Projects/misc/morning-brief-agent/skills/morning-confluence/SKILL.md /Users/ramboz/.claude/skills/morning-confluence/SKILL.md)"
     ]
   }
 }

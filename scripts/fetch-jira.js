@@ -272,7 +272,7 @@ async function main() {
   // Load config
   let config
   try {
-    config = await loadConfig('morning-jira', 'jira-filters.json')
+    config = await loadConfig('jira')
   } catch {
     console.log(JSON.stringify(envelope(TOOL, mode, null, [
       'JIRA config missing or no projects configured — create skills/morning-jira/config/jira-filters.json'

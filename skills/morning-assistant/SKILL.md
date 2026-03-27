@@ -19,10 +19,10 @@ You run in two modes. Detect which applies, then follow the corresponding workfl
 
 ## Step 0 — Load config
 
-Read: `~/.claude/skills/morning-assistant/config/config.json`
+Read: `{scripts_path}/../config/main.json`
 
 If missing, stop:
-> Config not found. Copy `config.example.json` to `config.json` and fill in your settings.
+> Config not found. Copy `main.example.json` to `main.json` and fill in your settings.
 
 Extract:
 - `vault_path`, `daily_notes_folder`, `scripts_path`
@@ -37,7 +37,7 @@ Try to load: `~/.claude/skills/morning-assistant/state/last-run.json`
 For each enabled tool, check if its config file was last modified more than 30 days ago. If stale, add a warning to the daily note footer:
 
 ```
-⚠️ Config warning: slack-sections.json last modified 45 days ago — channels may have changed
+⚠️ Config warning: slack.json last modified 45 days ago — channels may have changed
 ```
 
 This uses the `checkConfigAge()` helper from `scripts/lib/config.js`.

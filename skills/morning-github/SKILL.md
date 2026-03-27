@@ -10,7 +10,7 @@ Scans both github.com and corporate GitHub Enterprise for notifications, PR revi
 
 ## Load config
 
-Read: `~/.claude/skills/morning-github/config/github-repos.json`
+Read: `{scripts_path}/../config/github.json`
 
 Extract: `github_com` (enabled, url, orgs), `github_corp` (enabled, url, orgs).
 

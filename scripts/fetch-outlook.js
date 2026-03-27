@@ -415,7 +415,7 @@ async function main() {
   // Load config (optional — triage still works with defaults)
   let config = {}
   try {
-    config = await loadConfig('morning-outlook', 'outlook-rules.json')
+    config = await loadConfig('outlook')
   } catch (err) {
     console.error(`[outlook] Config not found — using defaults. ${err.message}`)
     config = { triage_rules: {} }
