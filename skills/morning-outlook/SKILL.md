@@ -35,6 +35,20 @@ This returns structured JSON with:
 
 **Last resort — browser:** Navigate to Outlook Web App via Claude in Chrome. Scan inbox manually.
 
+**Step 1b — Summarize meeting transcripts (if any found):**
+
+If `fetch-outlook.js` returned any items in `transcripts`, run:
+
+```bash
+CLAUDE_BIN=$(which claude) node scripts/summarize-meeting.js --brief
+```
+
+This downloads each `.vtt` transcript from SharePoint, summarizes it with Claude, and writes a meeting note to `{vault_path}/Meetings/YYYY-MM-DD-{meeting-title}.md`. It returns structured JSON with:
+- `meetings` — list of summarized meetings (title, date, key decisions, action items, attendees, vault_path)
+- `skipped` — transcripts skipped (already summarized, too old, or download failed)
+
+If `CLAUDE_BIN` is not found via `which claude`, check `~/.local/bin/claude` or `/usr/local/bin/claude`. If unavailable, skip transcript summarization and note it in the brief.
+
 ### Step 2 — ANALYZE (fast)
 
 **Triage each email** into one of:
@@ -111,10 +125,16 @@ Return to orchestrator:
 - **#architecture-council** — Mentioned in API versioning discussion
 - **Meeting follow-up** — Action items from yesterday's standup
 
+### 🎙️ Meeting Summaries
+- **[[Meetings/2026-03-27-sync-on-auto-optimize|Sync on auto-optimize]]** — 3 action items · [[Meetings/2026-03-27-sync-on-auto-optimize|→ Full notes]]
+- **[[Meetings/2026-03-27-personalization-tech-sync|Personalization tech sync]]** — 2 decisions · [[Meetings/2026-03-27-personalization-tech-sync|→ Full notes]]
+
 ### Staged Drafts (2)
 1. Reply to VP Engineering → Budget review acknowledgment
 2. Reply to Alice Chen → Merge conflict resolution
 ```
+
+Omit the "Meeting Summaries" section if no transcripts were found or summarized. Each entry links to the Obsidian meeting note using the `vault_path` returned by `summarize-meeting.js`.
 
 **Calendar timezone:** The script outputs calendar times already converted to local timezone (from `timezone` in `outlook.json`). Display times as-is — do NOT convert again.
 
