@@ -207,8 +207,11 @@ async function searchRecordings(token, subjects, lookbackHours) {
   if (!subjects.length) return []
   const cutoff = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
   const results = []
+  /** @type {Map<string, string>} driveId → drive root server-relative path (e.g. /personal/jsuh_adobe_com/Documents) */
+  const drivePathCache = new Map()
+
   for (const subject of subjects) {
-    // Use the first ~30 chars of the subject as the search term (enough to be specific)
+    // Use the first ~40 chars of the subject as the search term
     const term = subject.slice(0, 40).replace(/['"]/g, '')
     try {
       const r = await graphPost(token, `${GRAPH}/search/query`, {
@@ -220,12 +223,44 @@ async function searchRecordings(token, subjects, lookbackHours) {
         if (!res?.lastModifiedDateTime || new Date(res.lastModifiedDateTime) < cutoff) continue
         // Only include files that look like Teams recordings (name contains subject words)
         if (!res.name?.toLowerCase().includes(term.split(/\s+/)[0].toLowerCase())) continue
+
+        // Construct proper Teams stream URL from drive webUrl + file path
+        const driveId = res.parentReference?.driveId ?? ''
+        let streamUrl = res.webUrl ?? '' // fallback
+        if (driveId) {
+          try {
+            if (!drivePathCache.has(driveId)) {
+              const driveInfo = await graphFetch(token, `${GRAPH}/drives/${driveId}?$select=webUrl`)
+              // driveInfo.webUrl = https://adobe-my.sharepoint.com/personal/jsuh_adobe_com/Documents
+              drivePathCache.set(driveId, driveInfo.webUrl ?? '')
+            }
+            const driveWebUrl = drivePathCache.get(driveId) ?? ''
+            if (driveWebUrl) {
+              // server-relative path = pathname of drive webUrl + relative path within drive + filename
+              // Note: search results don't include path in parentReference, so fetch the item to get it.
+              const driveRootPath = new URL(driveWebUrl).pathname  // /personal/jsuh_adobe_com/Documents
+              let relPath = ''
+              try {
+                const itemInfo = await graphFetch(token, `${GRAPH}/drives/${driveId}/items/${res.id}?$select=parentReference`)
+                relPath = (itemInfo.parentReference?.path ?? '').replace(/^.+root:/, '')  // /Recordings
+              } catch (_) { /* fall through — path will be missing but URL still works */ }
+              const serverPath = driveRootPath + relPath + '/' + res.name
+              const siteBase = driveWebUrl.replace(/\/Documents$/, '')
+              streamUrl = `${siteBase}/_layouts/15/stream.aspx?id=${encodeURIComponent(serverPath)}`
+            }
+          } catch (e) {
+            console.error(`[outlook] Drive fetch failed for ${driveId}:`, e.message)
+          }
+        }
+
         results.push({
           subject,
           name: res.name ?? '',
           recordedAt: res.lastModifiedDateTime ?? '',
-          webUrl: res.webUrl ?? '',
+          webUrl: streamUrl,
           organizer: res.createdBy?.user?.displayName ?? '',
+          driveId,
+          parentId: res.parentReference?.id ?? '',
         })
         break // one recording per meeting subject is enough
       }
@@ -340,29 +375,66 @@ async function runBrief(token, config, lookbackHours) {
     console.error('[outlook] Calendar fetch failed:', err.message)
   }
 
-  // ── Meeting transcripts (recent .vtt files in Teams Recordings folders) ──
+  // ── Meeting transcripts (.vtt files from Teams, across all accessible drives) ──
+  // Search tenant-wide using "Meeting Recording" filename convention — Teams recordings in
+  // other users' OneDrive are shared with attendees but won't appear under path:Recordings.
+  // Use a 48h lookback window to catch late-indexed files.
   let transcripts = []
   try {
-    const rawTranscripts = await searchTranscripts(token, 'filetype:vtt path:Recordings', 20)
-    // Filter to only files modified within the lookback window (not old training/subtitle files)
-    const cutoff = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
+    const cutoff = new Date(Date.now() - Math.max(lookbackHours, 48) * 60 * 60 * 1000)
+    const rawTranscripts = await searchTranscripts(token, '"Meeting Recording" filetype:vtt', 30)
     transcripts = rawTranscripts.filter(t => {
-      if (!t.modifiedAt) return false
-      return new Date(t.modifiedAt) >= cutoff
+      // Use whichever timestamp is newer (created vs modified)
+      const ts = t.createdAt && t.modifiedAt
+        ? new Date(Math.max(new Date(t.createdAt), new Date(t.modifiedAt)))
+        : new Date(t.modifiedAt || t.createdAt || 0)
+      return ts >= cutoff
     })
-    console.error(`[outlook] Found ${transcripts.length} recent transcripts (${rawTranscripts.length} raw hits filtered by date)`)
+    console.error(`[outlook] Found ${transcripts.length} recent transcripts (${rawTranscripts.length} raw hits filtered to 48h)`)
+
+    // Per-meeting title fallback: if generic search missed any of yesterday's meetings, search by title
+    if (transcripts.length < yesterdayOnlineMeetings.length && yesterdayOnlineMeetings.length > 0) {
+      const foundNames = new Set(transcripts.map(t => t.name.toLowerCase()))
+      const missing = yesterdayOnlineMeetings.filter(subject => {
+        const key = subject.slice(0, 20).toLowerCase()
+        return ![...foundNames].some(n => n.includes(key))
+      })
+      for (const subject of missing) {
+        const term = subject.slice(0, 40).replace(/['"]/g, '')
+        try {
+          const hits = await searchTranscripts(token, `"${term}" filetype:vtt`, 3)
+          const recent = hits.filter(t => {
+            const ts = t.createdAt && t.modifiedAt
+              ? new Date(Math.max(new Date(t.createdAt), new Date(t.modifiedAt)))
+              : new Date(t.modifiedAt || t.createdAt || 0)
+            return ts >= cutoff
+          })
+          transcripts.push(...recent)
+          if (recent.length) console.error(`[outlook] Per-title search found ${recent.length} transcript(s) for: ${subject}`)
+        } catch (err) {
+          console.error(`[outlook] Per-title transcript search failed for "${subject}":`, err.message)
+        }
+      }
+    }
   } catch (err) {
     errors.push(`Transcript search failed: ${err.message}`)
     console.error('[outlook] Transcript search failed:', err.message)
   }
 
-  // ── Meeting recordings fallback (MP4s from yesterday's online meetings) ──
-  // Used when VTT transcripts are inaccessible (attendee, not organizer).
+  // ── Meeting recordings (MP4 links) + VTT sibling fetch ──
+  // Always run for yesterday's online meetings. Teams stores recordings in the
+  // organizer's OneDrive (not the attendee's), so SharePoint Search won't find
+  // them. Instead: find the MP4 via title search, then fetch the .vtt sibling
+  // from the same folder using the drive+parent IDs returned by search.
+  // ── Meeting recordings (Teams stream URLs from yesterday's online meetings) ──
+  // Recordings are stored in the organizer's OneDrive, not the attendee's.
+  // VTT transcripts in organizer drives are inaccessible without admin-consent scopes.
+  // Strategy: find the MP4 via title search, construct the proper stream URL.
   let recordings = []
-  if (transcripts.length === 0 && yesterdayOnlineMeetings.length > 0) {
+  if (yesterdayOnlineMeetings.length > 0) {
     try {
-      recordings = await searchRecordings(token, yesterdayOnlineMeetings, lookbackHours)
-      console.error(`[outlook] Found ${recordings.length} meeting recordings (MP4 fallback)`)
+      recordings = await searchRecordings(token, yesterdayOnlineMeetings, Math.max(lookbackHours, 48))
+      console.error(`[outlook] Found ${recordings.length} meeting recordings (MP4 links)`)
     } catch (err) {
       errors.push(`Recording search failed: ${err.message}`)
       console.error('[outlook] Recording search failed:', err.message)
