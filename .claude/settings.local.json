@@ -47,7 +47,8 @@
       "Skill(morning-assistant:*)",
       "Bash(CLAUDE_BIN=/Users/ramboz/.nvm/versions/node/v22.16.0/bin/claude node scripts/summarize-meeting.js --search \"personalization tech sync\" --dry-run)",
       "Bash(cp /Users/ramboz/Projects/misc/morning-brief-agent/skills/morning-outlook/SKILL.md /Users/ramboz/.claude/skills/morning-outlook/SKILL.md)",
-      "Bash(cp /Users/ramboz/Projects/misc/morning-brief-agent/skills/morning-confluence/SKILL.md /Users/ramboz/.claude/skills/morning-confluence/SKILL.md)"
+      "Bash(cp /Users/ramboz/Projects/misc/morning-brief-agent/skills/morning-confluence/SKILL.md /Users/ramboz/.claude/skills/morning-confluence/SKILL.md)",
+      "Bash(wait)"
     ]
   }
 }
