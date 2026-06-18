@@ -83,7 +83,7 @@ async function main() {
     await updateHtmlWatchState(htmlWatchState, fetched.htmlWatchUpdates)
   }
 
-  const warnings = [...fetched.errors, ...triaged.errors]
+  const warnings = [...fetched.errors, ...(fetched.warnings ?? []), ...triaged.errors]
 
   const result = {
     stats,

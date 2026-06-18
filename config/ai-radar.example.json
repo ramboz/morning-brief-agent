@@ -3,11 +3,11 @@
   "fetch_hour_utc": 4,
   "dedup_window_days": 7,
   "max_items_per_layer": {
-    "today_signal": 5,
-    "skills_tutorials": 5,
-    "strategic_radar": 3
+    "today_signal": 4,
+    "skills_tutorials": 4,
+    "strategic_radar": 2
   },
-  "relevance_context": "Engineering Manager at Adobe building AI agent tooling. Daily-drives both Claude Code and OpenAI Codex for large-scale coding. Building a Morning Briefing Agent using Node.js, Claude API, Cowork, and MCP servers. Integrations include JIRA DC, Confluence DC, GitHub (two instances), Slack, and Microsoft 365. Cares about: agent architecture patterns, Claude/Codex ecosystem updates, MCP servers, production harness design, AI coding tool comparison.",
+  "relevance_context": "Engineering Manager at Adobe building a Markdown-first Morning Assistant with Codex, Claude Code, MCP tools, and small Node.js source fetchers. Daily interests: practical agent architecture, AI coding workflow changes, MCP connector updates, production harness patterns, and concrete techniques worth applying to this repo.",
   "project_keywords": [
     "mcp",
     "model context protocol",
@@ -28,9 +28,12 @@
     "workflow",
     "orchestration",
     "tool use",
-    "rag",
-    "agentic",
     "ai coding"
+  ],
+  "v1_scope_notes": [
+    "AI Radar v1 intentionally keeps only a small default source set enabled.",
+    "Disabled sources below are examples of deferred source types; keep them off unless a later slice explicitly expands scope.",
+    "Hugging Face papers, newsletters/manual ingestion, broad social feeds, and trend-engine behavior are v1 non-goals."
   ],
   "sources": [
     {
@@ -40,6 +43,16 @@
       "type": "atom",
       "category": "practitioner",
       "enabled": true,
+      "required_keywords": [
+        "ai",
+        "llm",
+        "agent",
+        "claude",
+        "codex",
+        "openai",
+        "anthropic",
+        "mcp"
+      ],
       "notes": "Best single human signal for practical AI tooling."
     },
     {
@@ -67,6 +80,15 @@
       "type": "github_commits",
       "category": "skills_tutorials",
       "enabled": true,
+      "required_keywords": [
+        "agent",
+        "claude",
+        "computer use",
+        "eval",
+        "mcp",
+        "prompt",
+        "tool"
+      ],
       "notes": "New notebooks and examples can become near-term build patterns."
     },
     {
@@ -86,10 +108,11 @@
       "url": "https://docs.anthropic.com/en/docs/claude-code/mcp",
       "type": "html_page",
       "category": "tooling",
-      "enabled": true,
+      "enabled": false,
       "watch_selector": "main",
       "emit_on_first_seen": true,
-      "notes": "Curated docs watch from Spec 09."
+      "deferred_reason": "Deferred for v1 because MCP spec/server release sources already cover the highest-signal MCP changes.",
+      "notes": "Enable during a Claude Code MCP docs-focused slice."
     },
     {
       "id": "openai-harness-engineering",
@@ -97,10 +120,40 @@
       "url": "https://openai.com/index/harness-engineering/",
       "type": "html_page",
       "category": "tooling",
-      "enabled": true,
+      "enabled": false,
       "watch_selector": "main",
       "emit_on_first_seen": true,
-      "notes": "Curated engineering page watch from Spec 09."
+      "deferred_reason": "Deferred for v1 because this is a static strategic read, not a daily signal source.",
+      "notes": "Keep as a reference item for later Codex workflow analysis."
+    },
+    {
+      "id": "github-trending-agents",
+      "label": "GitHub Trending Agents",
+      "url": "https://github.com/trending?since=daily",
+      "type": "github_trending",
+      "category": "strategic_radar",
+      "enabled": false,
+      "deferred_reason": "Deferred for v1 because broad social/trending feeds are noisy and belong in a later trend-engine slice.",
+      "notes": "Optional future source; do not enable by default."
+    },
+    {
+      "id": "hugging-face-papers",
+      "label": "Hugging Face Papers",
+      "url": "https://huggingface.co/papers",
+      "type": "hugging_face_papers",
+      "category": "strategic_radar",
+      "enabled": false,
+      "deferred_reason": "Explicit AI Radar v1 non-goal: no Hugging Face papers.",
+      "notes": "Kept disabled to document the scope boundary."
+    },
+    {
+      "id": "manual-newsletters",
+      "label": "Manual Newsletter Ingestion",
+      "type": "manual_newsletter",
+      "category": "strategic_radar",
+      "enabled": false,
+      "deferred_reason": "Explicit AI Radar v1 non-goal: no manual newsletter ingestion.",
+      "notes": "Kept disabled to document the scope boundary."
     }
   ]
 }

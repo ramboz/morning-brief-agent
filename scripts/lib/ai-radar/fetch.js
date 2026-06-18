@@ -14,7 +14,9 @@ const parser = new Parser({
 export async function fetchAiRadarItems(config, options = {}) {
   const now = options.now ?? new Date()
   const lookbackHours = options.lookbackHours ?? 72
-  const enabledSources = (config.sources ?? []).filter(source => source.enabled)
+  const sources = config.sources ?? []
+  const enabledSources = sources.filter(source => source.enabled === true)
+  const skippedSources = sources.filter(source => source.enabled !== true)
   const htmlWatchState = options.htmlWatchState ?? { pages: {} }
 
   const settled = await Promise.allSettled(
@@ -23,6 +25,9 @@ export async function fetchAiRadarItems(config, options = {}) {
 
   const items = []
   const errors = []
+  const warnings = skippedSources
+    .map(skippedSourceWarning)
+    .filter(Boolean)
   const htmlWatchUpdates = []
 
   for (let index = 0; index < settled.length; index += 1) {
@@ -43,9 +48,12 @@ export async function fetchAiRadarItems(config, options = {}) {
   return {
     items,
     errors,
+    warnings,
     htmlWatchUpdates,
     stats: {
+      sourcesConfigured: sources.length,
       sourcesChecked: enabledSources.length,
+      sourcesSkipped: skippedSources.length,
       sourceErrors: errors.length,
       itemsFetched: items.length
     }
@@ -328,6 +336,14 @@ function matchesSourceKeywords(item, source) {
 
   const haystack = `${item.title} ${item.summary}`.toLowerCase()
   return required.some(keyword => haystack.includes(String(keyword).toLowerCase()))
+}
+
+function skippedSourceWarning(source) {
+  if (!source.deferred_reason) {
+    return null
+  }
+
+  return `${source.label || source.id}: skipped (${source.deferred_reason})`
 }
 
 function extractHtmlTitle($, source) {

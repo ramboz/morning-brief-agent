@@ -13,7 +13,7 @@
 | Spec | Slice | Status | Notes |
 |------|-------|--------|-------|
 | [001-adopt-jig](001-adopt-jig/spec.md) | 001-01 — bootstrap | **DONE** | worked example; review boxes satisfied by deterministic completion check |
-| [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-01 - scope-and-source-trim | DRAFT |  |
+| [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-01 - scope-and-source-trim | **DONE** |  |
 | [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-02 - fixture-backed-real-run | DRAFT |  |
 | [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-03 - action-layer-polish | DRAFT |  |
 | [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-01 - manual-brief-writer | DRAFT |  |

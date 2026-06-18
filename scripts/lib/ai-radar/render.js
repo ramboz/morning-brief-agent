@@ -31,7 +31,10 @@ export function renderAiRadarDigest(items, config, stats, options = {}) {
   }
 
   lines.push('---')
-  lines.push(`*Sources: ${stats.sourcesChecked} checked · ${stats.itemsFetched} items fetched · ${stats.itemsAfterTriage} after triage · Last run: ${formatTime(now)}*`)
+  const skippedSummary = stats.sourcesSkipped > 0
+    ? ` · ${stats.sourcesSkipped} deferred`
+    : ''
+  lines.push(`*Sources: ${stats.sourcesChecked} checked${skippedSummary} · ${stats.itemsFetched} items fetched · ${stats.itemsAfterTriage} after triage · Last run: ${formatTime(now)}*`)
   if ((stats.sourceErrors ?? 0) > 0) {
     lines.push(`*Warnings: ${stats.sourceErrors} source${stats.sourceErrors === 1 ? '' : 's'} failed during fetch.*`)
   }

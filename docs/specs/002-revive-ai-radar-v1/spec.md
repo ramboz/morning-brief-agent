@@ -1,5 +1,5 @@
 ---
-status: DRAFT
+status: IN_PROGRESS
 ---
 
 # Spec 002: Revive AI Radar v1

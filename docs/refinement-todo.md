@@ -26,6 +26,7 @@
 **Deferred:** The architecture now names CLI output, config, and Markdown digest contracts, but formal schemas are not committed.
 **Current options:** Add JSON Schema for script envelopes and config; rely on fixtures for Markdown render contracts; keep prose-only until a contract changes.
 **Resolution trigger:** First spec that changes a script envelope, config shape, or Markdown section format.
+**Interim note (2026-06-18):** Slice `002-01` changed AI Radar config examples, CLI stats/warnings, and the Markdown footer. Formal contract artifacts remain deferred to spec `008-02`; slice `002-02` is the immediate fixture-backed check for the AI Radar output shape.
 
 ## Source Slices
 
@@ -39,10 +40,9 @@
 **Current options:** Write reviews only to Obsidian/output; create pending GitHub reviews when enabled per repo; require manual trigger for staging.
 **Resolution trigger:** GitHub PR review automation spec.
 
-### Decision: AI Radar source list
-**Deferred:** The current example config is broader than the revived AI Radar v1 scope.
-**Current options:** Trim to a small curated list; keep broader sources disabled; split strategic/news sources into a later slice.
-**Resolution trigger:** AI Radar v1 revival spec.
+### Resolved: AI Radar source list
+**Resolved by:** Spec `002`, slice `002-01`.
+**Resolution:** AI Radar v1 keeps a small enabled default source list and leaves broader, static, paper, newsletter, social/trending, and trend-engine examples disabled with explicit `deferred_reason` notes.
 
 ## Operations
 
@@ -55,3 +55,4 @@
 **Deferred:** The repo has fixtures but no real package test command.
 **Current options:** Fixture snapshot checks for renderers; script smoke tests; targeted unit tests around shared helpers.
 **Resolution trigger:** First slice that changes AI Radar rendering, triage, or shared script contracts.
+**Interim note (2026-06-18):** Slice `002-01` used a targeted script smoke run because no pytest/vitest/jest runner is configured. Slice `002-02` owns refreshing `tests/fixtures/ai-radar.*` from the real trimmed run.

@@ -1,5 +1,5 @@
 ---
-status: DRAFT
+status: DONE
 dependencies: []
 last_verified: 2026-06-18
 ---
@@ -11,9 +11,9 @@ v1 scope: small curated sources, no broad catalog, no Hugging Face papers,
 no newsletter/manual ingestion, and no trend engine.
 
 **DoR:**
-- [ ] Current `config/ai-radar.example.json` has been reviewed against
+- [x] Current `config/ai-radar.example.json` has been reviewed against
       `AGENTS.md` non-goals.
-- [ ] Any source type kept in v1 has a clear user-facing purpose in the daily
+- [x] Any source type kept in v1 has a clear user-facing purpose in the daily
       digest.
 
 **Acceptance Criteria:**
@@ -29,16 +29,68 @@ no newsletter/manual ingestion, and no trend engine.
    notes or warnings.
 
 **DoD:**
-- [ ] `node scripts/fetch-ai-radar.js --brief --no-dedupe` completes with the
+- [x] `node scripts/fetch-ai-radar.js --brief --no-dedupe` completes with the
       trimmed config.
-- [ ] The changed source list is documented in the spec close-out.
-- [ ] No unrelated source-area scripts are modified.
+- [x] The changed source list is documented in the spec close-out.
+- [x] No unrelated source-area scripts are modified.
 
 **Anti-horizontal-phasing check:** A user running AI Radar after this slice gets
 a smaller, more relevant digest instead of a broad feed cleanup with no visible
 daily value.
 
+### Implementation close-out
+
+The default AI Radar example config now enables five v1 sources:
+
+- Simon Willison's Weblog, filtered by project-relevant AI/agent keywords.
+- MCP Specification Releases.
+- MCP Servers Releases.
+- Anthropic Cookbook commits, filtered by practical agent/tooling keywords.
+- Claude Code Skills Docs.
+
+Deferred source examples remain in the config but are disabled with explicit
+`deferred_reason` values: Claude Code MCP Docs, OpenAI Harness Engineering,
+GitHub Trending Agents, Hugging Face Papers, and Manual Newsletter Ingestion.
+This keeps the v1 boundary visible without enabling broad catalog, manual
+newsletter, papers, social-feed, or trend-engine behavior.
+
+The fetcher now returns non-fatal warnings for deferred disabled sources and
+tracks `sourcesConfigured`, `sourcesChecked`, and `sourcesSkipped`. The rendered
+digest footer includes a deferred-source count.
+
+Verification run:
+
+```bash
+node scripts/fetch-ai-radar.js --brief --no-dedupe
+```
+
+Result: completed successfully with 5 checked sources, 5 deferred sources, 2
+items fetched, and 1 item after heuristic triage. Claude triage was unavailable
+locally because `ANTHROPIC_API_KEY` was not set, so the safe heuristic fallback
+was used. `jig:tdd-loop` did not detect a project test runner, so the targeted
+AI Radar command remains the verification gate for this slice.
+
 ### Deviation log (after reconciliation)
 
-_Not started._
+Reviewer verdicts:
 
+- Compliance pass: pass.
+- Craft pass: pass.
+
+No spec deviations were introduced. Implementation followed the slice's scoped
+approach: trim the default source list, keep non-goal examples disabled, and
+surface deferred sources as non-fatal warnings.
+
+Accepted reconciliation notes:
+
+- The new deferred-source warning/stats path is verified by the targeted
+  `node scripts/fetch-ai-radar.js --brief --no-dedupe` run, not by an
+  automated test or refreshed fixture in this slice. That gap is accepted
+  because slice 002-02 owns fixture-backed real-run refresh.
+- This slice lightly touches existing contract surfaces: AI Radar config
+  examples, CLI result stats/warnings, and the Markdown digest footer. Formal
+  contract schemas remain deferred to spec 008-02; no ADR was added because the
+  source-list trim and warning/footer shape are slice-local and reversible.
+- Keep the config-level `deferred_reason` pattern and terse footer count; both
+  reviewers called them useful for making v1 scope visible without adding noisy
+  digest sections.
