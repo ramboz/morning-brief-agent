@@ -41,23 +41,23 @@ async function main() {
   try {
     config = await loadConfig('ai-radar')
   } catch (err) {
-    console.log(JSON.stringify(envelope(TOOL, mode, null, [err.message])))
-    process.exit(0)
+    emitAndExit(envelope(TOOL, mode, null, [err.message]))
+    return
   }
 
   if (!config.enabled) {
-    console.log(JSON.stringify(envelope(TOOL, mode, null)))
-    process.exit(0)
+    emitAndExit(envelope(TOOL, mode, null))
+    return
   }
 
   const effectiveLookbackHours = lookbackHours || ((config.lookback_days ?? 7) * 24)
-  const htmlWatchState = await loadHtmlWatchState()
+  const htmlWatchState = saveFixture ? { pages: {} } : await loadHtmlWatchState()
   const fetched = await fetchAiRadarItems(config, {
     now,
     lookbackHours: effectiveLookbackHours,
     htmlWatchState
   })
-  const cache = await loadSeenCache()
+  const cache = noDedupe ? { seen: {} } : await loadSeenCache()
   const { deduped, removedCount } = noDedupe
     ? { deduped: fetched.items, removedCount: 0 }
     : dedupeItems(
@@ -75,8 +75,13 @@ async function main() {
   }
   const render = renderAiRadarDigest(triaged.items, config, stats, { now })
 
-  await updateSeenCache(cache, triaged.items, config.dedup_window_days ?? 7, now)
-  await updateHtmlWatchState(htmlWatchState, fetched.htmlWatchUpdates)
+  if (!noDedupe) {
+    await updateSeenCache(cache, triaged.items, config.dedup_window_days ?? 7, now)
+  }
+
+  if (!saveFixture) {
+    await updateHtmlWatchState(htmlWatchState, fetched.htmlWatchUpdates)
+  }
 
   const warnings = [...fetched.errors, ...triaged.errors]
 
@@ -97,12 +102,12 @@ async function main() {
     await writeFile(join(fixtureDir, 'ai-radar.md'), `${render.markdown}\n`)
   }
 
-  console.log(JSON.stringify(envelope(TOOL, mode, result, fatalErrors)))
+  emitAndExit(envelope(TOOL, mode, result, fatalErrors))
 }
 
 main().catch(err => {
   console.error(`[${TOOL}]`, err.message)
-  console.log(JSON.stringify(envelope(TOOL, 'brief', null, [err.message])))
+  emitAndExit(envelope(TOOL, 'brief', null, [err.message]))
 })
 
 async function writeOutputFiles(markdown, day) {
@@ -129,4 +134,10 @@ async function writeOutputFiles(markdown, day) {
 
 function resultDay(now) {
   return now.toISOString().slice(0, 10)
+}
+
+function emitAndExit(payload) {
+  process.stdout.write(`${JSON.stringify(payload)}\n`, () => {
+    process.exit(0)
+  })
 }

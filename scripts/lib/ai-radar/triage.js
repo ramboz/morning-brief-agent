@@ -1,18 +1,9 @@
-import { promisify } from 'node:util'
-import { execFile as execFileCallback } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
 const MODEL = process.env.AI_RADAR_CLAUDE_MODEL || 'claude-sonnet-4-20250514'
-const CODEX_MODEL = process.env.AI_RADAR_CODEX_MODEL || 'gpt-5'
 const VALID_LAYERS = new Set(['today_signal', 'skills_tutorials', 'strategic_radar', 'skip'])
 const TUTORIAL_HINTS = ['tutorial', 'cookbook', 'guide', 'how to', 'walkthrough', 'example', 'examples', 'evaluation', 'eval', 'prompt', 'tool use', 'pattern']
 const SIGNAL_HINTS = ['release', 'launch', 'launched', 'introducing', 'announcing', 'api', 'model', 'update', 'specification', 'general availability', 'now available']
 const NOISE_HINTS = ['funding', 'hiring', 'webinar', 'podcast', 'conference', 'meetup', 'sponsor']
 const GENERIC_MODEL_HINTS = ['sota', 'benchmarks', 'cost', 'open model', 'cheaper', 'faster']
-const execFile = promisify(execFileCallback)
-const CODEX_TIMEOUT_MS = 45000
 const CLAUDE_TIMEOUT_MS = 15000
 const TRIAGE_SCHEMA = {
   type: 'object',
@@ -49,15 +40,6 @@ export async function triageAiRadarItems(items, config, options = {}) {
     }
   }
 
-  const codexResult = await tryCodexTriage(items, config, options)
-  if (codexResult.ok) {
-    return {
-      items: codexResult.items,
-      mode: 'codex',
-      errors: []
-    }
-  }
-
   const claudeResult = await tryClaudeTriage(items, config, options)
   if (claudeResult.ok) {
     return {
@@ -70,67 +52,53 @@ export async function triageAiRadarItems(items, config, options = {}) {
   return {
     items: heuristicTriage(items, config, options),
     mode: 'heuristic_fallback',
-    errors: [codexResult.error, claudeResult.error].filter(Boolean)
-  }
-}
-
-async function tryCodexTriage(items, config, { now = new Date() } = {}) {
-  const prompt = buildTriagePrompt(items, config, now)
-  const tempDir = await mkdtemp(join(tmpdir(), 'ai-radar-codex-'))
-  const schemaPath = join(tempDir, 'triage-schema.json')
-  const outputPath = join(tempDir, 'triage-output.json')
-
-  try {
-    await writeFile(schemaPath, JSON.stringify(TRIAGE_SCHEMA, null, 2))
-    await execFile('codex', [
-      'exec',
-      '--skip-git-repo-check',
-      '--sandbox', 'read-only',
-      '--cd', process.cwd(),
-      '--ephemeral',
-      '--color', 'never',
-      '--model', CODEX_MODEL,
-      '--output-schema', schemaPath,
-      '--output-last-message', outputPath,
-      prompt
-    ], {
-      timeout: CODEX_TIMEOUT_MS,
-      maxBuffer: 2 * 1024 * 1024
-    })
-
-    const raw = await readFile(outputPath, 'utf-8')
-    const classifications = unwrapTriagePayload(JSON.parse(raw))
-    return {
-      ok: true,
-      items: mergeTriagedItems(items, classifications, config, now)
-    }
-  } catch (error) {
-    return {
-      ok: false,
-      error: `Codex triage unavailable: ${error.message}`
-    }
-  } finally {
-    await rm(tempDir, { recursive: true, force: true })
+    errors: [claudeResult.error].filter(Boolean)
   }
 }
 
 async function tryClaudeTriage(items, config, { now = new Date() } = {}) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: 'Claude triage unavailable: ANTHROPIC_API_KEY not set'
+    }
+  }
+
   const prompt = buildTriagePrompt(items, config, now)
 
   try {
-    const { stdout } = await execFile('claude', [
-      '--print',
-      '--output-format', 'text',
-      '--permission-mode', 'bypassPermissions',
-      '--model', MODEL,
-      '--json-schema', JSON.stringify(TRIAGE_SCHEMA),
-      prompt
-    ], {
-      timeout: CLAUDE_TIMEOUT_MS,
-      maxBuffer: 2 * 1024 * 1024
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': apiKey
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 2000,
+        system: 'Return only a JSON object matching the requested schema. No preamble, markdown, or commentary.',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      }),
+      signal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS)
     })
 
-    const classifications = unwrapTriagePayload(JSON.parse(extractJsonObject(stdout)))
+    if (!response.ok) {
+      throw new Error(`Anthropic API request failed (${response.status})`)
+    }
+
+    const payload = await response.json()
+    const text = payload.content
+      ?.filter(part => part.type === 'text')
+      .map(part => part.text)
+      .join('\n') ?? ''
+    const classifications = unwrapTriagePayload(JSON.parse(extractJsonObject(text)))
     return {
       ok: true,
       items: mergeTriagedItems(items, classifications, config, now)
@@ -138,7 +106,7 @@ async function tryClaudeTriage(items, config, { now = new Date() } = {}) {
   } catch (error) {
     return {
       ok: false,
-      error: `Claude CLI triage unavailable: ${error.message}`
+      error: `Claude triage unavailable: ${error.message}`
     }
   }
 }
@@ -254,7 +222,7 @@ function extractJsonObject(text) {
   const end = text.lastIndexOf('}')
 
   if (start === -1 || end === -1 || end < start) {
-    throw new Error('CLI response did not include a JSON object')
+    throw new Error('Claude response did not include a JSON object')
   }
 
   return text.slice(start, end + 1)
@@ -301,7 +269,7 @@ function unwrapTriagePayload(payload) {
     return payload.items
   }
 
-  throw new Error('CLI triage output did not contain an items array')
+  throw new Error('Claude triage output did not contain an items array')
 }
 
 function clampScore(value) {

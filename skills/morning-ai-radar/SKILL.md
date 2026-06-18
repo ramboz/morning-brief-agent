@@ -6,7 +6,7 @@ allowed-tools: bash
 
 # Morning AI Radar
 
-Fetch curated AI/agent ecosystem content from RSS feeds, GitHub trending, and research papers. Run a Claude-powered relevance triage. Inject a structured **AI Radar** section into the daily note.
+Fetch curated AI/agent ecosystem content from a small RSS/Atom, GitHub release/commit, and HTML page watch list. Run a Claude-powered relevance triage with fallback heuristics. Inject a structured **AI Radar** section into the daily note.
 
 This is a read-only skill — no browser automation, no draft staging.
 
@@ -32,8 +32,9 @@ node {scripts_path}/fetch-ai-radar.js --brief
 The script handles all data fetching:
 - RSS/Atom feeds via rss-parser
 - GitHub releases via API
-- GitHub trending via HTML scraping
-- HuggingFace daily papers via API
+- GitHub commits via API
+- HTML page watches for curated docs/product pages
+- Optional GitHub trending via HTML scraping when configured
 - Deduplication against the rolling cache
 
 It returns structured JSON with triaged items classified into layers:
@@ -75,7 +76,7 @@ For each surviving item:
 *Sources: 12 feeds checked · 47 items fetched · 8 after triage · Last run: 06:00*
 ```
 
-If zero items after triage: return an **empty string** for the section content. The orchestrator will suppress the section entirely from the daily note (no header, no placeholder text). Do NOT output "Nothing significant today." — that defeats section suppression.
+If zero items survive triage, return the script's rendered section with `_Nothing significant today._` so the daily note still shows that AI Radar ran.
 
 Omit the "On Your Radar" section entirely on non-Monday days.
 
@@ -96,7 +97,7 @@ Return to the orchestrator:
 | `enabled: false` | Skip silently — no section in daily note |
 | Script fails to run | Report error, skip section |
 | Script returns `ok: false` | Report errors from script, skip section |
-| Zero items after triage | Return empty string — orchestrator suppresses the section |
+| Zero items after triage | Return the rendered "Nothing significant today." section |
 
 ## Scheduling
 

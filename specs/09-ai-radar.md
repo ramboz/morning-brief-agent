@@ -33,19 +33,20 @@ Follows the same standalone-runner + fixture pattern as the other helper scripts
 
 ## Data Sources
 
-Defined in `config/ai-radar-sources.json` (example file committed, actual config
-gitignored). See `config/ai-radar-sources.example.json`.
+Defined in `config/ai-radar.json` (actual config gitignored). See the committed
+example at `config/ai-radar.example.json`.
 
 ### Source Categories
 
-#### Model & API News
-Fast-moving. Checked daily. Any release or update here is automatically promoted to
-**Today's Signal**.
+#### Curated v1 sources
+Fast-moving sources are checked daily. Keep this list intentionally small for v1.
 
 | Source | Feed URL | Type |
 |---|---|---|
 | Simon Willison's Blog | `https://simonwillison.net/atom/everything` | Atom |
 | MCP Spec Releases | GitHub API — `modelcontextprotocol/specification` | GitHub Releases |
+| MCP Servers Releases | GitHub API — `modelcontextprotocol/servers` | GitHub Releases |
+| Anthropic Cookbook | GitHub API — `anthropics/anthropic-cookbook` commits | GitHub Commits |
 | Claude Code Skills Docs | `https://docs.claude.com/en/docs/claude-code/skills` | HTML Page Watch |
 | Claude Code MCP Docs | `https://docs.anthropic.com/en/docs/claude-code/mcp` | HTML Page Watch |
 | OpenAI Harness Engineering | `https://openai.com/index/harness-engineering/` | HTML Page Watch |
@@ -67,7 +68,7 @@ Keep newsletters and manual-entry sources out of the first slice.
 
 ## Configuration
 
-### `config/ai-radar-sources.example.json`
+### `config/ai-radar.example.json`
 
 ```json
 {
@@ -86,8 +87,8 @@ Keep newsletters and manual-entry sources out of the first slice.
   ],
   "sources": [
     { "id": "simon-willison", "label": "Simon Willison", "url": "https://simonwillison.net/atom/everything", "type": "atom", "category": "practitioner", "enabled": true },
-    { "id": "mcp-releases", "label": "MCP Spec Releases", "url": "https://api.github.com/repos/modelcontextprotocol/specification/releases", "type": "github_releases", "category": "tooling", "enabled": true },
-    { "id": "mcp-server-releases", "label": "MCP Servers Releases", "url": "https://api.github.com/repos/modelcontextprotocol/servers/releases", "type": "github_releases", "category": "tooling", "enabled": true },
+    { "id": "mcp-spec-releases", "label": "MCP Spec Releases", "url": "https://api.github.com/repos/modelcontextprotocol/specification/releases", "type": "github_releases", "category": "tooling", "enabled": true },
+    { "id": "mcp-servers-releases", "label": "MCP Servers Releases", "url": "https://api.github.com/repos/modelcontextprotocol/servers/releases", "type": "github_releases", "category": "tooling", "enabled": true },
     { "id": "anthropic-cookbook", "label": "Anthropic Cookbook Commits", "url": "https://api.github.com/repos/anthropics/anthropic-cookbook/commits", "type": "github_commits", "category": "skills_tutorials", "enabled": true },
     { "id": "claude-skills-docs", "label": "Claude Code Skills Docs", "url": "https://docs.claude.com/en/docs/claude-code/skills", "type": "html_page", "category": "skills_tutorials", "enabled": true },
     { "id": "claude-code-mcp-docs", "label": "Claude Code MCP Docs", "url": "https://docs.anthropic.com/en/docs/claude-code/mcp", "type": "html_page", "category": "tooling", "enabled": true },
@@ -98,11 +99,13 @@ Keep newsletters and manual-entry sources out of the first slice.
 
 ### Environment Variables
 
-No new secrets required. GitHub trending is unauthenticated. GitHub releases API calls
-use `GITHUB_TOKEN` (already defined for the github source modules).
+No new secrets are required for fallback operation. Claude triage uses
+`ANTHROPIC_API_KEY` when present; without it, the script falls back to heuristic triage.
+GitHub trending is unauthenticated. GitHub releases API calls use `GITHUB_TOKEN`
+(already defined for the github source modules).
 
 ```
-# No new entries needed in .env for basic operation.
+# Optional: set ANTHROPIC_API_KEY to enable Claude triage.
 # Optional: set RADAR_FETCH_HOUR_UTC to override config default.
 ```
 
@@ -282,7 +285,7 @@ completes fast enough that sequential is acceptable).
 
 | Scenario | Behaviour |
 |---|---|
-| `config/ai-radar-sources.json` missing | Return `{ ok: false, error: 'AI Radar config missing' }` |
+| `config/ai-radar.json` missing | Return `{ ok: false, error: 'AI Radar config missing' }` |
 | `enabled: false` in config | Return `{ ok: true, data: null, skipped: true }` — no section in daily note |
 | Individual feed unreachable | Log warning, skip that feed, continue with others |
 | Claude triage API call fails | Fall back to scoring all items as `strategic_radar` with score 5, no build_relevance. Log `[ai-radar] triage fallback — Claude API unavailable` |
@@ -293,16 +296,9 @@ completes fast enough that sequential is acceptable).
 
 ## Standalone Runner
 
-```js
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const result = await fetchAiRadar()
-  console.log(JSON.stringify(result, null, 2))
-
-  if (process.env.SAVE_FIXTURE === '1') {
-    await fs.writeFile('tests/fixtures/ai-radar.json', JSON.stringify(result, null, 2))
-    console.log('[ai-radar] Fixture saved')
-  }
-}
+```bash
+node scripts/fetch-ai-radar.js --brief
+node scripts/fetch-ai-radar.js --brief --save-fixture
 ```
 
 ---

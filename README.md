@@ -61,7 +61,7 @@ scripts/                   # Helper scripts for API-based data gathering
 ├── fetch-github-corp.js   # Corporate GitHub API → JSON
 ├── fetch-github-com.js    # GitHub.com API → JSON (fallback)
 ├── fetch-slack.js         # Slack API → JSON (fallback)
-├── fetch-ai-radar.js      # RSS/GitHub trending → Claude triage → JSON
+├── fetch-ai-radar.js      # RSS/GitHub/HTML watch → Claude triage → JSON
 └── lib/                   # Shared utilities
 
 specs/                     # v1 specs — reference for helper script logic
@@ -130,6 +130,7 @@ AI Radar source types currently include:
 - `github_releases`
 - `github_commits`
 - `html_page` for curated docs/blog pages without feeds
+- `github_trending` as an optional source type
 
 ---
 

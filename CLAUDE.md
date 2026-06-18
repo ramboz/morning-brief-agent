@@ -94,8 +94,8 @@ morning-brief-agent/
 │   ├── morning-ai-radar/
 │   │   ├── SKILL.md
 │   │   └── config/
-│   │       ├── ai-radar-sources.example.json
-│   │       └── ai-radar-sources.json  # gitignored
+│   │       ├── ai-radar.example.json
+│   │       └── ai-radar.json          # gitignored
 │   │
 │   └── morning-spike/
 │       └── SKILL.md                   # Phase 0 validation tests
@@ -106,7 +106,7 @@ morning-brief-agent/
 │   ├── fetch-github-corp.js           # Corporate GitHub API → JSON
 │   ├── fetch-github-com.js            # GitHub.com API → JSON (fallback)
 │   ├── fetch-slack.js                 # Slack API → JSON (fallback if connector unavailable)
-│   ├── fetch-ai-radar.js             # RSS/GitHub trending → Claude triage → JSON
+│   ├── fetch-ai-radar.js             # RSS/GitHub/HTML watch → Claude triage → JSON
 │   ├── lib/
 │   │   ├── atlassianFetch.js          # Shared JIRA/Confluence auth + fetch util
 │   │   └── config.js                  # Config loader utility
@@ -245,7 +245,7 @@ echo "npx --no -- commitlint --edit \$1" > .husky/commit-msg
 | Confluence DC | `fetch-confluence.js` (REST API) | None (read-only) | `confluence-spaces.json` |
 | GitHub.com | GitHub connector or `fetch-github-com.js` | Local MD fragment — PR reviews only via browser (issue comments don't persist) | `github-repos.json` |
 | GitHub Corp | `fetch-github-corp.js` (REST API) | Local MD fragment — PR reviews only via browser (issue comments don't persist) | `github-repos.json` |
-| AI Radar | `fetch-ai-radar.js` (RSS + GitHub API) | None (read-only) | `ai-radar-sources.json` |
+| AI Radar | `fetch-ai-radar.js` (RSS + GitHub API) | None (read-only) | `ai-radar.json` |
 
 When a connector is available and working, prefer it over the script. The script is the fallback.
 
@@ -304,7 +304,7 @@ The `specs/` folder contains v1 API specs. Use them as the reference for buildin
 | `specs/07-confluence.md` | `scripts/fetch-confluence.js` — CQL queries, wiki-state diffing, space config |
 | `specs/08-github.md` | `scripts/fetch-github-*.js` — dual-instance Octokit, notification enrichment |
 | `specs/04-slack.md` | `scripts/fetch-slack.js` — section config, emoji triage, channel grouping |
-| `specs/09-ai-radar.md` | `scripts/fetch-ai-radar.js` — RSS feeds, GitHub trending, Claude triage |
+| `specs/09-ai-radar.md` | `scripts/fetch-ai-radar.js` — RSS feeds, GitHub releases/commits, HTML page watches, Claude triage |
 
 ---
 

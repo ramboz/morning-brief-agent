@@ -72,7 +72,7 @@
       "gather_method": "script",
       "draft_method": "none",
       "draft_enabled": false,
-      "note": "Read-only. RSS/GitHub trending triage. No draft staging."
+      "note": "Read-only. RSS/GitHub/HTML watch triage. No draft staging."
     }
   },
   "_draft_methods": {

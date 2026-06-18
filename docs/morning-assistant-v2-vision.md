@@ -132,7 +132,7 @@ scripts/
 ├── fetch-github-corp.js   # Corporate GitHub API → JSON
 ├── fetch-github-com.js    # GitHub.com API → JSON (fallback if connector unavailable)
 ├── fetch-slack.js         # Slack API → JSON (fallback if connector unavailable)
-├── fetch-ai-radar.js      # RSS/GitHub trending → Claude triage → JSON
+├── fetch-ai-radar.js      # RSS/GitHub/HTML watch → Claude triage → JSON
 └── .env                   # API tokens (gitignored)
 ```
 
@@ -185,7 +185,7 @@ The Cowork sub-agent invokes the script via shell, parses the JSON output, and p
 └── morning-ai-radar/
     ├── SKILL.md                    # AI Radar sub-agent instructions
     └── config/
-        └── ai-radar-sources.json   # Feed URLs, triage config
+        └── ai-radar.json           # Feed URLs, triage config
 ```
 
 ### Skill Anatomy — How a Sub-Agent Works

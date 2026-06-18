@@ -63,8 +63,6 @@ async function fetchSource(source, options) {
       return fetchGitHubCommits(source, options)
     case 'github_trending':
       return fetchGitHubTrending(source, options)
-    case 'hf_papers':
-      return fetchHuggingFacePapers(source, options)
     case 'html_page':
       return fetchHtmlPageSource(source, options)
     default:
@@ -178,38 +176,6 @@ async function fetchGitHubTrending(source, { now }) {
       publishedAt: now.toISOString()
     }
   }).filter(item => item.url)
-  }
-}
-
-async function fetchHuggingFacePapers(source, { now, lookbackHours }) {
-  const response = await fetch(source.url, {
-    headers: { 'User-Agent': 'morning-brief-agent/2.0' }
-  })
-
-  if (!response.ok) {
-    throw new Error(`HuggingFace papers request failed (${response.status})`)
-  }
-
-  const papers = await response.json()
-  const cutoff = now.getTime() - lookbackHours * 60 * 60 * 1000
-  const minUpvotes = source.min_upvotes ?? 10
-
-  return {
-    items: (Array.isArray(papers) ? papers : [])
-      .filter(p => (p.paper?.upvotes ?? 0) >= minUpvotes)
-      .map(p => ({
-        id: `${source.id}:${p.paper?.id || p.paper?.title || ''}`,
-        sourceId: source.id,
-        sourceLabel: source.label,
-        sourceType: source.type,
-        category: source.category,
-        title: compactText(p.paper?.title || 'HuggingFace paper'),
-        url: p.paper?.id ? `https://huggingface.co/papers/${p.paper.id}` : source.url,
-        summary: compactText(p.paper?.summary || ''),
-        publishedAt: p.publishedAt || p.paper?.publishedAt || null
-      }))
-      .filter(item => matchesSourceKeywords(item, source))
-      .filter(item => !item.publishedAt || new Date(item.publishedAt).getTime() >= cutoff)
   }
 }
 
