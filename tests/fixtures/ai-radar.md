@@ -1,7 +1,7 @@
 ## 🤖 AI Radar
 
 ### What Should I Do?
-- Skim "Extend Claude with skills - Claude Code Docs" and note any workflow changes worth adopting.
+- Skim "Extend Claude with skills - Claude Code Docs" for 10 minutes; save one workflow change if it applies.
 
 ### Skills & Tutorials
 - 📌 **Extend Claude with skills - Claude Code Docs** — Official docs update worth skimming for new workflow or automation patterns. Directly relevant: Touches claude, claude code.

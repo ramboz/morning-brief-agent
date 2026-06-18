@@ -1,14 +1,18 @@
 const LAYER_ORDER = ['today_signal', 'skills_tutorials', 'strategic_radar']
+const ACTION_LIMIT = 3
+const ACTION_SCORE_FLOOR = 7
+const STRATEGIC_ACTION_SCORE_FLOOR = 8
 
 export function renderAiRadarDigest(items, config, stats, options = {}) {
   const now = options.now ?? new Date()
-  const grouped = groupItems(items, config.max_items_per_layer ?? {})
-  const actions = buildActions(items)
+  const grouped = normalizeGroupedActions(groupItems(items, config.max_items_per_layer ?? {}))
+  const strategicSection = getStrategicSection(grouped, now)
+  const actions = buildActions(actionSourceItems(grouped, strategicSection), config)
   const lines = ['## 🤖 AI Radar', '']
 
   lines.push('### What Should I Do?')
   if (actions.length === 0) {
-    lines.push('- Nothing urgent today. Read the top signal when you have a few minutes.')
+    lines.push(`- ${quietDayAction(items)}`)
   } else {
     for (const action of actions) {
       lines.push(`- ${action}`)
@@ -23,10 +27,8 @@ export function renderAiRadarDigest(items, config, stats, options = {}) {
     appendSection(lines, "Today's Signal", grouped.today_signal)
     appendSection(lines, 'Skills & Tutorials', grouped.skills_tutorials)
 
-    if (isMonday(now) && grouped.strategic_radar.length > 0) {
-      appendSection(lines, 'On Your Radar *(Mondays only)*', grouped.strategic_radar)
-    } else if ((grouped.today_signal.length + grouped.skills_tutorials.length) < 3 && grouped.strategic_radar.length > 0) {
-      appendSection(lines, 'Worth Watching', grouped.strategic_radar.slice(0, 2))
+    if (strategicSection) {
+      appendSection(lines, strategicSection.title, strategicSection.items)
     }
   }
 
@@ -63,12 +65,97 @@ function groupItems(items, caps) {
   return grouped
 }
 
-function buildActions(items) {
+function normalizeGroupedActions(grouped) {
+  return Object.fromEntries(
+    Object.entries(grouped).map(([layer, items]) => [
+      layer,
+      items.map(item => ({
+        ...item,
+        action: isActionCandidate(item) ? buildConcreteAction(item) : null
+      }))
+    ])
+  )
+}
+
+function getStrategicSection(grouped, now) {
+  if (grouped.strategic_radar.length === 0) {
+    return null
+  }
+
+  if (isMonday(now)) {
+    return {
+      title: 'On Your Radar *(Mondays only)*',
+      items: grouped.strategic_radar
+    }
+  }
+
+  if ((grouped.today_signal.length + grouped.skills_tutorials.length) < 3) {
+    return {
+      title: 'Worth Watching',
+      items: grouped.strategic_radar.slice(0, 2)
+    }
+  }
+
+  return null
+}
+
+function actionSourceItems(grouped, strategicSection) {
+  return [
+    ...grouped.today_signal,
+    ...grouped.skills_tutorials,
+    ...(strategicSection?.items ?? [])
+  ]
+}
+
+function buildActions(items, config = {}) {
+  const limit = config.max_actions ?? ACTION_LIMIT
+
   return [...items]
-    .filter(item => item.action)
+    .filter(isActionCandidate)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-    .slice(0, 3)
-    .map(item => item.action)
+    .slice(0, limit)
+    .map(buildConcreteAction)
+    .filter(Boolean)
+}
+
+function isActionCandidate(item) {
+  const score = item.score ?? 0
+
+  if (item.layer === 'strategic_radar') {
+    return score >= STRATEGIC_ACTION_SCORE_FLOOR
+  }
+
+  return score >= ACTION_SCORE_FLOOR && ['today_signal', 'skills_tutorials'].includes(item.layer)
+}
+
+function buildConcreteAction(item) {
+  const title = item.title ?? 'this item'
+
+  if (item.layer === 'today_signal') {
+    return `Review "${title}" and decide whether it changes this week's build plan.`
+  }
+
+  if (item.layer === 'skills_tutorials') {
+    if (item.sourceType === 'html_page') {
+      return `Skim "${title}" for 10 minutes; save one workflow change if it applies.`
+    }
+
+    return `Save "${title}" for focused implementation reading; extract one reusable pattern.`
+  }
+
+  if (item.layer === 'strategic_radar') {
+    return `Evaluate "${title}" during weekly radar review; ignore it for today's build unless it changes tool direction.`
+  }
+
+  return null
+}
+
+function quietDayAction(items) {
+  if (items.length === 0) {
+    return 'No action needed today. Nothing cleared the AI Radar threshold.'
+  }
+
+  return 'No action needed today. Keep these as background reading; nothing needs a build-plan decision.'
 }
 
 function appendSection(lines, title, items) {

@@ -27,6 +27,10 @@
 **Current options:** Add JSON Schema for script envelopes and config; rely on fixtures for Markdown render contracts; keep prose-only until a contract changes.
 **Resolution trigger:** First spec that changes a script envelope, config shape, or Markdown section format.
 **Interim note (2026-06-18):** Slice `002-01` changed AI Radar config examples, CLI stats/warnings, and the Markdown footer. Formal contract artifacts remain deferred to spec `008-02`; slice `002-02` is the immediate fixture-backed check for the AI Radar output shape.
+**Interim note (2026-06-18):** Slice `002-03` changed the AI Radar action
+layer Markdown contract. The checked-in fixtures now cover both an actionable
+digest and quiet-day fallback; formal schemas/snapshot automation remain
+deferred to spec `008-02`.
 
 ## Source Slices
 
@@ -54,5 +58,9 @@
 ### Decision: Test strategy
 **Deferred:** The repo has fixtures but no real package test command.
 **Current options:** Fixture snapshot checks for renderers; script smoke tests; targeted unit tests around shared helpers.
-**Resolution trigger:** First slice that changes AI Radar rendering, triage, or shared script contracts.
+**Resolution trigger:** First slice that requires committed test automation beyond fixture snapshots and targeted script checks.
 **Interim note (2026-06-18):** Slice `002-01` used a targeted script smoke run because no pytest/vitest/jest runner is configured. Slice `002-02` owns refreshing `tests/fixtures/ai-radar.*` from the real trimmed run.
+**Interim note (2026-06-18):** Slice `002-03` changed AI Radar rendering and
+used renderer-focused Node checks plus refreshed Markdown/JSON fixtures instead
+of introducing a package-level test command. The repo still has no committed
+pytest/vitest/jest runner.

@@ -42,13 +42,13 @@
         "score": 8,
         "reason": "Official docs update worth skimming for new workflow or automation patterns.",
         "build_relevance": "Touches claude, claude code.",
-        "action": "Skim \"Extend Claude with skills - Claude Code Docs\" and note any workflow changes worth adopting."
+        "action": "Skim \"Extend Claude with skills - Claude Code Docs\" for 10 minutes; save one workflow change if it applies."
       }
     ],
     "strategic_radar": []
   },
   "actions": [
-    "Skim \"Extend Claude with skills - Claude Code Docs\" and note any workflow changes worth adopting."
+    "Skim \"Extend Claude with skills - Claude Code Docs\" for 10 minutes; save one workflow change if it applies."
   ],
-  "markdown": "## 🤖 AI Radar\n\n### What Should I Do?\n- Skim \"Extend Claude with skills - Claude Code Docs\" and note any workflow changes worth adopting.\n\n### Skills & Tutorials\n- 📌 **Extend Claude with skills - Claude Code Docs** — Official docs update worth skimming for new workflow or automation patterns. Directly relevant: Touches claude, claude code.\n  [→ Read](https://docs.claude.com/en/docs/claude-code/skills)\n\n---\n*Sources: 5 checked · 5 deferred · 2 items fetched · 1 after triage · Last run: 00:00*"
+  "markdown": "## 🤖 AI Radar\n\n### What Should I Do?\n- Skim \"Extend Claude with skills - Claude Code Docs\" for 10 minutes; save one workflow change if it applies.\n\n### Skills & Tutorials\n- 📌 **Extend Claude with skills - Claude Code Docs** — Official docs update worth skimming for new workflow or automation patterns. Directly relevant: Touches claude, claude code.\n  [→ Read](https://docs.claude.com/en/docs/claude-code/skills)\n\n---\n*Sources: 5 checked · 5 deferred · 2 items fetched · 1 after triage · Last run: 00:00*"
 }

@@ -240,6 +240,8 @@ function buildTriagePrompt(items, config, now) {
     'today_signal = breaking releases or directly impactful updates.',
     'skills_tutorials = practical workflows, skills, harnessing, docs, or examples worth using soon.',
     'strategic_radar = broader but still relevant ideas worth tracking.',
+    'Set action to null unless the item deserves an explicit next step.',
+    'When action is present, make it concrete: start with Review, Save, Evaluate, or Ignore, and name the item.',
     'Skip generic AI news, broad security news, benchmark chatter, and low-value noise.',
     'For docs or official pages, summarize why the update matters instead of restating the page title.',
     '',
