@@ -1,0 +1,133 @@
+> Status: Draft (revival baseline)
+>
+> Technical mechanics. Vision and design principles live in
+> [product-vision.md](product-vision.md). Update via reconciliation after each
+> spec slice completes.
+
+# Architecture: morning-brief-agent
+
+> For what this project is, who it is for, and why, see
+> [product-vision.md](product-vision.md). This document covers the technical
+> mechanics: repository structure, tech stack, decisions, modules, data, and
+> contract surfaces.
+
+## Repository structure
+
+<!-- elicited: 2026-06-18 / status: filled -->
+
+```
+morning-brief-agent/
+├── .codex/                  # jig runtime machinery for Codex: skills, agents, hooks
+├── .jig/                    # jig scaffold markers
+├── config/                  # committed example configs; real personal configs are ignored
+├── docs/                    # jig docs, ADRs, memory, and project vision/architecture
+├── docs/specs/              # active jig specs and status board
+├── docs/decisions/          # architectural decision records
+├── scripts/                 # standalone Node.js helper scripts and source fetchers
+├── scripts/lib/             # small shared script helpers
+├── skills/                  # legacy Cowork/Codex-style source-area skills
+├── specs/                   # legacy v1 specs retained as reference inputs
+├── tests/fixtures/          # reproducible checked-in fixtures
+├── AGENTS.md                # current project instructions and hot cache
+├── CLAUDE.md                # legacy project bible; reference until migrated
+├── README.md                # public overview / historical getting-started doc
+├── package.json             # Node.js package metadata and script shortcuts
+└── scaffold.json            # jig scaffold state
+```
+
+## Tech stack
+
+<!-- elicited: 2026-06-18 / status: filled -->
+
+- **Runtime / language:** Node.js 20+, native ESM, plain JavaScript.
+- **Package manager:** npm with checked-in `package-lock.json`.
+- **Primary output:** Markdown files for Obsidian, plus JSON fixtures and latest-output files where useful.
+- **State:** local config files, caches, fixture files, and generated output; no database in v1.
+- **Developer workflow:** Codex + jig specs in this repo.
+- **Integration strategy:** MCP tools and Codex plugins first when available; fallback to helper scripts for source areas without reliable connector coverage.
+- **Current important integrations:**
+  - Slack plugin for digest, notification triage, and native draft workflows.
+  - Corporate GitHub MCP tools for PRs, files, reviews, failed jobs, and logs.
+  - Jira MCP tools for search, comments, transitions, and issue metadata.
+  - Confluence/wiki MCP tools for page search/read/update capability; project policy keeps Confluence read-only unless a spec changes that.
+  - Existing Node scripts for AI Radar, Outlook/meetings, GitHub API fallback, Slack fallback, Jira, and Confluence.
+- **Locked-in decisions:**
+  - Script-first implementation.
+  - Markdown-first output.
+  - Safety constraints: review-first, no automatic sends or irreversible tool actions.
+  - No web app or database for current scope.
+- **Still open:**
+  - Final scheduled-run mechanism.
+  - Outlook/M365 connector versus Graph script versus browser fallback.
+  - How much of the legacy Cowork skill layer remains active.
+  - Whether GitHub PR reviews are only written locally or also staged as pending reviews when explicitly enabled.
+
+## Core architecture decisions
+
+### Markdown-First Daily Output
+
+**Principle:** The daily result should be useful to read, easy to inspect, and easy to diff.
+
+**Mechanics:** Source slices render Obsidian-ready Markdown sections. JSON envelopes and fixtures remain available for debugging and reproducibility.
+
+### MCP / Plugin First, Scripts As Fallbacks
+
+**Principle:** Do not keep custom API logic where a reliable tool surface already exists.
+
+**Mechanics:** Slack, Jira, Confluence, and corporate GitHub should move toward MCP/plugin-backed source slices. Existing scripts stay as fallbacks or fixtures until a spec supersedes them.
+
+### Review-First Safety
+
+**Principle:** The assistant prepares work; the user decides and submits.
+
+**Mechanics:** The system may draft messages, comments, and PR reviews, but should not send Slack messages, permanently delete email, edit Confluence, merge PRs, push code, or change Jira status as part of unattended runs.
+
+### Vertical Source Slices
+
+**Principle:** Each source area should earn its place by producing real daily value.
+
+**Mechanics:** A slice should fetch a small set of high-signal inputs, triage them against personal context, render concise Markdown, include an explicit action layer, and save or update a reproducible fixture where practical.
+
+## Module boundaries
+
+<!-- elicited: 2026-06-18 / status: filled -->
+
+- **Jig workflow layer:** `docs/specs/`, `.codex/skills/jig-*`, `.codex/agents/`, and `.codex/hooks*` define how work is planned, reviewed, and reconciled.
+- **Source fetchers:** `scripts/fetch-*.js` and source-specific MCP/plugin calls gather raw inputs. They should not own cross-source synthesis.
+- **Source libraries:** `scripts/lib/**` contains narrow helpers such as config loading, Graph auth, GitHub helpers, and AI Radar fetch/triage/render modules.
+- **Skills / orchestration docs:** `skills/**` records legacy source-area workflows and may become reference material as Codex plugins replace pieces.
+- **Config:** `config/*.example.json` documents personal configuration shape; real configs remain ignored.
+- **Output and fixtures:** `output/**` is generated and ignored; `tests/fixtures/**` stores reproducible examples for review and regression checks.
+- **Legacy specs:** `specs/*.md` are historical references. Active work should move into `docs/specs/NNN-<slug>/`.
+
+Current coupling is intentionally light: scripts return structured JSON envelopes, renderers produce Markdown, and orchestration consumes those outputs. Shared abstractions should be introduced only after repeated concrete need.
+
+## Data model
+
+<!-- elicited: 2026-06-18 / status: filled -->
+
+This project is near-stateless. It owns local configuration, small caches, generated Markdown/JSON outputs, and fixtures.
+
+- **Config examples:** `config/*.example.json` and skill config examples define source lists, filters, vault paths, and triage rules.
+- **Personal config:** real `config/*.json`, `.env`, and token files are ignored and local.
+- **Script output envelope:** helper scripts write JSON envelopes shaped like `{ ok, tool, mode, timestamp, data, errors }`.
+- **AI Radar state:** seen-item cache and HTML page watch state prevent duplicate daily signals.
+- **Generated output:** `output/**` contains latest and dated Markdown/JSON results; ignored by git.
+- **Fixtures:** `tests/fixtures/ai-radar.*` captures reproducible sample output from real runs.
+- **Jig state:** `scaffold.json`, `docs/specs/README.md`, spec frontmatter, and review artifacts track workflow state.
+- **Obsidian notes:** the intended user-facing daily notes and meeting notes live outside the repo in the user's vault.
+
+## Contract surfaces
+
+<!-- elicited: 2026-06-18 / status: filled -->
+
+- **CLI output envelopes** (internal data shape; recommended artifact: JSON Schema under `docs/contracts/script-envelope.schema.json`, not yet committed): every helper script writes structured JSON to stdout and diagnostic text to stderr.
+- **Config files** (config/env surface; recommended artifact: JSON Schema per config family under `docs/contracts/config/*.schema.json`, not yet committed): examples exist under `config/*.example.json`.
+- **Markdown digest sections** (internal rendering contract; recommended artifact: fixture snapshots in `tests/fixtures/`, partially present for AI Radar): rendered sections should stay stable enough for Obsidian review.
+- **Jig workflow artifacts** (process contract; recommended artifact: jig specs and review evidence under `docs/specs/`): active work should follow the lifecycle in `docs/workflow.md`.
+
+No HTTP API, event bus, RPC, GraphQL schema, or database schema is currently exposed.
+
+## Open questions
+
+Deferred items live in [refinement-todo.md](refinement-todo.md). Current architecture questions include scheduling, Outlook/M365 access, GitHub review staging policy, Slack plugin reliance, and how much legacy Cowork material to migrate.
