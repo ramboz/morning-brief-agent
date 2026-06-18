@@ -29,11 +29,12 @@ for the spec-driven loop from turn one.
    above without claiming work that has not happened.
 3. **The status board is populated.** `docs/specs/README.md` contains a
    real row for `001-01 — bootstrap` marked `DONE`.
-4. **A next step exists.** `docs/specs/002-first-spec/spec.md` is present
+4. **A next step exists.** `docs/specs/002-first-spec/spec.md` was emitted
    as a `DRAFT` stub telling the reader to replace it with their first
-   real spec.
-5. **The seed is well-formed.** The emitted `001-adopt-jig` and
-   `002-first-spec` specs follow jig's spec/slice structure and validated
+   real spec. It has since been replaced by
+   `docs/specs/002-revive-ai-radar-v1/spec.md`.
+5. **The seed is well-formed.** The emitted `001-adopt-jig` and original
+   `002-first-spec` specs followed jig's spec/slice structure and validated
    clean when scaffolded. (Structural linting runs in jig's own dev/CI
    environment — the scaffolded project does not ship `spec_lint.py`.)
 

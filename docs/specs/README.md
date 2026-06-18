@@ -13,4 +13,24 @@
 | Spec | Slice | Status | Notes |
 |------|-------|--------|-------|
 | [001-adopt-jig](001-adopt-jig/spec.md) | 001-01 — bootstrap | **DONE** | worked example; review boxes satisfied by deterministic completion check |
-| [002-first-spec](002-first-spec/spec.md) | 002-01 — replace-me | DRAFT | replace with your first real spec — run `/jig:spec-workflow` |
+| [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-01 - scope-and-source-trim | DRAFT |  |
+| [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-02 - fixture-backed-real-run | DRAFT |  |
+| [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-03 - action-layer-polish | DRAFT |  |
+| [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-01 - manual-brief-writer | DRAFT |  |
+| [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-02 - codex-automation-proposal | DRAFT |  |
+| [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-03 - failure-reporting-state | DRAFT |  |
+| [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-01 - bounded-digest-and-triage | DRAFT |  |
+| [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-02 - native-draft-workflow | DRAFT |  |
+| [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-03 - fallback-and-coverage-notes | DRAFT |  |
+| [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-01 - detect-review-requests | DRAFT |  |
+| [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-02 - pr-review-artifact | DRAFT |  |
+| [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-03 - optional-pending-review-staging | DRAFT |  |
+| [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-01 - artifact-inventory | DRAFT |  |
+| [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-02 - text-summary-pipeline | DRAFT |  |
+| [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-03 - recording-only-brief-section | DRAFT |  |
+| [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-01 - jira-mcp-brief-section | DRAFT |  |
+| [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-02 - confluence-mcp-brief-section | DRAFT |  |
+| [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-03 - github-corp-mcp-brief-section | DRAFT |  |
+| [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-01 - adr-filename-index-normalization | DRAFT |  |
+| [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-02 - script-and-config-contracts | DRAFT |  |
+| [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-03 - legacy-cowork-doc-triage | DRAFT |  |

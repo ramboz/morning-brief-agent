@@ -20,8 +20,9 @@ for the full slice shape — Goal, DoR, Acceptance Criteria, DoD,
 anti-horizontal-phasing check, and a short real deviation log — and use
 it as the template for your own slices.
 
-The next spec, [002-first-spec](../002-first-spec/spec.md), is a `DRAFT`
-stub waiting for your first real piece of work.
+The placeholder next spec was replaced by
+[002-revive-ai-radar-v1](../002-revive-ai-radar-v1/spec.md), the first real
+revival spec.
 
 ## Decomposition
 
@@ -34,4 +35,5 @@ present and wired." A single vertical slice delivers it end-to-end.
 1. **`001-01 bootstrap`** — Run `scaffold-init` so the project opens
    with the jig docs tree, AGENTS.md, an honest status board, and the
    `.codex/` runtime machinery. DONE — see
-   [slice-01-bootstrap.md](slice-01-bootstrap.md).
+   [slice-01-bootstrap.md](slice-01-bootstrap.md). The original placeholder
+   `002-first-spec` was later replaced by the real AI Radar revival spec.
