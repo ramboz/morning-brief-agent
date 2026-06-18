@@ -18,7 +18,7 @@
 
 import dotenv from 'dotenv'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { fetchAiRadarItems } from './lib/ai-radar/fetch.js'
 import { renderAiRadarDigest } from './lib/ai-radar/render.js'
@@ -96,10 +96,14 @@ async function main() {
   }
 
   if (saveFixture) {
+    const fixtureResult = normalizeFixtureResult(result, {
+      rootDir: process.cwd(),
+      fixtureDay: resultDay(now)
+    })
     const fixtureDir = join(process.cwd(), 'tests', 'fixtures')
     await mkdir(fixtureDir, { recursive: true })
-    await writeFile(join(fixtureDir, 'ai-radar.json'), JSON.stringify(result, null, 2))
-    await writeFile(join(fixtureDir, 'ai-radar.md'), `${render.markdown}\n`)
+    await writeFile(join(fixtureDir, 'ai-radar.json'), JSON.stringify(fixtureResult, null, 2))
+    await writeFile(join(fixtureDir, 'ai-radar.md'), `${fixtureResult.markdown}\n`)
   }
 
   emitAndExit(envelope(TOOL, mode, result, fatalErrors))
@@ -134,6 +138,42 @@ async function writeOutputFiles(markdown, day) {
 
 function resultDay(now) {
   return now.toISOString().slice(0, 10)
+}
+
+function normalizeFixtureResult(result, { rootDir, fixtureDay }) {
+  const normalized = JSON.parse(JSON.stringify(result))
+
+  normalized.output_paths = Object.fromEntries(
+    Object.entries(normalized.output_paths ?? {}).map(([key, value]) => [
+      key,
+      normalizeFixturePath(value, rootDir)
+    ])
+  )
+
+  for (const items of Object.values(normalized.items ?? {})) {
+    for (const item of items) {
+      if (item.sourceType === 'html_page' && item.change_type === 'first_seen') {
+        item.publishedAt = `${fixtureDay}T00:00:00.000Z`
+      }
+    }
+  }
+
+  normalized.markdown = normalized.markdown.replace(
+    /Last run: \d{2}:\d{2}/,
+    'Last run: 00:00'
+  )
+
+  return normalized
+}
+
+function normalizeFixturePath(value, rootDir) {
+  const relativePath = relative(rootDir, value)
+
+  if (relativePath.startsWith('..')) {
+    return value
+  }
+
+  return relativePath
 }
 
 function emitAndExit(payload) {

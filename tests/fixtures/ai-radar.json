@@ -1,21 +1,28 @@
 {
   "stats": {
-    "sourcesChecked": 7,
+    "sourcesConfigured": 10,
+    "sourcesChecked": 5,
+    "sourcesSkipped": 5,
     "sourceErrors": 0,
-    "itemsFetched": 4,
-    "dedupedCount": 4,
+    "itemsFetched": 2,
+    "dedupedCount": 2,
     "dedupedRemoved": 0,
-    "itemsAfterTriage": 3
+    "itemsAfterTriage": 1
   },
   "triage_mode": "heuristic_fallback",
   "warnings": [
+    "Claude Code MCP Docs: skipped (Deferred for v1 because MCP spec/server release sources already cover the highest-signal MCP changes.)",
+    "OpenAI Harness Engineering: skipped (Deferred for v1 because this is a static strategic read, not a daily signal source.)",
+    "GitHub Trending Agents: skipped (Deferred for v1 because broad social/trending feeds are noisy and belong in a later trend-engine slice.)",
+    "Hugging Face Papers: skipped (Explicit AI Radar v1 non-goal: no Hugging Face papers.)",
+    "Manual Newsletter Ingestion: skipped (Explicit AI Radar v1 non-goal: no manual newsletter ingestion.)",
     "Claude triage unavailable: ANTHROPIC_API_KEY not set"
   ],
   "output_paths": {
-    "markdown": "/Users/ramboz/.codex/worktrees/2acd/morning-brief-agent/output/ai-radar/2026-06-18.md",
-    "latest_markdown": "/Users/ramboz/.codex/worktrees/2acd/morning-brief-agent/output/ai-radar/latest.md",
-    "json": "/Users/ramboz/.codex/worktrees/2acd/morning-brief-agent/output/ai-radar/2026-06-18.json",
-    "latest_json": "/Users/ramboz/.codex/worktrees/2acd/morning-brief-agent/output/ai-radar/latest.json"
+    "markdown": "output/ai-radar/2026-06-18.md",
+    "latest_markdown": "output/ai-radar/latest.md",
+    "json": "output/ai-radar/2026-06-18.json",
+    "latest_json": "output/ai-radar/latest.json"
   },
   "items": {
     "today_signal": [],
@@ -29,7 +36,7 @@
         "title": "Extend Claude with skills - Claude Code Docs",
         "url": "https://docs.claude.com/en/docs/claude-code/skills",
         "summary": "Create, manage, and share skills to extend Claude's capabilities in Claude Code. Includes custom commands and bundled skills.",
-        "publishedAt": "2026-06-18T19:57:39.766Z",
+        "publishedAt": "2026-06-18T00:00:00.000Z",
         "change_type": "first_seen",
         "layer": "skills_tutorials",
         "score": 8,
@@ -38,45 +45,10 @@
         "action": "Skim \"Extend Claude with skills - Claude Code Docs\" and note any workflow changes worth adopting."
       }
     ],
-    "strategic_radar": [
-      {
-        "id": "claude-code-mcp-docs:dbcf2a4c5f49",
-        "sourceId": "claude-code-mcp-docs",
-        "sourceLabel": "Claude Code MCP Docs",
-        "sourceType": "html_page",
-        "category": "tooling",
-        "title": "Connect Claude Code to tools via MCP - Claude Code Docs",
-        "url": "https://docs.anthropic.com/en/docs/claude-code/mcp",
-        "summary": "Learn how to connect Claude Code to your tools with the Model Context Protocol.",
-        "publishedAt": "2026-06-18T19:57:39.766Z",
-        "change_type": "first_seen",
-        "layer": "strategic_radar",
-        "score": 10,
-        "reason": "Broader signal worth tracking from Claude Code MCP Docs.",
-        "build_relevance": "Touches mcp, model context protocol, claude.",
-        "action": null
-      },
-      {
-        "id": "openai-harness-engineering:ad3dc9e141f5",
-        "sourceId": "openai-harness-engineering",
-        "sourceLabel": "OpenAI Harness Engineering",
-        "sourceType": "html_page",
-        "category": "tooling",
-        "title": "Harness engineering: leveraging Codex in an agent-first world",
-        "url": "https://openai.com/index/harness-engineering/",
-        "summary": "Over the past five months, our team has been running an experiment: building and shipping an internal beta of a software product with 0 lines of manually-written code.",
-        "publishedAt": "2026-05-27T14:00:00.000Z",
-        "change_type": "first_seen",
-        "layer": "strategic_radar",
-        "score": 8,
-        "reason": "Broader signal worth tracking from OpenAI Harness Engineering.",
-        "build_relevance": "Touches codex, agent, rag.",
-        "action": null
-      }
-    ]
+    "strategic_radar": []
   },
   "actions": [
     "Skim \"Extend Claude with skills - Claude Code Docs\" and note any workflow changes worth adopting."
   ],
-  "markdown": "## 🤖 AI Radar\n\n### What Should I Do?\n- Skim \"Extend Claude with skills - Claude Code Docs\" and note any workflow changes worth adopting.\n\n### Skills & Tutorials\n- 📌 **Extend Claude with skills - Claude Code Docs** — Official docs update worth skimming for new workflow or automation patterns. Directly relevant: Touches claude, claude code.\n  [→ Read](https://docs.claude.com/en/docs/claude-code/skills)\n\n### Worth Watching\n- 📌 **Connect Claude Code to tools via MCP - Claude Code Docs** — Broader signal worth tracking from Claude Code MCP Docs. Directly relevant: Touches mcp, model context protocol, claude.\n  [→ Read](https://docs.anthropic.com/en/docs/claude-code/mcp)\n- 📌 **Harness engineering: leveraging Codex in an agent-first world** — Broader signal worth tracking from OpenAI Harness Engineering. Directly relevant: Touches codex, agent, rag.\n  [→ Read](https://openai.com/index/harness-engineering/)\n\n---\n*Sources: 7 checked · 4 items fetched · 3 after triage · Last run: 12:57*"
+  "markdown": "## 🤖 AI Radar\n\n### What Should I Do?\n- Skim \"Extend Claude with skills - Claude Code Docs\" and note any workflow changes worth adopting.\n\n### Skills & Tutorials\n- 📌 **Extend Claude with skills - Claude Code Docs** — Official docs update worth skimming for new workflow or automation patterns. Directly relevant: Touches claude, claude code.\n  [→ Read](https://docs.claude.com/en/docs/claude-code/skills)\n\n---\n*Sources: 5 checked · 5 deferred · 2 items fetched · 1 after triage · Last run: 00:00*"
 }
