@@ -28,8 +28,8 @@ The first slice is **AI Radar** because it provides daily value without dependin
 ## Architecture — Three Layers
 
 ```
-Layer 1: ORCHESTRATION — Cowork skills (SKILL.md files)
-  Spawns sub-agents, coordinates modes, writes daily note
+Layer 1: ORCHESTRATION — Codex/jig workflow plus brief shell
+  Composes the daily note, coordinates modes, routes source outputs
 
 Layer 2: DATA GATHERING — APIs, connectors, helper scripts (fast)
   Returns structured JSON. Seconds, not minutes.
@@ -115,6 +115,8 @@ node scripts/fetch-jira.js --brief           # Lookback scan
 node scripts/fetch-jira.js --search "auth"    # Deep Dive search
 node scripts/fetch-ai-radar.js --brief        # AI Radar digest JSON to stdout
 node scripts/fetch-ai-radar.js --brief --save-fixture
+node scripts/write-brief.js --brief           # Daily Brief Markdown note
+node scripts/write-brief.js --brief --ai-radar-fixture tests/fixtures/ai-radar.json
 ```
 
 `fetch-ai-radar.js` also writes reviewable output files on each run:
@@ -124,6 +126,13 @@ node scripts/fetch-ai-radar.js --brief --save-fixture
 - `output/ai-radar/latest.json`
 
 Use `--save-fixture` when you want to refresh the checked-in sample files in `tests/fixtures/`.
+
+`write-brief.js` composes source sections into one Obsidian-ready daily note:
+- `output/daily/YYYY-MM-DD.md`
+- `output/daily/latest.md`
+
+Set `daily_brief.output_dir` in `config/main.json`, `DAILY_BRIEF_OUTPUT_DIR`,
+or `--output-dir` to write directly into an Obsidian daily notes folder.
 
 AI Radar source types currently include:
 - `rss` / `atom`

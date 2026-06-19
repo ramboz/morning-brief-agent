@@ -11,6 +11,12 @@
 **Deferred:** The project should run on a schedule, but the final mechanism is not settled.
 **Current options:** Codex automations only; a repo-owned CLI scheduler wrapper; or both.
 **Resolution trigger:** First spec that implements the scheduled brief shell.
+**Interim note (2026-06-18):** Slice `003-01` introduced the manual
+`write-brief.js` daily note writer and intentionally left the scheduling
+mechanism to `003-02`.
+**Reconciliation note (2026-06-19):** The manual writer shells out to the live
+AI Radar fetcher without a timeout. Scheduler/failure-reporting slices should
+add hung-source isolation before unattended runs.
 
 ### Decision: Outlook and meeting artifact access
 **Deferred:** Outlook email, calendar, Teams transcripts, recap emails, and recording-only links still need a confirmed access path.
@@ -31,6 +37,14 @@
 layer Markdown contract. The checked-in fixtures now cover both an actionable
 digest and quiet-day fallback; formal schemas/snapshot automation remain
 deferred to spec `008-02`.
+**Interim note (2026-06-18):** Slice `003-01` introduced the Daily Brief
+composition envelope and Markdown note shape. Focused helper tests and a
+fixture-backed smoke run cover the initial behavior; formal schemas/snapshots
+remain deferred to spec `008-02`.
+**Reconciliation note (2026-06-19):** Source heading nesting is intentionally
+plain string rewriting for the first source. Harden Markdown nesting when a
+later source emits fenced code or literal `#` lines, or when formal snapshots
+land in spec `008-02`.
 
 ## Source Slices
 
@@ -64,3 +78,8 @@ deferred to spec `008-02`.
 used renderer-focused Node checks plus refreshed Markdown/JSON fixtures instead
 of introducing a package-level test command. The repo still has no committed
 pytest/vitest/jest runner.
+**Interim note (2026-06-18):** Slice `003-01` introduced a dependency-free
+Node test command (`npm test` / `.jig/test-command`) for focused helper tests.
+A broader CI policy remains deferred.
+**Reconciliation note (2026-06-19):** CLI envelope/wiring tests remain a
+follow-up; this slice verifies the CLI path with a fixture-backed smoke run.

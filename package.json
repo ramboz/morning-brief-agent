@@ -5,12 +5,14 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "brief": "node scripts/write-brief.js --brief",
     "fetch:jira": "node scripts/fetch-jira.js --brief",
     "fetch:confluence": "node scripts/fetch-confluence.js --brief",
     "fetch:github-com": "node scripts/fetch-github-com.js --brief",
     "fetch:github-corp": "node scripts/fetch-github-corp.js --brief",
     "fetch:slack": "node scripts/fetch-slack.js --brief",
     "fetch:ai-radar": "node scripts/fetch-ai-radar.js --brief",
+    "test": "node --test tests/*.test.js",
     "prepare": "husky"
   },
   "dependencies": {

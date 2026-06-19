@@ -94,6 +94,9 @@ morning-brief-agent/
 
 - **Jig workflow layer:** `docs/specs/`, `.codex/skills/jig-*`, `.codex/agents/`, and `.codex/hooks*` define how work is planned, reviewed, and reconciled.
 - **Source fetchers:** `scripts/fetch-*.js` and source-specific MCP/plugin calls gather raw inputs. They should not own cross-source synthesis.
+- **Brief writer:** `scripts/write-brief.js` composes available source sections
+  into the dated Daily Brief Markdown note and reports per-source results in the
+  standard JSON envelope.
 - **Source libraries:** `scripts/lib/**` contains narrow helpers such as config loading, Graph auth, GitHub helpers, and AI Radar fetch/triage/render modules.
 - **Skills / orchestration docs:** `skills/**` records legacy source-area workflows and may become reference material as Codex plugins replace pieces.
 - **Config:** `config/*.example.json` documents personal configuration shape; real configs remain ignored.
@@ -113,6 +116,9 @@ This project is near-stateless. It owns local configuration, small caches, gener
 - **Script output envelope:** helper scripts write JSON envelopes shaped like `{ ok, tool, mode, timestamp, data, errors }`.
 - **AI Radar state:** seen-item cache and HTML page watch state prevent duplicate daily signals.
 - **Generated output:** `output/**` contains latest and dated Markdown/JSON results; ignored by git.
+- **Daily Brief output:** the manual writer creates dated and latest Markdown
+  notes under `daily_brief.output_dir`, `DAILY_BRIEF_OUTPUT_DIR`, an Obsidian
+  vault daily-notes folder, or `output/daily` by default.
 - **Fixtures:** `tests/fixtures/ai-radar.*` captures reproducible sample output from real runs.
 - **Jig state:** `scaffold.json`, `docs/specs/README.md`, spec frontmatter, and review artifacts track workflow state.
 - **Obsidian notes:** the intended user-facing daily notes and meeting notes live outside the repo in the user's vault.
@@ -124,6 +130,10 @@ This project is near-stateless. It owns local configuration, small caches, gener
 - **CLI output envelopes** (internal data shape; recommended artifact: JSON Schema under `docs/contracts/script-envelope.schema.json`, not yet committed): every helper script writes structured JSON to stdout and diagnostic text to stderr.
 - **Config files** (config/env surface; recommended artifact: JSON Schema per config family under `docs/contracts/config/*.schema.json`, not yet committed): examples exist under `config/*.example.json`.
 - **Markdown digest sections** (internal rendering contract; recommended artifact: fixture snapshots in `tests/fixtures/`, partially present for AI Radar): rendered sections should stay stable enough for Obsidian review.
+- **Daily Brief notes** (user-facing composition contract; recommended artifact:
+  fixture-backed smoke output, formal snapshots deferred): the brief shell writes
+  a dated Markdown note with a top-level action section, nested source sections,
+  and a compact source-results summary.
 - **Jig workflow artifacts** (process contract; recommended artifact: jig specs and review evidence under `docs/specs/`): active work should follow the lifecycle in `docs/workflow.md`.
 
 No HTTP API, event bus, RPC, GraphQL schema, or database schema is currently exposed.

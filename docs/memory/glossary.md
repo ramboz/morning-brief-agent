@@ -11,3 +11,6 @@
 > terms (referenced ≥3 times in a session) are promoted to the AGENTS.md hot cache.
 
 <!-- Terms below, alphabetical. Format: ## TERM, followed by definition prose. -->
+
+## Review subagents
+User has granted standing permission to run review subagents for jig review, craft, architecture, and reconciliation passes in this project.

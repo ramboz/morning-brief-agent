@@ -1,7 +1,7 @@
 ---
-status: DRAFT
+status: RECONCILED
 dependencies: ["002-02"]
-last_verified: 2026-06-18
+last_verified: 2026-06-19
 arch_review: true
 ---
 
@@ -11,8 +11,8 @@ arch_review: true
 Markdown note from available source sections, starting with AI Radar.
 
 **DoR:**
-- [ ] AI Radar has a current fixture and stable Markdown output.
-- [ ] The output location convention is known or configurable.
+- [x] AI Radar has a current fixture and stable Markdown output.
+- [x] The output location convention is known or configurable.
 
 **Acceptance Criteria:**
 
@@ -24,9 +24,9 @@ Markdown note from available source sections, starting with AI Radar.
    are reported to the user or in the JSON envelope.
 
 **DoD:**
-- [ ] Manual run has been verified locally.
-- [ ] The shell does not introduce a database, web server, or broad framework.
-- [ ] The spec records any deferred scheduler decisions in
+- [x] Manual run has been verified locally.
+- [x] The shell does not introduce a database, web server, or broad framework.
+- [x] The spec records any deferred scheduler decisions in
       `docs/refinement-todo.md`.
 
 **Anti-horizontal-phasing check:** A user can run one command/workflow and read
@@ -34,5 +34,19 @@ the first daily note, even before all source areas exist.
 
 ### Deviation log (after reconciliation)
 
-_Not started._
-
+- Implemented as a script-first CLI (`scripts/write-brief.js`) plus narrow
+  helpers under `scripts/lib/brief/`, rather than a new orchestration framework.
+- Added `npm run brief` and `npm test`; the test command uses Node's built-in
+  runner and focused helper tests.
+- Daily note output defaults to `output/daily`, with overrides via
+  `--output-dir`, `DAILY_BRIEF_OUTPUT_DIR`, `daily_brief.output_dir`, or a
+  configured Obsidian `vault_path` plus `daily_notes_folder`.
+- Manual verification used the checked-in AI Radar fixture:
+  `npm run brief -- --date 2026-06-18 --ai-radar-fixture tests/fixtures/ai-radar.json`.
+- Review follow-ups captured in `docs/refinement-todo.md`: robust Markdown
+  heading nesting, CLI envelope/wiring test coverage, and hung-source isolation
+  before scheduled unattended runs.
+- Architecture reconciliation fixed README wording so Daily Brief composition
+  points at the script brief shell instead of legacy Cowork skills.
+- No ADR added: this slice did not choose the scheduled-run mechanism; that
+  remains deferred to `003-02`.

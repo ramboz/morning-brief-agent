@@ -2,6 +2,12 @@
   "vault_path": "/path/to/your/obsidian/vault",
   "daily_notes_folder": "Daily Notes",
   "date_format": "YYYY-MM-DD",
+  "daily_brief": {
+    "output_dir": "output/daily",
+    "sources": [
+      "ai_radar"
+    ]
+  },
   "lookback_hours": 24,
   "deep_dive_default_days": 7,
   "scripts_path": "/path/to/morning-brief-agent/scripts",
