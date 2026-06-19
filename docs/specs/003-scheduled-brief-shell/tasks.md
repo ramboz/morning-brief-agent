@@ -8,4 +8,14 @@
 - [x] Implement manual Daily Brief writer command.
 - [x] Document output convention and fixture-backed smoke run.
 - [x] Verify manual run locally.
-- [ ] Run review/reconciliation flow before closing the slice.
+- [x] Run review/reconciliation flow before closing the slice.
+
+## Slice 003-02 - codex-automation-proposal
+
+- [x] Claim slice and confirm `003-01` is done.
+- [x] Resolve ADR-0006 for the scheduled-run mechanism.
+- [x] Add a reviewable automation operations note with prompt, output, and
+      failure behavior.
+- [x] Propose the Codex automation through the automation tool.
+- [x] Verify docs and manual brief command still work.
+- [x] Run review/reconciliation flow before closing the slice.

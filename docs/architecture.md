@@ -57,7 +57,6 @@ morning-brief-agent/
   - Safety constraints: review-first, no automatic sends or irreversible tool actions.
   - No web app or database for current scope.
 - **Still open:**
-  - Final scheduled-run mechanism.
   - Outlook/M365 connector versus Graph script versus browser fallback.
   - How much of the legacy Cowork skill layer remains active.
   - Whether GitHub PR reviews are only written locally or also staged as pending reviews when explicitly enabled.
@@ -81,6 +80,17 @@ morning-brief-agent/
 **Principle:** The assistant prepares work; the user decides and submits.
 
 **Mechanics:** The system may draft messages, comments, and PR reviews, but should not send Slack messages, permanently delete email, edit Confluence, merge PRs, push code, or change Jira status as part of unattended runs.
+
+### Codex-Scheduled Daily Brief
+
+**Principle:** Scheduling should use the current automation surface before the
+repo grows its own service process.
+
+**Mechanics:** A Codex cron automation runs the manual Daily Brief command in
+the long-lived repository workspace. The automation reports the dated and
+latest output paths on success, and reports command output or JSON-envelope
+errors in the run result on failure. The manual `npm run brief` path remains the
+debugging and portability fallback.
 
 ### Vertical Source Slices
 
@@ -140,4 +150,4 @@ No HTTP API, event bus, RPC, GraphQL schema, or database schema is currently exp
 
 ## Open questions
 
-Deferred items live in [refinement-todo.md](refinement-todo.md). Current architecture questions include scheduling, Outlook/M365 access, GitHub review staging policy, Slack plugin reliance, and how much legacy Cowork material to migrate.
+Deferred items live in [refinement-todo.md](refinement-todo.md). Current architecture questions include Outlook/M365 access, GitHub review staging policy, Slack plugin reliance, and how much legacy Cowork material to migrate.

@@ -7,7 +7,7 @@ last_verified: 2026-06-18
 
 ## Status
 
-Proposed (2026-06-18)
+Accepted (2026-06-19)
 
 ## Context
 
@@ -53,7 +53,7 @@ portability.
 
 ## Open questions
 
-- What exact schedule should the user choose?
-- Should failed runs wake the current thread or only report in automation
-  history?
-
+- The initial Codex automation proposal uses a weekday morning schedule; the
+  user can adjust the time before approving the automation.
+- Failed runs should report clearly in the automation result. Writing failure
+  state into the Daily Brief itself is deferred to spec `003-03`.

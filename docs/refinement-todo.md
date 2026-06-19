@@ -7,10 +7,11 @@
 
 ## Architecture
 
-### Decision: Scheduled run mechanism
-**Deferred:** The project should run on a schedule, but the final mechanism is not settled.
-**Current options:** Codex automations only; a repo-owned CLI scheduler wrapper; or both.
-**Resolution trigger:** First spec that implements the scheduled brief shell.
+### Resolved: Scheduled run mechanism
+**Resolved by:** ADR-0006 and spec `003`, slice `003-02`.
+**Resolution:** Use Codex automations as the scheduled-run mechanism for the
+revived Daily Brief while keeping `node scripts/write-brief.js --brief`
+manually runnable for debugging and future portability.
 **Interim note (2026-06-18):** Slice `003-01` introduced the manual
 `write-brief.js` daily note writer and intentionally left the scheduling
 mechanism to `003-02`.
