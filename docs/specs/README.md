@@ -16,7 +16,7 @@
 | [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-01 - scope-and-source-trim | **DONE** |  |
 | [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-02 - fixture-backed-real-run | **DONE** |  |
 | [002-revive-ai-radar-v1](002-revive-ai-radar-v1/spec.md) | 002-03 - action-layer-polish | **DONE** |  |
-| [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-01 - manual-brief-writer | RECONCILED |  |
+| [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-01 - manual-brief-writer | **DONE** |  |
 | [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-02 - codex-automation-proposal | DRAFT |  |
 | [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-03 - failure-reporting-state | DRAFT |  |
 | [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-01 - bounded-digest-and-triage | DRAFT |  |
