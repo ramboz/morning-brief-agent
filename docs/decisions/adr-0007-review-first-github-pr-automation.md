@@ -1,13 +1,19 @@
 ---
 dependencies: []
-last_verified: 2026-06-18
+last_verified: 2026-07-01
 ---
 
 # ADR-0007: Review-first GitHub PR automation
 
 ## Status
 
-Proposed (2026-06-18)
+Accepted (2026-07-01)
+
+Accepted to unblock spec 005 implementation. The recommended decision below is
+adopted as-is: detect review-requested PRs (slice 005-01), run the `pr-review`
+skill and write a local review artifact first (slice 005-02), and allow native
+GitHub *pending*-review staging only as an explicit per-repo/run opt-in
+(slice 005-03). Never submit, approve, request changes, merge, or push.
 
 ## Context
 
@@ -52,8 +58,13 @@ from the scheduled path.
 - The workflow needs enough PR context to avoid shallow reviews.
 - Native pending-review staging requires careful config and error handling.
 
-## Open questions
+## Resolved questions
 
-- Should review artifacts live in Obsidian, `output/github-reviews/`, or both?
-- Which repos should allow pending-review staging?
+- **Where do review artifacts live?** In a repo-local `output/github-reviews/`
+  directory (resolved 2026-07-01). Git-visible and editable before any GitHub
+  staging; no Obsidian-vault dependency. Surfacing a link in the daily note can
+  be layered on later without moving the source of truth.
+- **Which repos allow pending-review staging?** None by default. Native
+  pending-review staging is opt-in per repo/run via config (slice 005-03); the
+  default behavior is local review artifacts only.
 
