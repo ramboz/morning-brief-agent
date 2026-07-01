@@ -1,0 +1,106 @@
+[
+  {
+    "instance": "github.com",
+    "notifications": [
+      {
+        "id": "com-1",
+        "type": "PullRequest",
+        "reason": "review_requested",
+        "repo": "octo-org/web-frontend",
+        "title": "Add dark-mode toggle to settings",
+        "url": "https://github.com/octo-org/web-frontend/pull/482",
+        "author": "alice",
+        "state": "open",
+        "isDraft": false,
+        "updatedAt": "2026-06-18T09:00:00Z"
+      },
+      {
+        "id": "com-2",
+        "type": "PullRequest",
+        "reason": "author",
+        "repo": "octo-org/web-frontend",
+        "title": "Refactor auth middleware",
+        "url": "https://github.com/octo-org/web-frontend/pull/477",
+        "author": "ramboz",
+        "state": "open",
+        "isDraft": false,
+        "updatedAt": "2026-06-18T08:00:00Z"
+      },
+      {
+        "id": "com-3",
+        "type": "Issue",
+        "reason": "mention",
+        "repo": "octo-org/web-frontend",
+        "title": "Docs: clarify onboarding flow",
+        "url": "https://github.com/octo-org/web-frontend/issues/512",
+        "author": "bob",
+        "state": "open",
+        "updatedAt": "2026-06-18T07:30:00Z"
+      },
+      {
+        "id": "com-4",
+        "type": "PullRequest",
+        "reason": "ci_activity",
+        "repo": "octo-org/web-frontend",
+        "title": "Bump build toolchain",
+        "url": "https://github.com/octo-org/web-frontend/pull/490",
+        "author": "carol",
+        "state": "open",
+        "isDraft": false,
+        "updatedAt": "2026-06-18T06:00:00Z"
+      }
+    ]
+  },
+  {
+    "instance": "corporate",
+    "notifications": [
+      {
+        "id": "corp-1",
+        "type": "PullRequest",
+        "reason": "review_requested",
+        "repo": "octo-org/payments-service",
+        "title": "Handle idempotency keys on retry",
+        "url": "https://github.yourcompany.com/octo-org/payments-service/pull/1204",
+        "author": "dave",
+        "state": "open",
+        "isDraft": false,
+        "updatedAt": "2026-06-18T10:15:00Z"
+      },
+      {
+        "id": "corp-2",
+        "type": "PullRequest",
+        "reason": "author",
+        "repo": "octo-org/payments-service",
+        "title": "Add metrics for ledger writes",
+        "url": "https://github.yourcompany.com/octo-org/payments-service/pull/1199",
+        "author": "ramboz",
+        "state": "open",
+        "isDraft": false,
+        "updatedAt": "2026-06-18T09:45:00Z"
+      },
+      {
+        "id": "corp-3",
+        "type": "Issue",
+        "reason": "mention",
+        "repo": "octo-org/payments-service",
+        "title": "Investigate slow settlement job",
+        "url": "https://github.yourcompany.com/octo-org/payments-service/issues/1230",
+        "author": "erin",
+        "state": "open",
+        "updatedAt": "2026-06-18T08:20:00Z"
+      },
+      {
+        "id": "corp-4",
+        "type": "PullRequest",
+        "reason": "ci_activity",
+        "repo": "octo-org/payments-service",
+        "title": "Flaky integration test fix",
+        "url": "https://github.yourcompany.com/octo-org/payments-service/pull/1210",
+        "author": "frank",
+        "state": "open",
+        "isDraft": false,
+        "updatedAt": "2026-06-18T07:00:00Z"
+      }
+    ]
+  }
+]

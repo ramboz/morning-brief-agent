@@ -10,6 +10,7 @@
     "fetch:confluence": "node scripts/fetch-confluence.js --brief",
     "fetch:github-com": "node scripts/fetch-github-com.js --brief",
     "fetch:github-corp": "node scripts/fetch-github-corp.js --brief",
+    "list:review-requests": "node scripts/list-review-requests.js --brief",
     "fetch:slack": "node scripts/fetch-slack.js --brief",
     "fetch:ai-radar": "node scripts/fetch-ai-radar.js --brief",
     "test": "node --test tests/",

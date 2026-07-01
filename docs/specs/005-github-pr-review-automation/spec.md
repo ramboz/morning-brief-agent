@@ -1,5 +1,5 @@
 ---
-status: DRAFT
+status: IN_PROGRESS
 ---
 
 # Spec 005: GitHub PR Review Automation
