@@ -24,6 +24,7 @@
   "ignore_bots": true,
   "ignore_automated_messages": true,
   "bot_exception_keywords": ["incident", "alert", "failed", "error", "outage", "degraded"],
+  "draft_enabled": false,
   "user_display_name": "Your Name",
-  "note": "Copy to slack.json and fill in your channels, people, and display name. `sections[].people` names/DMs and group DMs the plugin-based workflow (spec 004) should watch, resolved to Slack IDs at runtime via slack_search_users. `sections[].channels` and the emoji/bot fields remain used by the legacy scripts/fetch-slack.js fallback."
+  "note": "Copy to slack.json and fill in your channels, people, and display name. `sections[].people` names/DMs and group DMs the plugin-based workflow (spec 004) should watch, resolved to Slack IDs at runtime via slack_search_users. `sections[].channels` and the emoji/bot fields remain used by the legacy scripts/fetch-slack.js fallback. `draft_enabled` gates native Slack draft staging (ADR-0005/slice 004-02) -- defaults to false; flip to true only once you've reviewed how it behaves."
 }

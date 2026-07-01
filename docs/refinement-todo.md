@@ -70,6 +70,13 @@ scriptable fetcher with a natural unit-test seam; a real sample run is
 captured instead at `docs/specs/004-slack-plugin-triage/sample-digest-2026-07-01.md`.
 Formal schemas/snapshot automation remain deferred to spec `008-02` per the
 existing decision.
+**Interim note (2026-07-01):** Slice `004-02` added the `draft_enabled`
+field to `config/slack.json`'s shape and a new "Staged Drafts" Markdown
+digest section in `skills/morning-slack/SKILL.md`. Same disposition as
+004-01: no fixture snapshot (interactive-session skill, not a scriptable
+fetcher); real test evidence captured instead at
+`docs/specs/004-slack-plugin-triage/slice-02-draft-test-2026-07-01.md`.
+Formal schemas/snapshots remain deferred to spec `008-02`.
 **Reconciliation note (2026-06-19):** Source heading nesting is intentionally
 plain string rewriting for the first source. Harden Markdown nesting when a
 later source emits fenced code or literal `#` lines, or when formal snapshots
@@ -86,6 +93,12 @@ fallback paths, tried in that order when the plugin is unavailable; slice
 004-03 owns documenting that fallback boundary in full. Native Slack drafts
 (vs. the current DM-to-self mechanism) remain gated on ADR-0005 acceptance
 and slice 004-02.
+**Interim note (2026-07-01):** Both have now landed. ADR-0005 was Accepted
+(Option B) and slice `004-02` implemented native Slack drafts via
+`slack_send_message_draft`, gated on `config/slack.json`'s `draft_enabled`
+(default `false`). ADR-002's Slack delivery row is marked superseded (Slack
+only — JIRA/GitHub/Confluence rows there are unaffected). See slice 004-02's
+deviation log for what was and wasn't live-tested.
 
 ### Decision: GitHub PR review staging policy
 **Deferred:** Automatic PR detection is desirable, but staging behavior should be explicit.

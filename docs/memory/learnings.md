@@ -20,6 +20,29 @@ the dot removed>` — verified against real search-returned permalinks, and
 identical for public/private channel IDs (`C...`) and DM/group-DM channel
 IDs (`D...`). See `skills/morning-slack/SKILL.md` (spec 004-01).
 
+## Slack plugin's `slack_send_message_draft` doesn't reproduce `draft_already_exists` for a self-DM
+
+The tool's own docs say "only one attached draft is allowed per channel —
+`draft_already_exists` otherwise." Live testing against the user's own
+self-DM (`spec 004-02`) called it four times (three unthreaded, one
+`thread_ts`-threaded) and never got that error — the unthreaded calls
+silently updated the same attached draft in place (`draft_id` present on
+the first call, absent on repeats), while the threaded call got its own
+distinct `draft_id` that didn't collide with the unthreaded one. Two
+takeaways: (1) don't assume `draft_already_exists` is reproducible in a
+self-DM when testing draft-conflict handling — test the *code path*
+against the tool's documented contract, not against an observed self-DM
+repro, since one may never come; (2) "one attached draft per channel"
+appears scoped to the unthreaded slot — a threaded reply draft is tracked
+separately. See `docs/specs/004-slack-plugin-triage/slice-02-draft-test-2026-07-01.md`.
+
+## Run `workflow.py status-board` after the frontmatter transition, not before
+
+Regenerating the status board before running `workflow.py transition` bakes
+in the pre-transition status, leaving the board transiently stale until the
+next regen. Order matters: transition first, then regen — not the other
+way around. Caught during slice 004-02's reconciliation review.
+
 ## Don't self-override an independent reviewer's verdict, even when the rule justifying it is real
 
 During spec 004-01's craft-pass review, the reviewer returned `needs-changes`

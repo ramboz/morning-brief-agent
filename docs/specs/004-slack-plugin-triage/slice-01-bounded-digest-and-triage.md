@@ -52,3 +52,7 @@ without reading channel history manually.
 - **`docs/inbox.md`** — no-op. Empty at slice start; nothing to sweep.
 - **`docs/memory/learnings.md`** — updated. Added the `slack_read_channel` permalink gap and the review-verdict self-override guardrail (see below).
 
+### Amendments
+
+- **2026-07-01:** The Reconciliation sweep line above says "`docs/architecture.md` — ... **Updated** on Contract surfaces." This wording is misleading and is corrected here rather than edited in place (this slice is DONE; per the closed-record amendment policy, records get a dated note, not a silent rewrite). **What actually happened:** `docs/architecture.md` itself was never edited — `git log -- docs/architecture.md` shows no commit from this slice. The Contract-surfaces concern was instead addressed the way the same line already says in its next sentence: via an interim note on `docs/refinement-todo.md`'s "Decision: Contract artifacts" entry. "Updated on Contract surfaces" should be read as "the concern was addressed" (in refinement-todo.md), not "architecture.md's file was edited." Caught during slice 004-02's compliance re-review, which found this claim contradicted 004-02's own (accurate) sweep statement that `docs/architecture.md` "has never been edited by either slice."
+

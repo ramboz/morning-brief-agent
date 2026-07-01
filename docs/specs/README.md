@@ -20,7 +20,7 @@
 | [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-02 - codex-automation-proposal | **DONE** |  |
 | [003-scheduled-brief-shell](003-scheduled-brief-shell/spec.md) | 003-03 - failure-reporting-state | **DONE** |  |
 | [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-01 - bounded-digest-and-triage | **DONE** |  |
-| [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-02 - native-draft-workflow | DRAFT |  |
+| [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-02 - native-draft-workflow | **DONE** |  |
 | [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-03 - fallback-and-coverage-notes | DRAFT |  |
 | [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-01 - detect-review-requests | DRAFT |  |
 | [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-02 - pr-review-artifact | DRAFT |  |

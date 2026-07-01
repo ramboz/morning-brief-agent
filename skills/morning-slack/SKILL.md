@@ -1,6 +1,6 @@
 ---
 name: morning-slack
-description: Slack sub-agent — plugin-first workflow (gather via Slack plugin tools, analyze mentions/DMs/channels, stage drafts via Claude in Chrome or native Slack drafts). Supports Morning Brief and Deep Dive modes.
+description: Slack sub-agent — plugin-first workflow (gather + digest + triage via Slack plugin tools, stage native Slack drafts when explicitly enabled). Supports Morning Brief and Deep Dive modes.
 allowed-tools: bash, computer
 ---
 
@@ -100,52 +100,82 @@ rather than omitting any silently. A short "nothing new in X, Y" /
 this run" / "V excluded — ephemeral/rotational, see config note" line per
 state is enough. Never imply full workspace coverage.
 
-### Step 3 — DRAFT (API-based — if draft_enabled)
+### Step 3 — DRAFT (native Slack drafts — only if `draft_enabled: true`)
 
-Native Slack drafts (`slack_send_message_draft`) are the target mechanism
-once [ADR-0005](../../docs/decisions/adr-0005-slack-plugin-native-drafts.md)
-is accepted and slice 004-02 lands — see that slice for the
-`draft_already_exists` conflict handling this requires. Until then, this step
-stays on the DM-to-self mechanism below (ADR-0002).
+Per [ADR-0005](../../docs/decisions/adr-0005-slack-plugin-native-drafts.md)
+(Accepted), native Slack drafts (`slack_send_message_draft`) are the primary
+reply-staging mechanism for Slack, superseding the DM-to-self mechanism in
+[ADR-002](../../docs/decisions/ADR-002-draft-generation-and-delivery.md)'s
+Slack row (JIRA/GitHub/Confluence in ADR-002 are unaffected).
 
-For each draft target identified in Step 2:
+**Skip this entire step unless `config/slack.json`'s `draft_enabled` is
+exactly `true`.** Default is `false` — never draft without explicit opt-in
+(AC1). This is a hard gate, not a soft preference: if the field is missing,
+`false`, or anything other than the literal boolean `true`, do not call
+`slack_send_message_draft` at all this run.
 
-#### 3a. Enrich context
+For each draft target identified in Step 2 ("Needs your reply/action" items
+where a reply is clearly expected):
 
-Run: `node {scripts_path}/fetch-slack.js --context <channel_id> <thread_ts>`
+#### 3a. Generate draft text
 
-This fetches the full thread (all replies, participants, timestamps) so the draft has enough context to be "ready to paste."
-
-#### 3b. Generate draft text
-
-Using the enriched context, generate a draft reply in **Slack mrkdwn format**:
+Using the context already gathered in Step 1 (thread via `slack_read_thread`
+if applicable), generate a draft reply:
 - Keep it short (2-4 sentences), match the conversation tone
 - If insufficient context: "Thanks — I'll look into this and get back to you shortly."
 - Never fabricate technical facts or decisions
-- Use Slack mrkdwn: `*bold*`, `_italic_`, `<url|text>` links, `@username` mentions
+- `slack_send_message_draft`'s `message` field takes **standard markdown**
+  (`**bold**`, `_italic_`, `` `code` ``, links) — not Slack mrkdwn. Do not
+  use `<url|text>` syntax here.
 
 **Do NOT draft for:** FYI messages, announcements, ambiguous contexts.
 
-#### 3c. Stage via DM-to-self
+#### 3b. Stage via `slack_send_message_draft` (AC2 — preserve context)
 
-Pipe the draft to: `node {scripts_path}/stage-slack-draft.js`
+Call with:
+- `channel_id`: the channel/DM/group-DM ID the ask came from.
+- `thread_ts`: the parent message's ts, **if replying inside a thread** —
+  this anchors the draft as a threaded reply directly under the original
+  ask, which is what "preserves context" means for a threaded item: no
+  extra link needed, the source is right there.
+- For a top-level (non-thread) message, omit `thread_ts` and instead open
+  the draft text with a one-line quoted reference back to the source
+  (`> @user asked: "..."`) plus its permalink (Step 1.4's construction
+  rule), since there's no thread to anchor it visually.
 
-Input (JSON on stdin):
-```json
-{
-  "channel": "#channel-name",
-  "permalink": "https://slack.com/archives/C.../p...",
-  "summary": "One-line summary of what was asked",
-  "draft": "The draft reply text in Slack mrkdwn",
-  "target": "@username"
-}
-```
+On success, record the returned `channel_link` (the reviewable draft URL) —
+surface this in the daily note (Output section), not a message permalink.
 
-The script posts a formatted draft to the user's own DM channel (self-chat). Zero send risk — it's a message to yourself. The user reviews, then copies the draft text to the target channel.
+#### 3c. Handle `draft_already_exists` (AC3 — required, not optional)
 
-Returns: `{ permalink, selfDmId, ts }` — use the permalink in the daily note's Staged Drafts table.
+**Scope of what's actually been verified:** the tool's own docs say
+`draft_already_exists` fires when a channel/DM already has one attached
+draft — but live testing (`slice-02-draft-test-2026-07-01.md`) could only
+reproduce this against the user's own self-DM (the one destination
+low-risk enough to test), and there it did NOT fire: repeat calls silently
+updated the one attached draft in place instead, across both the
+unthreaded and threaded creation paths. Treat the rule below as untested
+for self-DM targets and expected-per-vendor-docs for everything else
+(a channel/DM shared with someone else) until a real conflict is observed.
 
-See: `docs/decisions/ADR-002-draft-generation-and-delivery.md`
+If the tool returns `draft_already_exists`: **stop for that specific
+target** — do not retry, do not fall back to DM-to-self, do not attempt to
+read or edit the existing draft (no such API is exposed; only one attached
+draft is allowed per channel). Report it plainly in the Output section:
+"@user already has a draft in `#channel` — skipped, review it directly in
+Slack." Continue to the next draft target; one conflict never blocks the
+rest of the run.
+
+#### 3d. Other failures
+
+`channel_not_found` / `failed_to_create_draft`: skip that target, log the
+error, continue with the next one. Never escalate a draft failure into
+sending — failures are reported, not worked around.
+
+**Legacy DM-to-self mechanism (ADR-0002, superseded for Slack by ADR-0005):**
+`scripts/stage-slack-draft.js` is no longer called by this workflow. It's
+left in place pending slice 004-03's fallback/dead-code decision — see that
+slice before deleting it.
 
 ### Output
 
@@ -167,6 +197,12 @@ Return to orchestrator:
 
 5. **Always end with a Coverage section** — one line per state tracked in Step 1 (quiet / active-outside-window / unresolved / excluded-by-design), naming which `sections` entries fall into each. This is what keeps the scope honest per AC1 — omitting any state is treated as a bug in this workflow, not a formatting nicety.
 
+6. **When `draft_enabled: true`, add a Staged Drafts section** (DoD, slice
+   004-02) — one line per draft target: the `channel_link` for a created
+   draft, or a plain skip note for a `draft_already_exists`/other failure.
+   Omit this section entirely when `draft_enabled` is `false` — don't show
+   an empty "no drafts" section on every run.
+
 **If you write a message line without a permalink, you are doing it wrong. Go back and add the link.**
 
 ```markdown
@@ -179,6 +215,11 @@ Return to orchestrator:
 - ℹ️ **[#auto-optimize-core-team](channel-url)** — @daniel [flagged customer timeouts](permalink) (Casio down), proposed disabling automatic schedules, awaiting @lucian's input
 - ℹ️ **[#aem-sites-optimizer-engineering](channel-url)** — @jiang [flagged a potential repeat outage](permalink) if ASO-originated requests aren't blocked
 - ℹ️ **[#aem-sites-optimizer-engineering](channel-url)** — @hanish shipped a [30s→instant search fix](permalink) for the Backoffice sites page
+
+### Staged Drafts
+_(only shown when `draft_enabled: true`)_
+- ✅ **@sanjeev** — [draft ready to review](channel_link)
+- ⚠️ **@razvan** in `#mysticat-engineering` — skipped, a draft already exists there; review it directly in Slack
 
 ### Coverage
 _Quiet this run: #aem-sites-optimizer-cwv, #aem-offer-management, #ai-native-acceleration, #xp-success-bayarea-social, @lucian, @francisco, @dereje, and 2 group DMs.
@@ -210,11 +251,9 @@ Return a direct, conversational answer with message excerpts and context.
 | Scenario | Action |
 |---|---|
 | Slack plugin unavailable | Fall back to script, then browser; report which path was used |
-| `channel_not_found` (plugin) | Skip that channel, log it in the Coverage line, continue |
+| `channel_not_found` (plugin, gather) | Skip that channel, log it in the Coverage line, continue |
 | Person not resolvable via `slack_search_users` | Skip that person, log it in the Coverage line, continue |
-| Connector/API unavailable | Try gather_fallback, then report error |
-| Login screen (browser) | Stop, report "Slack requires login" |
-| Channel not found | Skip, continue |
-| SLACK_USER_TOKEN missing chat:write/im:write scopes | Skip drafts, log scope error, continue |
-| stage-slack-draft.js fails | Skip that draft, log error, continue with next |
-| --context returns empty thread | Draft with limited context, note in draft message |
+| Login screen (browser fallback) | Stop, report "Slack requires login" |
+| `draft_enabled` is `false`/missing | Skip Step 3 entirely — no drafts this run, no error |
+| `draft_already_exists` (Step 3) | Skip that draft target, report it in Staged Drafts, continue with the next — never overwrite or fall back |
+| `channel_not_found`/`failed_to_create_draft` (Step 3) | Skip that draft target, log the error, continue |
