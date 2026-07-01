@@ -2,15 +2,18 @@
   "sections": [
     {
       "name": "Engineering",
-      "channels": ["#eng-general", "#architecture", "#incidents", "#deploys", "#eng-backend"]
+      "channels": ["#eng-general", "#architecture", "#incidents", "#deploys", "#eng-backend"],
+      "people": ["Some Coworker", "Another Coworker"]
     },
     {
       "name": "Product",
-      "channels": ["#roadmap", "#product-updates", "#feature-requests"]
+      "channels": ["#roadmap", "#product-updates", "#feature-requests"],
+      "people": []
     },
     {
       "name": "Company",
-      "channels": ["#general", "#announcements"]
+      "channels": ["#general", "#announcements"],
+      "people": []
     }
   ],
   "emoji_triage": {
@@ -22,5 +25,5 @@
   "ignore_automated_messages": true,
   "bot_exception_keywords": ["incident", "alert", "failed", "error", "outage", "degraded"],
   "user_display_name": "Your Name",
-  "note": "Copy to slack-sections.json and fill in your channels and display name"
+  "note": "Copy to slack.json and fill in your channels, people, and display name. `sections[].people` names/DMs and group DMs the plugin-based workflow (spec 004) should watch, resolved to Slack IDs at runtime via slack_search_users. `sections[].channels` and the emoji/bot fields remain used by the legacy scripts/fetch-slack.js fallback."
 }

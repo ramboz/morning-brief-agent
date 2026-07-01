@@ -30,10 +30,22 @@ subprocess call in `scripts/lib/brief/ai-radar.js` still has no timeout.
 **Current options:** M365/Outlook connector if available; Microsoft Graph scripts; browser fallback for unavailable artifacts.
 **Resolution trigger:** First spec that revisits Outlook or meeting summaries.
 
-### Decision: Legacy Cowork skill layer
-**Deferred:** The repo still has legacy Cowork-style `skills/**` docs, but the revival direction is Codex, jig, MCP tools, and plugins.
-**Current options:** Keep as reference; port selected skills into jig/Codex docs; delete once superseded by specs.
-**Resolution trigger:** First source-area spec that overlaps an existing legacy skill.
+### Resolved: Legacy Cowork skill layer
+**Resolved by:** Spec `004`, slice `004-01` — the first source-area spec to
+touch an existing legacy skill (`skills/morning-slack/SKILL.md`).
+**Resolution:** Keep `skills/**` as the live surface for sources that need an
+interactive agentic session with plugin/MCP tool access (Slack's `slack_*`
+tools require a running session — they cannot be shelled out to headlessly).
+`scripts/write-brief.js` stays the separate headless Node composer for
+sources that can run unattended (AI Radar today). The two are not yet wired
+together: `write-brief.js`'s `DEFAULT_SOURCES` does not include Slack, and
+slice 004-01 does not add it. This is a real fork worth tracking, not an
+oversight — resolving how (or whether) an interactive-session output like the
+Slack digest should compose into the headless daily-note writer is deferred
+to whichever future slice needs the two brief outputs unified.
+**Resolution trigger for the follow-up:** A slice that needs the
+`skills/**`-produced digest and the `write-brief.js`-produced note to appear
+in the same daily artifact.
 
 ### Decision: Contract artifacts
 **Deferred:** The architecture now names CLI output, config, and Markdown digest contracts, but formal schemas are not committed.
@@ -48,6 +60,16 @@ deferred to spec `008-02`.
 composition envelope and Markdown note shape. Focused helper tests and a
 fixture-backed smoke run cover the initial behavior; formal schemas/snapshots
 remain deferred to spec `008-02`.
+**Interim note (2026-07-01):** Slice `004-01` changed the `config/slack.json`
+shape (added `sections[].people`) and introduced a new Markdown digest
+contract (Needs-your-reply/Worth-skimming/Coverage sections, four tracked
+coverage states) in `skills/morning-slack/SKILL.md`. No fixture snapshot was
+added under `tests/fixtures/` for this shape — unlike the AI Radar precedent
+— since this digest is produced by an interactive-session skill, not a
+scriptable fetcher with a natural unit-test seam; a real sample run is
+captured instead at `docs/specs/004-slack-plugin-triage/sample-digest-2026-07-01.md`.
+Formal schemas/snapshot automation remain deferred to spec `008-02` per the
+existing decision.
 **Reconciliation note (2026-06-19):** Source heading nesting is intentionally
 plain string rewriting for the first source. Harden Markdown nesting when a
 later source emits fenced code or literal `#` lines, or when formal snapshots
@@ -55,10 +77,15 @@ land in spec `008-02`.
 
 ## Source Slices
 
-### Decision: Slack plugin versus Slack scripts
-**Deferred:** The Slack plugin can handle digest, triage, and native drafts, but legacy Slack scripts still exist.
-**Current options:** Plugin-first with scripts as fallback; script-first for reproducibility; hybrid by workflow.
-**Resolution trigger:** Slack daily triage spec.
+### Resolved: Slack plugin versus Slack scripts
+**Resolved by:** Spec `004`, slice `004-01` (the "Slack daily triage spec").
+**Resolution:** Plugin-first — `skills/morning-slack/SKILL.md` now gathers via
+the Slack plugin's `slack_*` tools against an explicit, user-confirmed scope
+(`config/slack.json`). `scripts/fetch-slack.js` and browser navigation stay as
+fallback paths, tried in that order when the plugin is unavailable; slice
+004-03 owns documenting that fallback boundary in full. Native Slack drafts
+(vs. the current DM-to-self mechanism) remain gated on ADR-0005 acceptance
+and slice 004-02.
 
 ### Decision: GitHub PR review staging policy
 **Deferred:** Automatic PR detection is desirable, but staging behavior should be explicit.
