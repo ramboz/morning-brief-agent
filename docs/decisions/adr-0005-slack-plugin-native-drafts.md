@@ -1,13 +1,14 @@
 ---
 dependencies: []
-last_verified: 2026-06-18
+last_verified: 2026-07-01
+status: Accepted
 ---
 
 # ADR-0005: Slack plugin native drafts
 
 ## Status
 
-Proposed (2026-06-18)
+Accepted (2026-07-01)
 
 ## Context
 

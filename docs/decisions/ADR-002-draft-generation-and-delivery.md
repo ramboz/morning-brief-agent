@@ -3,6 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-03-23
 **Supersedes:** ADR-001 (Slack section only — Slack moves from browser compose to DM-to-self)
+**Superseded (Slack delivery row only) by:** [ADR-0005](adr-0005-slack-plugin-native-drafts.md) (2026-07-01) — Slack moves from DM-to-self to native Slack drafts via the Slack plugin for review-first reply flows. JIRA/GitHub/Confluence delivery mechanisms below remain intact.
 
 ---
 
@@ -20,7 +21,7 @@ ADR-001 established per-tool draft staging mechanisms. After initial implementat
 
 | Tool | Delivery | Why |
 |---|---|---|
-| Slack | **DM-to-self** via Slack API | Zero send risk. Already in Slack — no context switch. Formatted correctly for Slack (mrkdwn, mentions, links). One-tap to open the target channel + paste. |
+| Slack | ~~**DM-to-self** via Slack API~~ — superseded by [ADR-0005](adr-0005-slack-plugin-native-drafts.md): native Slack drafts via the Slack plugin, gated on explicit opt-in | Zero send risk. Already in Slack — no context switch. Formatted correctly for Slack (mrkdwn, mentions, links). One-tap to open the target channel + paste. |
 | JIRA | **Local MD fragment** in vault | No draft concept in JIRA. MD file persists, links to ticket. Copy-paste into comment box. |
 | GitHub PR reviews | **Pending review** via GitHub API | GitHub's native draft mechanism. Comments stay invisible until user clicks "Submit review." |
 | GitHub issues/comments | **Local MD fragment** in vault | No draft persistence. Same pattern as JIRA. |
