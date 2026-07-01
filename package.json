@@ -12,7 +12,7 @@
     "fetch:github-corp": "node scripts/fetch-github-corp.js --brief",
     "fetch:slack": "node scripts/fetch-slack.js --brief",
     "fetch:ai-radar": "node scripts/fetch-ai-radar.js --brief",
-    "test": "node --test tests/*.test.js",
+    "test": "node --test tests/",
     "prepare": "husky"
   },
   "dependencies": {

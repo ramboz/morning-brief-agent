@@ -1,1 +1,1 @@
-node --test tests/*.test.js
+node --test tests/
