@@ -1,5 +1,5 @@
 ---
-status: IN_PROGRESS
+status: DONE
 ---
 
 # Spec 004: Slack Plugin Triage
