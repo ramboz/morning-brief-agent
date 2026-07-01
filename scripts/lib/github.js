@@ -151,6 +151,47 @@ export function notificationPassesFilter(n, notifConfig) {
 }
 
 /**
+ * Fetch check-run results for a commit and summarize CI status.
+ * Read-only (GET). Fault-tolerant: on any error (skipping 404s) logs to stderr
+ * and returns empty CI — never throws.
+ *
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} owner
+ * @param {string} repo
+ * @param {string} sha - Commit SHA (typically the PR head)
+ * @param {string} toolName - Tool name for error logging
+ * @returns {Promise<{ ciStatus: 'failing'|'passing'|null, ciFailures: Array<{ name: string, conclusion: string }> }>}
+ */
+export async function fetchCiFailures(baseUrl, token, owner, repo, sha, toolName) {
+  const result = { ciStatus: null, ciFailures: [] }
+  if (!sha) return result
+
+  try {
+    const { data: checksData } = await githubGet(
+      baseUrl, token,
+      `/repos/${owner}/${repo}/commits/${sha}/check-runs`,
+      { per_page: 10 }
+    )
+    const failures = (checksData.check_runs ?? []).filter(
+      cr => cr.conclusion === 'failure' || cr.conclusion === 'cancelled'
+    )
+    if (failures.length > 0) {
+      result.ciStatus = 'failing'
+      result.ciFailures = failures.map(cr => ({ name: cr.name, conclusion: cr.conclusion }))
+    } else if (checksData.check_runs?.length > 0) {
+      result.ciStatus = 'passing'
+    }
+  } catch (ciErr) {
+    if (ciErr.status !== 404) {
+      console.error(`[${toolName}] CI check fetch failed for ${owner}/${repo}:`, ciErr.message)
+    }
+  }
+
+  return result
+}
+
+/**
  * Enrich a single notification with subject details (PR/Issue body, state, etc.).
  * If enrichment fails, returns title-only fallback.
  * @param {string} baseUrl
@@ -197,28 +238,11 @@ export async function enrichNotification(baseUrl, token, notification, fetchCi, 
       base.body = stripMarkdown(subject.body ?? '').slice(0, 500)
 
       if (fetchCi && subject.head?.sha) {
-        try {
-          const owner = notification.repository?.owner?.login ?? ''
-          const repo = notification.repository?.name ?? ''
-          const { data: checksData } = await githubGet(
-            baseUrl, token,
-            `/repos/${owner}/${repo}/commits/${subject.head.sha}/check-runs`,
-            { per_page: 10 }
-          )
-          const failures = (checksData.check_runs ?? []).filter(
-            cr => cr.conclusion === 'failure' || cr.conclusion === 'cancelled'
-          )
-          if (failures.length > 0) {
-            base.ciStatus = 'failing'
-            base.ciFailures = failures.map(cr => ({ name: cr.name, conclusion: cr.conclusion }))
-          } else if (checksData.check_runs?.length > 0) {
-            base.ciStatus = 'passing'
-          }
-        } catch (ciErr) {
-          if (ciErr.status !== 404) {
-            console.error(`[${toolName}] CI check fetch failed for ${base.repo}:`, ciErr.message)
-          }
-        }
+        const owner = notification.repository?.owner?.login ?? ''
+        const repo = notification.repository?.name ?? ''
+        const ci = await fetchCiFailures(baseUrl, token, owner, repo, subject.head.sha, toolName)
+        base.ciStatus = ci.ciStatus
+        base.ciFailures = ci.ciFailures
       }
     } else if (base.type === 'Issue') {
       base.url = htmlUrl
@@ -419,10 +443,10 @@ export async function fetchIssueComments(baseUrl, token, owner, repo, issueNumbe
 /**
  * Parse linked issue/ticket references from a PR body or title.
  * Supports: Fix #123, Closes #123, Resolves #123, PROJ-123 (JIRA-style)
+ * Bare `#123` references are returned with owner/repo undefined; the caller
+ * defaults them to the PR's own repo (see fetchPrContext).
  * @param {string} text - PR body or title
- * @param {string} defaultOwner - Default repo owner for bare #123 references
- * @param {string} defaultRepo - Default repo name for bare #123 references
- * @returns {{ github: Array<{owner: string, repo: string, number: number}>, jira: string[] }}
+ * @returns {{ github: Array<{owner: string|undefined, repo: string|undefined, number: number}>, jira: string[] }}
  */
 export function parseLinkedIssues(text) {
   if (!text) return { github: [], jira: [] }
@@ -475,6 +499,10 @@ export async function fetchPrContext(baseUrl, token, owner, repo, prNumber, tool
   const pr = prResult.data
   const linked = parseLinkedIssues(`${pr.title ?? ''} ${pr.body ?? ''}`)
 
+  // CI check-runs need pr.head.sha, so they run after the PR object resolves,
+  // in parallel with the linked-issue fetches below. Fault-tolerant (never throws).
+  const ciPromise = fetchCiFailures(baseUrl, token, owner, repo, pr.head?.sha, toolName)
+
   // Fetch linked GitHub issues (same repo only for #N references)
   const linkedIssues = []
   for (const ref of linked.github) {
@@ -497,6 +525,8 @@ export async function fetchPrContext(baseUrl, token, owner, repo, prNumber, tool
     }
   }
 
+  const ci = await ciPromise
+
   return {
     type: 'PullRequest',
     owner,
@@ -508,6 +538,8 @@ export async function fetchPrContext(baseUrl, token, owner, repo, prNumber, tool
     isDraft: pr.draft ?? false,
     url: pr.html_url,
     body: pr.body ?? '',
+    ciStatus: ci.ciStatus,
+    ciFailures: ci.ciFailures,
     diff,
     diffStat: {
       additions: pr.additions ?? 0,

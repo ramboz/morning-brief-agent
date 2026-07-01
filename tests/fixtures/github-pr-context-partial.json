@@ -1,0 +1,22 @@
+{
+  "type": "PullRequest",
+  "owner": "octo-org",
+  "repo": "payments-service",
+  "number": 1204,
+  "title": "fix: settle ledger writes atomically",
+  "author": "dave",
+  "state": "open",
+  "isDraft": false,
+  "url": "https://github.com/octo-org/payments-service/pull/1204",
+  "body": "Wraps ledger writes in a transaction to avoid partial settlement.",
+  "diff": "",
+  "diffStat": {
+    "additions": 0,
+    "deletions": 0,
+    "changedFiles": 0
+  },
+  "baseBranch": "main",
+  "headBranch": "fix/atomic-ledger",
+  "linkedIssues": [],
+  "linkedJiraKeys": []
+}

@@ -11,6 +11,7 @@
     "fetch:github-com": "node scripts/fetch-github-com.js --brief",
     "fetch:github-corp": "node scripts/fetch-github-corp.js --brief",
     "list:review-requests": "node scripts/list-review-requests.js --brief",
+    "write:review-artifact": "node scripts/write-review-artifact.js",
     "fetch:slack": "node scripts/fetch-slack.js --brief",
     "fetch:ai-radar": "node scripts/fetch-ai-radar.js --brief",
     "test": "node --test tests/",

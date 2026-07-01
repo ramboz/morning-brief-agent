@@ -1,5 +1,5 @@
 ---
-status: RECONCILED
+status: DONE
 dependencies: []
 last_verified: 2026-07-01
 arch_review: true
