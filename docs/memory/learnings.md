@@ -68,3 +68,31 @@ invalid JSON, or the command timed out. The 003-02 automation prompt
 
 ## State-file I/O must self-guard against corrupt/unwritable files
 scripts/lib/brief/state.js (loadBriefState/updateBriefState) was originally called unguarded from write-brief.js's main(). A corrupt logs/brief-state.json (bad JSON) or an unwritable logs/ directory would throw, propagate to main().catch(), and fail the entire brief run with ok:false — even when every actual source succeeded. This violates CLAUDE.md's Error Handling rule (every tool fails independently) and the slice's own AC1. Found during compliance/craft review of slice 003-03. Fixed by making both functions catch their own read/parse/write errors internally (console.error('[brief]', ...)) and always return a usable state object instead of throwing. Contrast with scripts/lib/ai-radar/state.js, whose loadSeenCache still throws on a non-ENOENT read error — that module is a single dedup cache read once at the top of a source-specific fetch, not a whole-run dependency, so the risk profile differs. Rule of thumb: any state/cache file read or written on the hot path of a multi-source run must never let an I/O/parse failure escalate past its own boundary.
+
+## scripts/fetch-slack.js's DM fallback is broader than the plugin path, not narrower
+scripts/fetch-slack.js (the gather fallback used when the Slack plugin is
+unavailable) scopes channels to config/slack.json's sections[].channels,
+matching the plugin path — but its DM/group-DM fetch uses
+conversations.list({ types: 'im,mpim' }) unscoped by sections[].people, so it
+reads every DM/group-DM the configured Slack token can see. The usual
+assumption ("a fallback covers less than the primary path") is backwards here.
+Found while satisfying slice 004-03's DoR ("understand fetch-slack.js's
+behavior") before writing the fallback-boundary docs. Documented explicitly in
+docs/architecture.md's "Slack: Plugin-First With Bounded Fallbacks" and
+skills/morning-slack/SKILL.md's Step 1, rather than left as an implicit
+surprise a future session would rediscover the hard way.
+
+## Status-board regen must run at every transition, not deferred to a later one
+A follow-up to "Run workflow.py status-board after the frontmatter transition,
+not before" (same slice family, spec 004). During slice 004-03's
+reconciliation review, docs/specs/README.md was found showing 004-03 as DRAFT
+while the slice's own frontmatter had already progressed to REVIEWED — two
+transitions (IN_PROGRESS, REVIEWED) had happened without an intervening
+status-board regen, and the deviation-log sweep entry for README.md papered
+over the gap by only promising a regen "after the DONE transition." The
+reconciliation reviewer caught this by directly diffing the board against the
+slice frontmatter rather than trusting the sweep's narrative. Rule: run
+`workflow.py status-board` after *every* transition in a slice's lifecycle,
+not just once at the end — and when a reconciliation sweep claims a board
+entry will be "updated later," verify that claim against the board's current
+actual content rather than accepting the promise at face value.
