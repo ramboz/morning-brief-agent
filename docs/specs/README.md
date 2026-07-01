@@ -23,7 +23,7 @@
 | [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-02 - native-draft-workflow | **DONE** |  |
 | [004-slack-plugin-triage](004-slack-plugin-triage/spec.md) | 004-03 - fallback-and-coverage-notes | **DONE** |  |
 | [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-01 - detect-review-requests | **DONE** |  |
-| [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-02 - pr-review-artifact | DRAFT |  |
+| [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-02 - pr-review-artifact | **DONE** |  |
 | [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-03 - optional-pending-review-staging | DRAFT |  |
 | [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-01 - artifact-inventory | DRAFT |  |
 | [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-02 - text-summary-pipeline | DRAFT |  |
