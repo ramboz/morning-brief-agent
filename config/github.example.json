@@ -10,6 +10,10 @@
       "issue_mentions": true,
       "ci_failures": true,
       "releases": false
+    },
+    "pending_review_staging": {
+      "enabled": false,
+      "repos": []
     }
   },
   "github_corp": {
@@ -23,7 +27,12 @@
       "issue_mentions": true,
       "ci_failures": true,
       "releases": false
+    },
+    "pending_review_staging": {
+      "enabled": false,
+      "repos": []
     }
   },
-  "note": "Copy to github-repos.json. Set github_corp.url to your GitHub Enterprise URL. Leave orgs empty to scan all accessible repos."
+  "note": "Copy to github.json. Set github_corp.url to your GitHub Enterprise URL. Leave orgs empty to scan all accessible repos.",
+  "note_pending_review_staging": "OFF by default (ADR-0007): the default review path writes local Markdown artifacts to output/github-reviews/ and makes NO GitHub API writes. Set pending_review_staging.enabled=true PER INSTANCE to opt in to staging a native GitHub PENDING review (body-only, invisible until you click Submit review — never submitted/approved/changes-requested). When enabled, 'repos' is an allowlist: list repo names ('web-frontend') or 'owner/repo' ('octo-org/web-frontend') to stage only those. An EMPTY 'repos' array with enabled=true stages for ALL detected review-request repos on that instance. If staging fails (auth/VPN/API error), the local artifact is preserved as the fallback."
 }

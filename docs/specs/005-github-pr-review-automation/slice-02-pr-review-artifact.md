@@ -1,5 +1,5 @@
 ---
-status: RECONCILED
+status: DONE
 dependencies: ["005-01"]
 last_verified: 2026-07-01
 ---

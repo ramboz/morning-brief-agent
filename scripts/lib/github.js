@@ -378,6 +378,43 @@ export async function githubPost(baseUrl, token, path, body) {
 }
 
 /**
+ * Create a PENDING PR review via the GitHub API.
+ *
+ * SAFETY INVARIANT: this posts a BODY-ONLY payload — no `event`, no `state`,
+ * no `comments` decision. With no `event`, GitHub creates a PENDING review
+ * that is invisible to others until the human clicks "Submit review". A review
+ * is therefore NEVER submitted, approved, changes-requested, merged, or pushed
+ * by this helper (ADR-0007, spec 005-03 AC2).
+ *
+ * Reuses githubPost — does not reimplement auth/POST.
+ *
+ * @param {{ baseUrl: string, token: string, owner: string, repo: string, number: number|string, body: string, toolName?: string }} args
+ * @returns {Promise<{ staged: true, reviewId: number, owner: string, repo: string, number: number|string }>}
+ * @throws {Error} On network or HTTP error (caller must catch to preserve the local artifact)
+ */
+export async function stagePendingReview({ baseUrl, token, owner, repo, number, body, toolName = 'github' }) {
+  console.error(`[${toolName}] Creating PENDING review for ${owner}/${repo}#${number} (body-only, never submitted)`)
+  const { data } = await githubPost(
+    baseUrl, token,
+    `/repos/${owner}/${repo}/pulls/${number}/reviews`,
+    { body }
+  )
+  return { staged: true, reviewId: data.id, owner, repo, number }
+}
+
+/**
+ * Normalize an `instance` field into the corporate/.com contract used by every
+ * GitHub stager. Single source of truth so the two staging CLIs can't drift on
+ * what counts as "corporate". Pure — no network/fs/env.
+ * @param {string} [instance] - "com" | "github.com" | "corp" | "corporate"
+ * @returns {{ isCorp: boolean, configKey: 'github_corp'|'github_com' }}
+ */
+export function resolveInstance(instance) {
+  const isCorp = instance === 'corp' || instance === 'corporate'
+  return { isCorp, configKey: isCorp ? 'github_corp' : 'github_com' }
+}
+
+/**
  * Fetch raw diff for a pull request.
  * @param {string} baseUrl
  * @param {string} token

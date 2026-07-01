@@ -61,7 +61,8 @@ morning-brief-agent/
 - **Still open:**
   - Outlook/M365 connector versus Graph script versus browser fallback.
   - How much of the legacy Cowork skill layer remains active.
-  - Whether GitHub PR reviews are only written locally or also staged as pending reviews when explicitly enabled.
+- **Resolved:**
+  - GitHub PR review staging policy — [ADR-0007](decisions/adr-0007-review-first-github-pr-automation.md) (spec 005): reviews are written to local artifacts by default (`output/github-reviews/`); native GitHub *pending*-review staging is opt-in per repo/run and never submits.
 
 ## Core architecture decisions
 
@@ -182,4 +183,4 @@ No HTTP API, event bus, RPC, GraphQL schema, or database schema is currently exp
 
 ## Open questions
 
-Deferred items live in [refinement-todo.md](refinement-todo.md). Current architecture questions include Outlook/M365 access, GitHub review staging policy, Slack plugin reliance, and how much legacy Cowork material to migrate.
+Deferred items live in [refinement-todo.md](refinement-todo.md). Current architecture questions include Outlook/M365 access, Slack plugin reliance, and how much legacy Cowork material to migrate. (GitHub review staging policy is resolved by [ADR-0007](decisions/adr-0007-review-first-github-pr-automation.md).)

@@ -103,39 +103,50 @@ described further below (slice 005-03) and is off by default.
    Reviews output so the user can open a complete draft review without opening
    the implementation conversation.
 
-**Optional — native pending review via GitHub API** (opt-in only, slice 005-03).
-
-Only when native pending-review staging is explicitly enabled for the repo/run
-(never by default), the review body may additionally be staged as a GitHub
-*pending* review — invisible to others until the user clicks "Submit review".
-This is the path below; do NOT run it unless staging is enabled.
-
-1. **Fetch PR context:** Run the script with `--context <owner> <repo> pr <number>` to get:
-   - Full diff, PR description, conversation comments, inline review comments
-   - Linked GitHub issues (parsed from "Fix #123" / "Closes #123" in PR body)
-   - Linked JIRA ticket keys (parsed from "SITES-1234" patterns in PR body/title)
-
-2. **Enrich with linked issues:** If `linkedJiraKeys` is non-empty and JIRA is available, fetch those tickets via `node {scripts_path}/fetch-jira.js --search "key = SITES-1234"` to add business context (ticket title, description, acceptance criteria).
-
-3. **Generate review:** Using the pr-review skill's framework (multi-perspective: Architecture, SRE, Security, QA, Product), generate a full review of the PR. Include:
-   - Summary (what the PR does, overall assessment)
-   - Strengths (genuine positives)
-   - Issues (Blockers / Should Fix / Nice to Have) with file:line references
-   - Verdict (Ready to merge / With fixes / No)
-
-   If a linked JIRA ticket or GitHub issue was found, check whether the implementation matches the stated requirements.
-
-4. **Stage pending review:** Pipe the review body to `stage-github-review.js`:
+5. **Optionally stage a pending review (opt-in only):** After the local
+   artifact is written, run the gated stager. It reads config and decides
+   whether this repo/instance opted in. By default (OFF) it makes NO API call
+   and just echoes the local artifact — the artifact is the deliverable.
    ```bash
-   echo '{"owner":"org","repo":"name","number":123,"body":"...review...","instance":"com"}' | node {scripts_path}/stage-github-review.js
+   echo '{"pr":{"instance":"github.com","owner":"octo-org","repo":"web-frontend","number":482,"url":"..."},"reviewBody":"<pr-review output>","artifactPath":"<data.path from step 4>"}' \
+     | node {scripts_path}/stage-review-if-enabled.js
    ```
-   For corporate GitHub, set `"instance":"corp"`.
+   - **Not opted in (default):** envelope carries `data.staged:false` with a
+     `reason` and the `artifactPath`. Stop at the local artifact.
+   - **Opted in + success:** envelope carries `data.staged:true`, `reviewId`,
+     `prUrl`, AND still the `artifactPath`. The review is a GitHub *pending*
+     review — invisible to others until the user clicks "Submit review". It is
+     NEVER submitted, approved, changes-requested, merged, or pushed by the
+     agent; the human submits in GitHub.
+   - **Opted in + failure (auth/VPN/API):** the stager does NOT crash — its
+     envelope is `ok:false` and PRESERVES the `artifactPath` with a clear error.
+     The local artifact is the fallback; nothing is lost.
 
-   The review stays invisible to others until the user clicks "Submit review" in the GitHub UI. The user can edit the review before submitting.
+   Add `--dry-run` to resolve the decision and report what WOULD be staged
+   (owner/repo/number, body length) without any API call — the safe way to
+   verify opt-in wiring:
+   ```bash
+   echo '{"pr":{...},"reviewBody":"...","artifactPath":"..."}' \
+     | node {scripts_path}/stage-review-if-enabled.js --dry-run
+   ```
 
-   **To discard a staged review:** `node {scripts_path}/discard-github-review.js --pr owner/repo#number [--instance corp]`
+   Opt-in is configured per instance in `config/github.json` under
+   `github_com` / `github_corp`:
+   ```json
+   "pending_review_staging": { "enabled": false, "repos": [] }
+   ```
+   `enabled:false` (default) = local artifacts only. `enabled:true` with a
+   non-empty `repos` allowlist (names or `owner/repo`) stages only those repos;
+   an empty `repos` with `enabled:true` stages for all detected review-request
+   repos on that instance.
+
+   **To discard a staged pending review:** `node {scripts_path}/discard-github-review.js --pr owner/repo#number [--instance corp]`
    Or discard all staged reviews: `node {scripts_path}/discard-github-review.js --all`
    IMPORTANT: The `gh` CLI cannot see or delete these reviews — it uses different auth. Always use the discard script.
+
+   *(The lower-level `stage-github-review.js` still exists and posts the same
+   body-only pending review; `stage-review-if-enabled.js` wraps it with the
+   opt-in gate and safe fallback. Prefer the gated stager in the brief flow.)*
 
 **Issue comment replies → local MD fragment** (no draft persistence on navigation):
 
@@ -169,7 +180,7 @@ Return to orchestrator:
   Review requested. CI failing: `build`, `test`. → [Pending review staged]
 
 ### Reviews & Staged Drafts (3)
-- [ ] myorg/my-repo #482 → Review artifact: `output/github-reviews/2026-03-19-github.com-myorg-my-repo-482.md` · [Open PR](https://github.com/myorg/my-repo/pull/482)
+- [ ] myorg/my-repo #482 → Review artifact: `output/github-reviews/2026-03-19-github.com-myorg-my-repo-482.md` · [Pending review staged](https://github.com/myorg/my-repo/pull/482) · [Open PR](https://github.com/myorg/my-repo/pull/482)
 - [ ] myorg/infra #91 → Review artifact: `output/github-reviews/2026-03-19-corporate-myorg-infra-91.md` *(missing: diff)* · [Open PR](https://git.corp.adobe.com/...)
 - [ ] [[2026-03-19-github-myorg-infra-91-comment]] → [Open issue](https://git.corp.adobe.com/...)
 ```
@@ -177,6 +188,14 @@ Return to orchestrator:
 Review artifacts are local Markdown files (default path, ADR-0007). When the
 writer's `data.missing` is non-empty, surface it inline so the user knows the
 review is partial.
+
+Each review row MUST link to the deliverable the user should open:
+- **Default / not opted in / staging failed:** link the local review artifact
+  path (`data.artifactPath`). This is the fallback and remains the editable
+  source of truth even when a pending review was also staged.
+- **Opted in + staged:** ALSO add a "Pending review staged" link to the PR
+  (`data.prUrl` from `stage-review-if-enabled.js`) so the user can open it and
+  click "Submit review". Never imply the review was submitted.
 
 ---
 

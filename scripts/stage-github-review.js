@@ -14,20 +14,21 @@
  *   - body:      Review body text (markdown)
  *   - instance:  "com" (default) or "corp" — determines which token/base URL to use
  *
- * Creates a pending review (event: "PENDING") — invisible to others until
- * the user clicks "Submit review" in the GitHub UI.
+ * Creates a PENDING review by posting a BODY-ONLY payload (no `event` field) —
+ * invisible to others until the user clicks "Submit review" in the GitHub UI.
+ * (GitHub has no "PENDING" event value; pending is the absence of `event`.)
  *
- * SAFETY: Never submits the review. Never approves or requests changes.
- * Only creates a PENDING review with a "Comment" body.
+ * SAFETY: Never submits the review. Never approves or requests changes. The
+ * body-only invariant lives in stagePendingReview (lib/github.js).
  *
  * Standalone: echo '{"owner":"o","repo":"r","number":1,"body":"test"}' | node scripts/stage-github-review.js
- * Reference:  docs/decisions/ADR-002-draft-generation-and-delivery.md
+ * Reference:  docs/decisions/adr-0007-review-first-github-pr-automation.md
  */
 
 import dotenv from 'dotenv'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { githubPost } from './lib/github.js'
+import { stagePendingReview, resolveInstance } from './lib/github.js'
 import { envelope } from './lib/config.js'
 
 dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), '.env') })
@@ -72,7 +73,7 @@ async function main() {
   }
 
   // Determine base URL and token based on instance
-  const isCorp = instance === 'corp'
+  const { isCorp } = resolveInstance(instance)
   const baseUrl = isCorp
     ? process.env.GITHUB_CORP_BASE_URL
     : 'https://api.github.com'
@@ -91,12 +92,9 @@ async function main() {
   }
 
   try {
-    console.error(`[${TOOL}] Creating pending review for ${owner}/${repo}#${number}`)
-
-    const { data } = await githubPost(baseUrl, token,
-      `/repos/${owner}/${repo}/pulls/${number}/reviews`,
-      { body }
-    )
+    const { reviewId } = await stagePendingReview({
+      baseUrl, token, owner, repo, number, body, toolName: TOOL
+    })
 
     const prUrl = isCorp
       ? `${process.env.GITHUB_CORP_BASE_URL?.replace('/api/v3', '')}/${owner}/${repo}/pull/${number}`
@@ -104,7 +102,7 @@ async function main() {
 
     console.log(JSON.stringify(envelope(TOOL, 'draft', {
       staged: true,
-      reviewId: data.id,
+      reviewId,
       owner,
       repo,
       number,
