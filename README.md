@@ -117,6 +117,8 @@ node scripts/fetch-ai-radar.js --brief        # AI Radar digest JSON to stdout
 node scripts/fetch-ai-radar.js --brief --save-fixture
 node scripts/write-brief.js --brief           # Daily Brief Markdown note
 node scripts/write-brief.js --brief --ai-radar-fixture tests/fixtures/ai-radar.json
+node scripts/write-brief.js --brief --sources ai_radar,jira
+node scripts/write-brief.js --brief --state-path logs/brief-state.json
 ```
 
 `fetch-ai-radar.js` also writes reviewable output files on each run:
@@ -133,6 +135,20 @@ Use `--save-fixture` when you want to refresh the checked-in sample files in `te
 
 Set `daily_brief.output_dir` in `config/main.json`, `DAILY_BRIEF_OUTPUT_DIR`,
 or `--output-dir` to write directly into an Obsidian daily notes folder.
+
+Use `--sources` to override which sources run (comma-separated, e.g.
+`ai_radar,jira`); it defaults to `daily_brief.sources` in `config/main.json`
+or just `ai_radar`. Each source fails independently — a failed or unsupported
+source shows up in the note's "Source Results" footer without blocking the
+others.
+
+`write-brief.js` also tracks minimal per-source run history (last run/success
+time, consecutive failure count, last error) in a local JSON state file —
+default `logs/brief-state.json`, overridable with `--state-path` (useful for
+tests so they don't touch the real `logs/` directory). When a source is
+currently failing and has prior history, the footer line surfaces the last
+success time and/or failure streak. A missing or corrupt state file is
+treated as empty and logged to stderr — it never fails the run.
 
 AI Radar source types currently include:
 - `rss` / `atom`

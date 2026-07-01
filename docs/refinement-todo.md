@@ -18,6 +18,12 @@ mechanism to `003-02`.
 **Reconciliation note (2026-06-19):** The manual writer shells out to the live
 AI Radar fetcher without a timeout. Scheduler/failure-reporting slices should
 add hung-source isolation before unattended runs.
+**Interim note (2026-07-01):** Slice `003-03` added per-source last-run state
+(`scripts/lib/brief/state.js`, `logs/brief-state.json`) so failed sources
+persist last-success time and a consecutive-failure streak, surfaced in the
+rendered note's Source Results footer. Hung-source timeout isolation was
+explicitly out of scope for `003-03` and remains unresolved — the AI Radar
+subprocess call in `scripts/lib/brief/ai-radar.js` still has no timeout.
 
 ### Decision: Outlook and meeting artifact access
 **Deferred:** Outlook email, calendar, Teams transcripts, recap emails, and recording-only links still need a confirmed access path.

@@ -40,3 +40,29 @@ repo-owned scheduler code.
 - Building per-source failure state or hung-source isolation.
 - Sending messages, comments, or other irreversible tool actions from scheduled
   runs.
+
+## Slice 003-03 - failure-reporting-state
+
+Add minimal per-source run metadata so failed sources do not block the brief
+and repeated failures are visible in the rendered note.
+
+1. Add a `scripts/lib/brief/state.js` module (mirrors the existing
+   `scripts/lib/ai-radar/state.js` load/update/write shape) that tracks, per
+   source id: last run time, last status, last success time, consecutive
+   failure count, and last error.
+2. Wire `write-brief.js` to load state before rendering, annotate each
+   section with its prior last-success/consecutive-failure info, and persist
+   the updated state after the run (default path `logs/brief-state.json`,
+   overridable for tests the same way `--ai-radar-fixture` is).
+3. Extend `renderDailyBrief`'s Source Results line so a currently-failed
+   source surfaces its last success time / failure streak when history is
+   present, without changing output for sources with no prior history.
+4. Add focused tests: state load/update/write round-trip, and a simulated
+   source failure exercised end-to-end through the render output.
+
+## Out of scope for 003-03
+
+- Alerting, notifications, or any action beyond the rendered note and local
+  state file.
+- Hung-source timeouts or isolation beyond the existing per-source try/catch.
+- Multi-run trend analysis beyond last success + consecutive failure count.

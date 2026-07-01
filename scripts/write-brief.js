@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path'
 import { collectAiRadarSection } from './lib/brief/ai-radar.js'
 import { writeDailyBriefFiles } from './lib/brief/output.js'
 import { renderDailyBrief } from './lib/brief/render.js'
+import { loadBriefState, updateBriefState } from './lib/brief/state.js'
 import { envelope } from './lib/config.js'
 
 const TOOL = 'brief'
@@ -43,11 +44,16 @@ async function main() {
     mainConfig
   })
 
+  const priorState = await loadBriefState(args.statePath ?? undefined)
+
   const sections = await collectSections(sources, {
     aiRadarFixture: args.aiRadarFixture
   })
+  annotateSectionsWithHistory(sections, priorState)
+
   const markdown = renderDailyBrief({ date, generatedAt: now, sections })
   const outputPaths = await writeDailyBriefFiles({ outputDir, date, markdown })
+  await updateBriefState(priorState, sections, now)
 
   emitAndExit(envelope(TOOL, 'brief', {
     date,
@@ -86,12 +92,25 @@ async function collectSections(sources, options) {
   return sections
 }
 
+function annotateSectionsWithHistory(sections, priorState) {
+  for (const section of sections) {
+    const previous = priorState.sources[section.id]
+    if (section.status === 'failed' && previous && (previous.lastSuccessAt || previous.consecutiveFailures > 0)) {
+      section.history = {
+        lastSuccessAt: previous.lastSuccessAt,
+        consecutiveFailures: previous.consecutiveFailures
+      }
+    }
+  }
+}
+
 function parseBriefArgs(argv) {
   const args = {
     date: null,
     outputDir: null,
     aiRadarFixture: null,
-    sources: null
+    sources: null,
+    statePath: null
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -120,6 +139,12 @@ function parseBriefArgs(argv) {
 
     if (arg === '--sources') {
       args.sources = normalizeSourceList(requiredValue(argv, i, arg).split(','))
+      i += 1
+      continue
+    }
+
+    if (arg === '--state-path') {
+      args.statePath = requiredValue(argv, i, arg)
       i += 1
       continue
     }

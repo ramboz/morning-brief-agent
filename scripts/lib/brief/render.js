@@ -45,7 +45,26 @@ function formatSourceResult(section) {
   }
 
   const detail = firstDetail(section)
-  return detail ? `${section.status} - ${detail}` : section.status
+  const base = detail ? `${section.status} - ${detail}` : section.status
+  const history = formatHistory(section.history)
+
+  return history ? `${base} (${history})` : base
+}
+
+function formatHistory(history) {
+  if (!history) {
+    return null
+  }
+
+  const parts = []
+  if (history.consecutiveFailures > 0) {
+    parts.push(`${history.consecutiveFailures} consecutive failure${history.consecutiveFailures === 1 ? '' : 's'}`)
+  }
+  if (history.lastSuccessAt) {
+    parts.push(`last success ${history.lastSuccessAt}`)
+  }
+
+  return parts.length > 0 ? parts.join(', ') : null
 }
 
 function nestSourceMarkdown(markdown) {
