@@ -16,10 +16,10 @@
       "enabled": true,
       "gather_method": "script",
       "gather_fallback": "connector",
-      "draft_method": "slack_dm",
+      "draft_method": "slack_native_draft",
       "draft_enabled": true,
       "url": "https://app.slack.com",
-      "note": "Drafts posted to self-DM via stage-slack-draft.js. Requires chat:write + im:write scopes."
+      "note": "Drafts staged via the Slack plugin's slack_send_message_draft (ADR-0005), gated separately by config/slack.json's own draft_enabled field. No draft fallback if the plugin is unavailable — see docs/architecture.md's 'Slack: Plugin-First With Bounded Fallbacks'."
     },
     "outlook": {
       "enabled": true,
@@ -82,7 +82,7 @@
     }
   },
   "_draft_methods": {
-    "slack_dm": "Post to self-DM channel via Slack API (stage-slack-draft.js)",
+    "slack_native_draft": "Stage a native Slack draft via the plugin's slack_send_message_draft (ADR-0005). No script fallback — retired stage-slack-draft.js in slice 004-03.",
     "local_md": "Write Markdown fragment to {vault}/drafts/ (stage-local-draft.js)",
     "github_api": "PR reviews: pending review via GitHub API (stage-github-review.js). Issues: local MD.",
     "browser": "Claude in Chrome compose box (auto-saves to tool's native drafts)",

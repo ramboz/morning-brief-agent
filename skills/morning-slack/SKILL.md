@@ -10,7 +10,9 @@ Per [ADR-0005](../../docs/decisions/adr-0005-slack-plugin-native-drafts.md) and
 [spec 004](../../docs/specs/004-slack-plugin-triage/spec.md), the Slack plugin
 (the `slack_*` tools available in the active session) is the primary path for
 gather + digest + triage. `scripts/fetch-slack.js` is fallback/reference
-material only — see slice 004-03 for the fallback boundary once it's written.
+material only — see the fallback-scope note in Step 1 below and
+`docs/architecture.md`'s "Slack: Plugin-First With Bounded Fallbacks" for the
+full boundary (slice 004-03).
 
 This skill runs in an interactive session because the `slack_*` tools require
 one — it is not wired into the headless `scripts/write-brief.js` composer
@@ -58,6 +60,19 @@ coverage — only `sections` is ever read.
 **If the plugin is unavailable:** fall back to `node {scripts_path}/fetch-slack.js --brief` (parse the JSON envelope), then to browser navigation
 (`https://app.slack.com` via Claude in Chrome) as a last resort. Note which
 path was used in the output — never silently substitute one for another.
+
+**Fallback scope differs from the plugin path (slice 004-03) — note this in
+Coverage when the script fallback is used:** `fetch-slack.js --brief` scopes
+channels to `sections[].channels` (same as the plugin), but its DM/group-DM
+fetch is **not** scoped to `sections[].people` — it pulls every DM and group
+DM the configured Slack token can see (`conversations.list({ types:
+'im,mpim' })`). This is broader than the plugin path's people list, not
+narrower — say so rather than implying identical scope across both paths.
+There is no draft fallback: `scripts/stage-slack-draft.js` was retired in
+slice 004-03 (fully superseded by native drafts, see Step 3 below), so if
+this run used the script or browser fallback for gather, Step 3 is skipped
+entirely for this run regardless of `draft_enabled` — report that in
+Coverage too.
 
 **Track coverage as you go**, per `sections` entry — four possible states:
 - **quiet** — resolved to an ID, zero messages in the lookback window.
@@ -173,9 +188,10 @@ error, continue with the next one. Never escalate a draft failure into
 sending — failures are reported, not worked around.
 
 **Legacy DM-to-self mechanism (ADR-0002, superseded for Slack by ADR-0005):**
-`scripts/stage-slack-draft.js` is no longer called by this workflow. It's
-left in place pending slice 004-03's fallback/dead-code decision — see that
-slice before deleting it.
+`scripts/stage-slack-draft.js` was retired in slice 004-03 — fully
+superseded by native drafts above, and no concrete fallback need remained
+(when the plugin is unavailable, Step 3 is skipped for that run rather than
+falling back to DM-to-self; see the fallback-scope note in Step 1).
 
 ### Output
 

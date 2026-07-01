@@ -46,7 +46,9 @@ morning-brief-agent/
 - **Developer workflow:** Codex + jig specs in this repo.
 - **Integration strategy:** MCP tools and Codex plugins first when available; fallback to helper scripts for source areas without reliable connector coverage.
 - **Current important integrations:**
-  - Slack plugin for digest, notification triage, and native draft workflows.
+  - Slack plugin for digest, notification triage, and native draft workflows
+    (primary path — see "Slack: Plugin-First With Bounded Fallbacks" below
+    for the fallback boundary).
   - Corporate GitHub MCP tools for PRs, files, reviews, failed jobs, and logs.
   - Jira MCP tools for search, comments, transitions, and issue metadata.
   - Confluence/wiki MCP tools for page search/read/update capability; project policy keeps Confluence read-only unless a spec changes that.
@@ -74,6 +76,36 @@ morning-brief-agent/
 **Principle:** Do not keep custom API logic where a reliable tool surface already exists.
 
 **Mechanics:** Slack, Jira, Confluence, and corporate GitHub should move toward MCP/plugin-backed source slices. Existing scripts stay as fallbacks or fixtures until a spec supersedes them.
+
+### Slack: Plugin-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Mechanics (spec `004`, documented by slice `004-03`):**
+- **Gather (primary):** the Slack plugin's `slack_*` tools, scoped to
+  `config/slack.json`'s `sections[].channels`/`sections[].people`.
+- **Gather (fallback):** `scripts/fetch-slack.js --brief`/`--search`, tried
+  only when the plugin is unavailable. Its channel scope matches the plugin
+  path, but its DM/group-DM fetch is **broader** — it reads every DM the
+  configured Slack token can see, not just `sections[].people` — so fallback
+  coverage is not a strict subset of the plugin path. `skills/morning-slack/SKILL.md`
+  reports which path ran each time; never assume it silently.
+- **Gather (last resort):** browser navigation to `https://app.slack.com` via
+  Claude in Chrome, read-only.
+- **Draft (primary and only path):** native Slack drafts via
+  `slack_send_message_draft` ([ADR-0005](../decisions/adr-0005-slack-plugin-native-drafts.md)),
+  gated on `config/slack.json`'s `draft_enabled`. There is **no draft
+  fallback** — `scripts/stage-slack-draft.js` (the old DM-to-self mechanism)
+  was retired in slice `004-03` once native drafts fully superseded it and no
+  concrete need for a second drafting path remained. If the plugin is
+  unavailable for gather, drafting is skipped for that run, not rerouted to a
+  legacy mechanism.
+- **Coverage is always user-facing:** the daily note's Slack section reports
+  which gather path ran and which `sections` entries were quiet, active
+  outside the lookback window, unresolved, or excluded by design — see
+  `skills/morning-slack/SKILL.md`'s Coverage section format.
 
 ### Review-First Safety
 

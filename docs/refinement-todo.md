@@ -99,6 +99,26 @@ and slice 004-02.
 (default `false`). ADR-002's Slack delivery row is marked superseded (Slack
 only — JIRA/GitHub/Confluence rows there are unaffected). See slice 004-02's
 deviation log for what was and wasn't live-tested.
+**Closing note (2026-07-01):** Slice `004-03` closed the loop. `scripts/fetch-slack.js`
+stays as the documented gather-only fallback (broader DM scope than the
+plugin path — see `docs/architecture.md`'s "Slack: Plugin-First With Bounded
+Fallbacks"). `scripts/stage-slack-draft.js` was deleted — fully superseded by
+native drafts, with no remaining fallback need. `skills/morning-assistant/SKILL.md`'s
+Step 4 (which independently re-implemented a Slack enrich/draft/stage pass)
+was updated to defer to `morning-slack`'s own native-draft Step 3 instead of
+duplicating it. Once slice `004-03`'s own lifecycle transition lands (review
+gate → reconciliation → DONE), spec `004` will have all 3 slices DONE and can
+be considered closed. One residual gap
+found but explicitly left out of scope: `config/main.example.json`'s
+`tools.slack.gather_method`/`gather_fallback` fields (`"script"`/`"connector"`)
+still reflect the pre-plugin gather taxonomy and don't model the plugin as a
+gather method at all — `morning-slack/SKILL.md` doesn't consult those fields.
+Left for spec `008`'s script-and-config-contracts slice, which is already
+scoped to reconcile config/script contracts. A second residual gap: the root
+`CLAUDE.md` (legacy project bible, out of scope for this slice's deliverable
+list) still references `stage-slack-draft.js` at its per-tool Draft column
+and its Draft delivery rule paragraph — left for spec `008`'s legacy-Cowork-doc
+triage slice rather than touched here.
 
 ### Decision: GitHub PR review staging policy
 **Deferred:** Automatic PR detection is desirable, but staging behavior should be explicit.

@@ -174,26 +174,31 @@ For each tool that identified draft targets in Step 2, stage drafts using the to
 
 | Tool | Method | How |
 |---|---|---|
-| Slack | **DM-to-self** (API) | Enrich context → generate draft → post to self-DM via `stage-slack-draft.js` |
+| Slack | **Native draft** (plugin API) | Handled entirely inside the `morning-slack` sub-agent's own Step 3 — see below |
 | JIRA | **Local MD fragment** | Write draft comment to `{vault}/drafts/YYYY-MM-DD-jira-{KEY}-comment.md` |
 | GitHub Issues | **Local MD fragment** | Write draft comment to `{vault}/drafts/YYYY-MM-DD-github-{repo}-{num}-comment.md` |
 | GitHub PRs | **Pending review** (API) | Stage review comments via GitHub API (pending, not submitted) |
 | Confluence | None | Read-only — no drafts |
 | Outlook | **Browser** (deferred) | Claude in Chrome to compose draft email (Phase 3) |
 
-See: `docs/decisions/ADR-002-draft-generation-and-delivery.md`
+See: `docs/decisions/ADR-002-draft-generation-and-delivery.md` (JIRA/GitHub/Confluence/Outlook
+rows) and [ADR-0005](../../docs/decisions/adr-0005-slack-plugin-native-drafts.md) (Slack row,
+superseding ADR-002's DM-to-self mechanism for Slack only).
 
-### Slack draft pipeline
+### Slack drafts — no separate orchestrator step
 
-For each Slack draft target (mentions/DMs where a reply is expected):
-
-1. **Enrich context**: Run `node {scripts_path}/fetch-slack.js --context <channel_id> <thread_ts>` to fetch the full thread
-2. **Generate draft**: Using the enriched context, write a reply in Slack mrkdwn format (short, professional, matches conversation tone)
-3. **Stage**: Pipe JSON to `node {scripts_path}/stage-slack-draft.js` via stdin:
-   ```json
-   {"channel":"#channel-name","permalink":"https://...","summary":"...","draft":"...","target":"@user"}
-   ```
-4. **Record**: Capture the returned DM permalink for the Staged Drafts table in the daily note
+Unlike the other tools, the orchestrator does **not** run a separate
+enrich/generate/stage pass for Slack. The `morning-slack` sub-agent stages
+native Slack drafts itself (`slack_send_message_draft`, gated on
+`config/slack.json`'s `draft_enabled`) as part of its own Step 3 and returns
+the already-staged results — see
+[`skills/morning-slack/SKILL.md`](../morning-slack/SKILL.md). `scripts/stage-slack-draft.js`
+(the old DM-to-self staging script) was retired in slice `004-03`: native
+drafts fully superseded it and no fallback draft path remains. **If the
+Slack plugin was unavailable this run** (Step 1 fell back to script or
+browser for gather), there is no draft fallback either — Slack drafting is
+skipped for that run; the Coverage note in the Slack section says so rather
+than silently omitting drafts.
 
 ### JIRA / GitHub issue draft pipeline (local MD fragments)
 
@@ -213,7 +218,7 @@ For each Slack draft target (mentions/DMs where a reply is expected):
 
 After all drafts are staged, update the `<!-- AGENT:action_items -->` section. Each action item that has a draft should include the draft link inline:
 
-- `→ [Draft in DMs](dm-permalink)` for Slack
+- `→ [Draft ready to review](channel_link)` for Slack (native draft link)
 - `→ [[YYYY-MM-DD-jira-KEY-comment]]` for JIRA/GitHub issues (Obsidian wikilink)
 - `→ [Pending review staged](pr-url)` for GitHub PRs
 
@@ -338,7 +343,7 @@ After presenting results, ask:
 > "Want me to draft responses for any of these?"
 
 If yes, use the tool-appropriate draft method (see Step 4 in Morning Brief Mode):
-- Slack → DM-to-self via `stage-slack-draft.js`
+- Slack → native draft via the `morning-slack` sub-agent (`slack_send_message_draft`)
 - JIRA / GitHub Issues → local MD fragment in vault
 - GitHub PRs → pending review via API
 - Outlook → Claude in Chrome (when available)
