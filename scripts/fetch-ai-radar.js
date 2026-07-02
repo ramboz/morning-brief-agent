@@ -90,6 +90,10 @@ async function main() {
     triage_mode: triaged.mode,
     warnings,
     output_paths: await writeOutputFiles(render.markdown, resultDay(now)),
+    // raw_items = deduped, normalized items for the running agent to triage on
+    // the user's Claude subscription (see skills/morning-ai-radar/SKILL.md).
+    // items/markdown below are the heuristic-only fallback for standalone runs.
+    raw_items: deduped.map(projectRawItem),
     items: render.grouped,
     actions: render.actions,
     markdown: render.markdown
@@ -138,6 +142,24 @@ async function writeOutputFiles(markdown, day) {
 
 function resultDay(now) {
   return now.toISOString().slice(0, 10)
+}
+
+/**
+ * Project a fetched/deduped item down to the fields the agent needs to triage.
+ * Keeps the JSON payload small and stable for the morning-ai-radar skill.
+ */
+function projectRawItem(item) {
+  return {
+    id: item.id,
+    title: item.title,
+    summary: item.summary,
+    url: item.url,
+    category: item.category,
+    sourceType: item.sourceType,
+    sourceLabel: item.sourceLabel,
+    changeType: item.change_type ?? null,
+    publishedAt: item.publishedAt ?? null
+  }
 }
 
 function normalizeFixtureResult(result, { rootDir, fixtureDay }) {
