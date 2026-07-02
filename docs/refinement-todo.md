@@ -77,6 +77,43 @@ digest section in `skills/morning-slack/SKILL.md`. Same disposition as
 fetcher); real test evidence captured instead at
 `docs/specs/004-slack-plugin-triage/slice-02-draft-test-2026-07-01.md`.
 Formal schemas/snapshots remain deferred to spec `008-02`.
+**Interim note (2026-07-02):** Slice `007-01` rewrote `skills/morning-jira/SKILL.md`
+to MCP-first (Jira MCP tools primary, `scripts/fetch-jira.js` fallback) and added
+the "Jira: MCP-First With Bounded Fallbacks" architecture subsection. Two config
+contract items were found and deliberately deferred here: `config/jira.example.json`
+lacks a `draft_enabled` key (the SKILL's Step 3 draft gate) and its `note` still
+says "Copy to `jira-filters.json`"; and `scripts/fetch-jira.js:278,285` emit
+config-missing errors naming the retired `skills/morning-jira/config/jira-filters.json`
+path (the loader + SKILL use repo-root `config/jira.json`). Same disposition as the
+`004` slices — SKILL prose is the source of truth; the example-file/script config
+contract cleanup stays deferred to spec `008-02`.
+
+**Interim note (2026-07-02):** Slice `007-02` rewrote `skills/morning-confluence/SKILL.md`
+to MCP-first read-only (Confluence/wiki MCP tools primary, `scripts/fetch-confluence.js`
+fallback), removed the Confluence local-MD draft path (policy alignment — Confluence
+is read-only), and added the "Confluence: MCP-First With Bounded Fallbacks"
+architecture subsection. Deferred config/script contract items found:
+`scripts/fetch-confluence.js:517,524` and `config/confluence.example.json:20-27`
+still reference the legacy `confluence-spaces.json` filename (the loader + SKILL use
+repo-root `config/confluence.json`); `scripts/stage-local-draft.js:10` JSDoc still
+lists `confluence` as a valid draft `tool` (stale after the removal); and
+`config/main.example.json`'s Confluence block still carries `draft_method: "local_md"`
+/ `draft_enabled` + a page-comment-draft note that now contradict the
+read-only-no-draft outcome. Same disposition — SKILL prose is the source of truth;
+the example-file/script config-contract cleanup stays deferred to spec `008-02`.
+
+**Interim note (2026-07-02):** Slice `007-03` rewrote the **corporate** GitHub gather
+path in `skills/morning-github/SKILL.md` to MCP-first (corp GitHub MCP tools primary,
+`scripts/fetch-github-corp.js` fallback), preserved the github.com path and the
+spec-005/ADR-0007 review pipeline unchanged, and added the "Corporate GitHub:
+MCP-First With Bounded Fallbacks" architecture subsection. Deferred config/contract
+items: `config/github.example.json` / `config/main.example.json` `gather_method`
+taxonomy has no plugin/MCP method for corp; and the spec-005 review-artifact path
+`output/github-reviews/` is now a de-facto contract surface not yet enumerated under
+`docs/architecture.md`'s "Contract surfaces". Same disposition — SKILL prose is the
+source of truth; the example-config/contract-surface cleanup stays deferred to spec
+`008-02`.
+
 **Reconciliation note (2026-06-19):** Source heading nesting is intentionally
 plain string rewriting for the first source. Harden Markdown nesting when a
 later source emits fenced code or literal `#` lines, or when formal snapshots

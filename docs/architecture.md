@@ -108,6 +108,133 @@ capability.
   outside the lookback window, unresolved, or excluded by design — see
   `skills/morning-slack/SKILL.md`'s Coverage section format.
 
+### Jira: MCP-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Mechanics (spec `007`, documented by slice `007-01`):**
+- **Gather (primary):** the Jira MCP tools available in the running session,
+  using issue-search for the three-pass scan (assigned / commented / mentioned)
+  and issue-read for full-ticket context. Scoped to `config/jira.json`'s
+  `projects`.
+- **Gather (fallback):** `scripts/fetch-jira.js --brief`/`--search`/`--context`,
+  tried only when the MCP tools are unavailable. It runs the same three-pass
+  JQL scan over the same `projects` scope and emits the standard envelope
+  `{ ok, tool, mode, timestamp, data, errors }`; on `ok: false` the Jira
+  section reports "unavailable — <reason>" rather than failing silently.
+  `skills/morning-jira/SKILL.md` reports which path ran each time; never
+  assume it silently.
+- **Gather (last resort):** browser navigation to the JIRA web UI via Claude in
+  Chrome, read-only ("My Issues", recent activity, notification bell).
+- **Draft (single path across all gather paths):** local Markdown fragments via
+  `scripts/stage-local-draft.js` ([ADR-002](decisions/ADR-002-draft-generation-and-delivery.md)),
+  gated on `config/jira.json`'s `draft_enabled`. JIRA has no comment-draft
+  persistence, so no browser or MCP drafting is used; the local-MD path does
+  not depend on the MCP tools and still runs after a script-fallback gather.
+- **Read-only / never-change-status guarantee:** the workflow never changes a
+  Jira status, transitions an issue, or adds a comment directly into Jira (no
+  MCP comment-add, no browser submit). All reply staging is local-MD fragments
+  surfaced in the daily note for human review — see
+  [Review-First Safety](#review-first-safety) below.
+- **Coverage is always user-facing:** the daily note's Jira section reports
+  which gather path ran and which configured projects were quiet, active
+  outside the lookback window, or unreachable — see
+  `skills/morning-jira/SKILL.md`'s Coverage section format.
+
+### Confluence: MCP-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Mechanics (spec `007`, documented by slice `007-02`):**
+- **Gather (primary):** the Confluence/wiki MCP tools available in the running
+  session, using page-search for recently-modified watched pages and
+  mention/search hits, and page-read for full page/comment context. Scoped to
+  `config/confluence.json`'s `spaces`.
+- **Gather (fallback):** `scripts/fetch-confluence.js --brief`/`--search`,
+  tried only when the MCP tools are unavailable. It runs the same two-pass scan
+  (recently-modified pages + mention comments) over the same `spaces` scope,
+  applies the config pre-filters (`exclude_title_patterns`,
+  `skip_if_only_mentions` + `my_context_keywords`, `min_change_chars`), enriches
+  each page with a `changeSummary`/`totalChange`, and emits the standard
+  envelope `{ ok, tool, mode, timestamp, data, errors }`; on `ok: false` the
+  Confluence section reports "unavailable — <reason>" rather than failing
+  silently. `skills/morning-confluence/SKILL.md` reports which path ran each
+  time; never assume it silently.
+- **Gather (last resort):** browser navigation to the Confluence web UI via
+  Claude in Chrome, read-only ("Recently Updated" per watched space,
+  notification bell for @mentions).
+- **Read-only guarantee (no drafts):** Confluence is strictly read-only in this
+  project — the workflow never edits a page, never adds a comment (no MCP
+  page/comment write, no browser submit), and stages **no draft** of any kind.
+  There is no drafting step for Confluence: the earlier local-MD comment-draft
+  path (`stage-local-draft.js`) was removed in slice `007-02` as a policy
+  alignment, since Confluence output is gather + triage + render only — see
+  [Review-First Safety](#review-first-safety) below.
+- **Minimal state:** page-version tracking is a plain, inspectable JSON file
+  (`~/.claude/skills/morning-assistant/state/wiki-state.json`) — a `lastRun`
+  timestamp and a page id → version map. No database, no complex state; the next
+  run diffs against it to compute change summaries.
+- **Coverage is always user-facing:** the daily note's Confluence section
+  reports which gather path ran and which configured spaces were quiet, active
+  outside the lookback window, or unreachable — see
+  `skills/morning-confluence/SKILL.md`'s Coverage section format.
+
+### Corporate GitHub: MCP-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Scope note:** this subsection covers the **corporate** GitHub instance only.
+The github.com instance is unchanged — it stays on the Cowork GitHub connector
+with `scripts/fetch-github-com.js` as its script fallback. Slice `007-03`
+migrated only the corporate gather path to MCP-first.
+
+**Mechanics (spec `007`, documented by slice `007-03`):**
+- **Gather (primary):** the corporate GitHub MCP tools available in the running
+  session, using notification-list for review requests / mentions / assignments
+  / authored-PR activity, PR-list + PR-context/diff/checks for review-requested
+  and authored PRs, check-runs / Prow-job status for failed CI, and issue-read
+  for mentioned/assigned issues. Scoped to `config/github.json`'s
+  `github_corp.orgs`.
+- **Gather (fallback):** `scripts/fetch-github-corp.js --brief`/`--search`/`--context`,
+  tried only when the corp MCP tools are unavailable. It runs the same
+  notification + PR/issue + failed-check scan over the same `github_corp.orgs`
+  scope and emits the standard envelope
+  `{ ok, tool, mode, timestamp, data, errors }`; on `ok: false` the Corporate
+  GitHub section reports "unavailable — <reason>" rather than failing silently.
+  `skills/morning-github/SKILL.md` reports which path ran each time; never
+  assume it silently. The fallback is a documented subset of the primary path,
+  not a second, competing implementation.
+- **Gather (last resort):** browser navigation to the corporate GitHub web UI
+  via Claude in Chrome, read-only (notifications inbox, review-request queue,
+  your open PRs).
+- **Failed jobs are actionable:** failed CI / Prow items carry the failing job
+  name(s) and a link to the run (or checks tab), so the user can decide whether
+  to investigate without a bare "CI failing".
+- **Read-first guarantee (daily brief path):** the workflow never merges,
+  pushes, closes, approves, or requests changes — for either instance and
+  regardless of which gather path ran. See
+  [Review-First Safety](#review-first-safety) below.
+- **Relationship to spec 005 / ADR-0007 (unchanged by this slice):** whichever
+  corp gather path runs, its notifications and PR/issue context feed the **same**
+  spec-005 review-first pipeline (`scripts/list-review-requests.js` →
+  `scripts/fetch-github-{com,corp}.js --context` → the `pr-review` skill →
+  `scripts/write-review-artifact.js` → opt-in
+  `scripts/stage-review-if-enabled.js`). ADR-0007's staging policy — local
+  review artifacts under `output/github-reviews/` by default, opt-in native
+  GitHub *pending* review per repo/run that is never submitted — is **not**
+  changed by 007-03; the MCP-first migration only affects the gather/context
+  path feeding that pipeline.
+- **Coverage is always user-facing:** the daily note's Corporate GitHub section
+  reports which gather path ran and which configured orgs were quiet, active
+  outside the lookback window, or unreachable — see
+  `skills/morning-github/SKILL.md`'s Coverage section format.
+
 ### Review-First Safety
 
 **Principle:** The assistant prepares work; the user decides and submits.

@@ -1,5 +1,5 @@
 ---
-status: DRAFT
+status: DONE
 ---
 
 # Spec 007: MCP Source Migration

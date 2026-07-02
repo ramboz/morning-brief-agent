@@ -1,18 +1,55 @@
 ---
 name: morning-github
-description: GitHub sub-agent — three-step workflow (gather via connector/API script, analyze notifications/PRs, stage draft PR reviews via pending review API and issue comment drafts as local MD fragments). Supports both GitHub.com and Corporate GitHub. Supports Morning Brief and Deep Dive modes.
+description: GitHub sub-agent — corporate GitHub is MCP-first (gather notifications, PR/issue activity, review requests, and failed CI/Prow jobs via corp GitHub MCP tools; falls back to scripts/fetch-github-corp.js, then browser). GitHub.com stays on its connector/API-script path. Feeds the spec-005 review-first pipeline (local review artifacts by default, opt-in native pending review that never submits). Supports Morning Brief and Deep Dive modes.
 allowed-tools: bash, computer
 ---
 
 # Morning GitHub
 
-Scans both github.com and corporate GitHub Enterprise for notifications, PR reviews, and activity.
+Scans both github.com and corporate GitHub Enterprise for notifications, PR
+reviews, and activity.
+
+Per [ADR-0004](../../docs/decisions/adr-0004-mcp-plugin-first-source-integration.md)
+and [spec 007](../../docs/specs/007-mcp-source-migration/spec.md), the
+**corporate GitHub** gather path is **MCP-first**: the corp GitHub MCP tools
+available in the running session are the primary path for gather + PR/issue
+context enrichment, `scripts/fetch-github-corp.js` is the fallback interface,
+and browser navigation is the last resort — see the fallback-scope note in
+Step 1 and `docs/architecture.md`'s "Corporate GitHub: MCP-First With Bounded
+Fallbacks" for the full boundary (slice 007-03).
+
+**The github.com path is unchanged by this slice.** It continues to use the
+Cowork GitHub connector with `scripts/fetch-github-com.js` as its script
+fallback (see the GitHub.com entry in Step 1). Slice 007-03 only migrated the
+corporate instance to MCP-first; do not convert the github.com path to MCP here.
+
+**Relationship to spec 005 (ADR-0007) — unchanged by this slice.** Whichever
+gather path runs for corporate GitHub, its notifications and PR/issue context
+feed the **same** spec-005 review-first pipeline described in Step 3
+(`list-review-requests.js` → `fetch-github-{com,corp}.js --context` → the
+`pr-review` skill → `write-review-artifact.js` → opt-in
+`stage-review-if-enabled.js`). The MCP-first change is only about the
+gather/context path; ADR-0007's staging policy — **local review artifacts by
+default, opt-in native GitHub pending review, never auto-submit** — is not
+changed by 007-03.
+
+This skill runs in an interactive session because the corp GitHub MCP tools
+require one — it is not wired into the headless `scripts/write-brief.js`
+composer. See "Legacy Cowork skill layer" in
+[docs/refinement-todo.md](../../docs/refinement-todo.md) for why these two stay
+separate for now.
 
 ## Load config
 
-Read: `{scripts_path}/../config/github.json`
+Read: `{scripts_path}/../config/github.json` — `{scripts_path}` is the repo's
+`scripts/` directory (provided via `config/main.json`), so this path resolves to
+the **project-root `config/github.json`**, the same file the fallback loader
+`scripts/lib/config.js` reads. It is not under `skills/`.
 
-Extract: `github_com` (enabled, url, orgs), `github_corp` (enabled, url, orgs).
+Extract: `github_com` (enabled, url, orgs), `github_corp` (enabled, url, orgs),
+and the per-instance `pending_review_staging` opt-in block (see Step 3). The
+corp gather never claims instance-wide coverage — only the configured
+`github_corp.orgs` are ever scanned.
 
 ---
 
@@ -20,37 +57,95 @@ Extract: `github_com` (enabled, url, orgs), `github_corp` (enabled, url, orgs).
 
 ### Step 1 — GATHER (fast)
 
-Run both instances in parallel where possible.
+Run both instances in parallel where possible. Each instance fails
+independently — a corp outage never blocks github.com and vice versa.
 
-**GitHub.com:**
-- **gather_method = "connector":** Use Cowork GitHub connector for notifications + PR data.
-- **gather_method = "script" (fallback):** Run `node {scripts_path}/fetch-github-com.js --brief`
+**GitHub.com (unchanged — connector/script, NOT MCP):**
+- **gather_method = "connector":** Use the Cowork GitHub connector for
+  notifications + PR data.
+- **gather_method = "script" (fallback):** Run
+  `node {scripts_path}/fetch-github-com.js --brief`.
 
-**Corporate GitHub:**
-- **gather_method = "script":** Run `node {scripts_path}/fetch-github-corp.js --brief`
+This path is out of scope for the MCP migration (slice 007-03) and stays as-is.
 
-If a script returns `ok: false`, report errors and skip that instance.
+**Corporate GitHub (MCP-first):**
 
-If `orgs` is configured, filter notifications to those orgs only.
+**Primary — corp GitHub MCP tools:** Use the corporate GitHub MCP tools
+available in the running session (referenced here by capability/operation, since
+exact tool identifiers are env-specific — the same convention as the Jira and
+Confluence slices). Scoped to the configured `github_corp.orgs` and the lookback
+window, gather:
+
+1. **Notification list:** unread notifications on the corp instance — review
+   requests, mentions, assignments, and activity on your authored PRs/issues.
+2. **PR list + PR context:** for each relevant PR (review requested, your
+   authored PR with new activity), pull PR context — title, number, author,
+   description, draft/ready state, review status, conversation + inline review
+   comments.
+3. **Check-runs / Prow failures:** for those PRs (and any CI-failure
+   notifications), read the check-runs / Prow job status so failed jobs can be
+   named and linked (AC2).
+4. **Issue read:** for issues where you were mentioned or assigned and a reply
+   looks expected, read the issue body, comments, labels, and assignees.
+
+**If the corp MCP tools are unavailable:** fall back to
+`node {scripts_path}/fetch-github-corp.js --brief` (parse the JSON envelope),
+then to browser navigation (the corporate GitHub web UI via Claude in Chrome —
+check for login/VPN, scan the notifications inbox, review-request queue, and
+your open PRs) as a last resort. **Note which path was used in the output —
+never silently substitute one for another.** All three paths are read-only for
+the daily brief (see AC3 / Safety constraint).
+
+**Fallback scope matches the primary path (slice 007-03) — note in Coverage
+when the script fallback is used:** `fetch-github-corp.js --brief` runs the
+same notification + PR/issue + failed-check scan over the same
+`github_corp.orgs` scope and emits the standard envelope
+`{ok, tool, mode, timestamp, data, errors}`. If it returns `ok: false`, report
+the `errors` and mark Corporate GitHub **unavailable** for this run (see Error
+handling) — do not fail silently. The fallback is a documented subset of the
+primary path, not a second, competing implementation. The spec-005 review-first
+pipeline (Step 3) does not depend on the corp MCP tools — it can enrich context
+via `fetch-github-corp.js --context` after a script-fallback gather; note in
+Coverage which gather path ran.
+
+If `github_corp.orgs` is configured, filter notifications to those orgs only.
+Do not expand scope beyond the configured orgs to compensate for a quiet or
+unreachable org.
 
 ### Step 2 — ANALYZE (fast)
 
 For each instance, classify notifications:
-- **Review requested** (high priority) — someone requested a PR review
-- **PR activity on your PRs** — new comments, CI status changes
-- **Issue mentions and assignments**
-- **CI failures**
+- **Review requested** (high priority) — someone requested a PR review.
+- **PR activity on your PRs** — new comments, CI status changes.
+- **Issue mentions and assignments.**
+- **CI / Prow failures** — a check run or Prow job failed on a PR you care
+  about.
 
 For review-requested PRs, enrich with:
-- PR title, number, author, description (~300 chars)
-- Current review status, draft/ready state
-- CI status (passing/failing)
-- Most recent 2-3 review comments
+- PR title, number, author, description (~300 chars).
+- Current review status, draft/ready state.
+- CI status (passing/failing).
+- Most recent 2-3 review comments.
 
-**Identify draft targets:** PRs where a review is requested and `draft_enabled: true`.
-Also: Issues where the user is mentioned or assigned and a response looks expected.
+**Failed jobs must be actionable (AC2):** every failed CI / Prow item carries
+enough name + link context to decide whether to investigate — the failing
+check/job name(s) and a link to the run (or the PR's checks tab). Do not report
+"CI failing" without naming which job failed and linking it.
 
-### Step 3 — REVIEW (review-first, local artifact by default)
+**Identify draft targets:** PRs where a review is requested and (for pending
+review staging) `pending_review_staging.enabled: true` for that instance. Also:
+issues where the user is mentioned or assigned and a response looks expected.
+
+**Coverage note (required, per AC1):** name which corp gather path ran (MCP /
+script / browser) and which configured orgs were quiet, active outside the
+lookback window, or unreachable this run. A short line is enough. Never imply
+full instance coverage.
+
+### Step 3 — REVIEW (review-first, local artifact by default — spec 005 / ADR-0007, UNCHANGED)
+
+This is the spec-005 PR-review pipeline. It is **unchanged** by the 007-03
+MCP-first gather migration — the MCP-first gather in Step 1 just feeds context
+into this same pipeline. Do not duplicate or rewrite it.
 
 **PR reviews → local review artifact** (the default, per ADR-0007).
 
@@ -78,6 +173,9 @@ described further below (slice 005-03) and is off by default.
    The `data` object carries the full diff, description, conversation +
    inline review comments, CI/failed checks, and linked GitHub issues / JIRA
    keys. If the context fetch returns `ok: false`, record the skip and move on.
+   (When the corp MCP tools are available, the equivalent PR context/diff/checks
+   can come from the MCP path in Step 1; the `--context` script call is the
+   fallback interface for enrichment and is what the pipeline invokes directly.)
 
 3. **Run the `pr-review` skill** on that context (multi-perspective:
    Architecture, SRE, Security, QA, Product). The skill produces the review
@@ -177,17 +275,21 @@ Return to orchestrator:
 
 ### Corporate GitHub
 - 🔴 **INFRA-482 migration script** — `myorg/infra` [#91](...)
-  Review requested. CI failing: `build`, `test`. → [Pending review staged]
+  Review requested. CI failing: [`build`](https://git.corp.adobe.com/myorg/infra/pull/91/checks), [`e2e-test`](...) → [Review artifact staged]
 
 ### Reviews & Staged Drafts (3)
 - [ ] myorg/my-repo #482 → Review artifact: `output/github-reviews/2026-03-19-github.com-myorg-my-repo-482.md` · [Pending review staged](https://github.com/myorg/my-repo/pull/482) · [Open PR](https://github.com/myorg/my-repo/pull/482)
 - [ ] myorg/infra #91 → Review artifact: `output/github-reviews/2026-03-19-corporate-myorg-infra-91.md` *(missing: diff)* · [Open PR](https://git.corp.adobe.com/...)
 - [ ] [[2026-03-19-github-myorg-infra-91-comment]] → [Open issue](https://git.corp.adobe.com/...)
+
+### Coverage
+_Corporate GitHub gathered via corp GitHub MCP tools. github.com via connector. No orgs unreachable._
 ```
 
-Review artifacts are local Markdown files (default path, ADR-0007). When the
-writer's `data.missing` is non-empty, surface it inline so the user knows the
-review is partial.
+Failed CI / Prow items name each failing job and link it (AC2) — never a bare
+"CI failing". Review artifacts are local Markdown files (default path,
+ADR-0007). When the writer's `data.missing` is non-empty, surface it inline so
+the user knows the review is partial.
 
 Each review row MUST link to the deliverable the user should open:
 - **Default / not opted in / staging failed:** link the local review artifact
@@ -197,15 +299,31 @@ Each review row MUST link to the deliverable the user should open:
   (`data.prUrl` from `stage-review-if-enabled.js`) so the user can open it and
   click "Submit review". Never imply the review was submitted.
 
+If a corp gather path was unavailable this run, the section degrades to a clear
+note instead of omitting itself:
+
+```markdown
+### Corporate GitHub
+_Corporate GitHub: unavailable — <reason> (corp GitHub MCP tools not connected this run; script fallback returned ok:false)._
+```
+
 ---
 
 ## Deep Dive Mode
 
 Answer the user's question about GitHub. No draft staging unless asked.
 
-**gather_method = "connector":** Use connector to search PRs/issues.
-**gather_method = "script":** Run `node {scripts_path}/fetch-github-{com|corp}.js --search "query"`
-**gather_method = "browser":** Navigate to GitHub search UI.
+**Corporate GitHub (MCP-first):** use the corp GitHub MCP search/list
+capability with the user's keywords (and any repo/date modifiers), scoped to
+`github_corp.orgs` unless the user explicitly asks to search wider; use PR/issue
+context/read for a hit.
+**Fallback — script:** run `node {scripts_path}/fetch-github-corp.js --search "query"`.
+**Fallback — browser:** navigate to the corporate GitHub search UI.
+
+**GitHub.com (unchanged):**
+- **gather_method = "connector":** Use the connector to search PRs/issues.
+- **gather_method = "script":** Run `node {scripts_path}/fetch-github-com.js --search "query"`.
+- **gather_method = "browser":** Navigate to the GitHub search UI.
 
 Cross-reference JIRA ticket keys in branch names/PR titles if the query mentions a ticket.
 
@@ -217,15 +335,29 @@ Return a direct, conversational answer with PR numbers, links, and context.
 
 | Scenario | Action |
 |---|---|
-| Script returns `ok: false` | Report errors, skip that instance |
+| Corp GitHub MCP tools unavailable | Fall back to script, then browser; report which path was used |
+| Script returns `ok: false` | Report the envelope `errors`, mark that instance **unavailable** for the run — do not fail silently |
 | Login screen (browser) | Skip instance, report "GitHub requires login" |
-| Corporate GitHub won't load | Skip, report "Corporate GitHub unreachable — check VPN?" |
+| Corporate GitHub won't load / off VPN | Skip, report "Corporate GitHub unreachable — check VPN?" |
+| An org can't be scanned (auth/scope) | Skip it, log it in the Coverage line, continue |
 | 0 unread notifications | Report "Nothing to report." — not an error |
 | PR page fails to load | Include notification title only, skip enrichment |
 | Context fetch fails for drafting | Skip draft for that item, continue with next |
 | Diff/comments unfetchable for a review | Still write the artifact; the writer records the gaps in `data.missing` and the artifact notes them. Surface the missing list in the daily note |
 | Pending review creation fails (opt-in path) | Log error, fall back to the local review artifact |
 
-## Safety constraint
+## Safety constraints (inline, non-negotiable — AC3 read-first)
 
-**Never merge PRs, push code, close issues, approve reviews, or request changes.** Stage draft review comments only via pending review API (no event = pending). The user reads the diff and submits.
+- **The daily-brief path is read-first.** No merge, push, close, approve, or
+  request-changes action happens in the daily brief path — for either instance,
+  and regardless of which gather path (MCP / script / browser) ran.
+- **Never merge PRs or push code.**
+- **Never close issues, approve reviews, or request changes.**
+- Stage draft review comments only via the native pending review API (no event
+  = pending), and only when opted in per repo/instance. The pending review is
+  invisible to others and is **never submitted** by the agent — the user reads
+  the diff and clicks "Submit review".
+- **Never add a comment directly into GitHub** via MCP or browser submit — issue
+  reply staging is local-MD fragments only, via `stage-local-draft.js`.
+- **Never send, submit, or post** anything. Everything the agent produces is a
+  draft/artifact staged for human review.
