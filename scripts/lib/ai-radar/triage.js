@@ -1,36 +1,21 @@
-const MODEL = process.env.AI_RADAR_CLAUDE_MODEL || 'claude-sonnet-4-20250514'
-const VALID_LAYERS = new Set(['today_signal', 'skills_tutorials', 'strategic_radar', 'skip'])
 const TUTORIAL_HINTS = ['tutorial', 'cookbook', 'guide', 'how to', 'walkthrough', 'example', 'examples', 'evaluation', 'eval', 'prompt', 'tool use', 'pattern']
 const SIGNAL_HINTS = ['release', 'launch', 'launched', 'introducing', 'announcing', 'api', 'model', 'update', 'specification', 'general availability', 'now available']
 const NOISE_HINTS = ['funding', 'hiring', 'webinar', 'podcast', 'conference', 'meetup', 'sponsor']
 const GENERIC_MODEL_HINTS = ['sota', 'benchmarks', 'cost', 'open model', 'cheaper', 'faster']
-const CLAUDE_TIMEOUT_MS = 15000
-const TRIAGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    items: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          id: { type: 'string' },
-          layer: { type: 'string', enum: ['today_signal', 'skills_tutorials', 'strategic_radar', 'skip'] },
-          score: { type: 'number' },
-          reason: { type: 'string' },
-          build_relevance: { type: ['string', 'null'] },
-          action: { type: ['string', 'null'] },
-          display_title: { type: ['string', 'null'] },
-          summary_override: { type: ['string', 'null'] }
-        },
-        required: ['id', 'layer', 'score', 'reason', 'build_relevance', 'action', 'display_title', 'summary_override']
-      }
-    }
-  },
-  required: ['items']
-}
 
+/**
+ * Relevance triage for AI Radar items.
+ *
+ * IMPORTANT: LLM-based triage is intentionally NOT performed here. The running
+ * agent (Cowork / Claude Code / Claude-in-Chrome) triages the raw items on the
+ * user's Claude *subscription* — see `skills/morning-ai-radar/SKILL.md` Step 2.
+ * This module only provides a keyword heuristic as a fallback for standalone /
+ * unattended CLI runs where no agent is present to reason over `raw_items`.
+ *
+ * Do NOT reintroduce an `api.anthropic.com` / `ANTHROPIC_API_KEY` call here —
+ * that would double-bill the user for reasoning the agent already does. See the
+ * "Subscription, not API" project decision.
+ */
 export async function triageAiRadarItems(items, config, options = {}) {
   if (items.length === 0) {
     return {
@@ -40,74 +25,10 @@ export async function triageAiRadarItems(items, config, options = {}) {
     }
   }
 
-  const claudeResult = await tryClaudeTriage(items, config, options)
-  if (claudeResult.ok) {
-    return {
-      items: claudeResult.items,
-      mode: 'claude',
-      errors: []
-    }
-  }
-
   return {
     items: heuristicTriage(items, config, options),
-    mode: 'heuristic_fallback',
-    errors: [claudeResult.error].filter(Boolean)
-  }
-}
-
-async function tryClaudeTriage(items, config, { now = new Date() } = {}) {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    return {
-      ok: false,
-      error: 'Claude triage unavailable: ANTHROPIC_API_KEY not set'
-    }
-  }
-
-  const prompt = buildTriagePrompt(items, config, now)
-
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'anthropic-version': '2023-06-01',
-        'x-api-key': apiKey
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 2000,
-        system: 'Return only a JSON object matching the requested schema. No preamble, markdown, or commentary.',
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
-      }),
-      signal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS)
-    })
-
-    if (!response.ok) {
-      throw new Error(`Anthropic API request failed (${response.status})`)
-    }
-
-    const payload = await response.json()
-    const text = payload.content
-      ?.filter(part => part.type === 'text')
-      .map(part => part.text)
-      .join('\n') ?? ''
-    const classifications = unwrapTriagePayload(JSON.parse(extractJsonObject(text)))
-    return {
-      ok: true,
-      items: mergeTriagedItems(items, classifications, config, now)
-    }
-  } catch (error) {
-    return {
-      ok: false,
-      error: `Claude triage unavailable: ${error.message}`
-    }
+    mode: 'heuristic',
+    errors: []
   }
 }
 
@@ -181,105 +102,6 @@ function heuristicTriage(items, config, { now = new Date() } = {}) {
     })
     .filter(Boolean)
     .filter(item => item.layer !== 'skip')
-}
-
-function mergeTriage(item, triage, config, now) {
-  const fallback = heuristicTriage([item], config, { now })[0] ?? {
-    ...item,
-    layer: 'strategic_radar',
-    score: 5,
-    reason: 'Worth keeping on the radar until triage improves.',
-    build_relevance: null,
-    action: null
-  }
-
-  if (!triage || !VALID_LAYERS.has(triage.layer)) {
-    return fallback
-  }
-
-  return {
-    ...item,
-    title: triage.display_title || fallback.title,
-    summary: triage.summary_override || fallback.summary,
-    layer: triage.layer,
-    score: clampScore(triage.score ?? fallback.score),
-    reason: triage.reason || fallback.reason,
-    build_relevance: triage.build_relevance || fallback.build_relevance || null,
-    action: triage.action || fallback.action || null
-  }
-}
-
-function mergeTriagedItems(items, classifications, config, now) {
-  const byId = new Map(classifications.map(entry => [entry.id, entry]))
-
-  return items
-    .map(item => mergeTriage(item, byId.get(item.id), config, now))
-    .filter(item => item.layer !== 'skip')
-}
-
-function extractJsonObject(text) {
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-
-  if (start === -1 || end === -1 || end < start) {
-    throw new Error('Claude response did not include a JSON object')
-  }
-
-  return text.slice(start, end + 1)
-}
-
-function buildTriagePrompt(items, config, now) {
-  return [
-    'You are a relevance triage engine for a frontier engineer building AI agent systems.',
-    `Current focus: ${config.relevance_context}`,
-    `Project keywords: ${(config.project_keywords ?? []).join(', ')}`,
-    `Focus topics: ${(config.focus_topics ?? []).join(', ')}`,
-    'Return a JSON object with a single top-level "items" array matching the provided schema.',
-    'For each item, include: id, layer, score, reason, build_relevance, action, display_title, summary_override.',
-    'Valid layers: today_signal, skills_tutorials, strategic_radar, skip.',
-    'today_signal = breaking releases or directly impactful updates.',
-    'skills_tutorials = practical workflows, skills, harnessing, docs, or examples worth using soon.',
-    'strategic_radar = broader but still relevant ideas worth tracking.',
-    'Set action to null unless the item deserves an explicit next step.',
-    'When action is present, make it concrete: start with Review, Save, Evaluate, or Ignore, and name the item.',
-    'Skip generic AI news, broad security news, benchmark chatter, and low-value noise.',
-    'For docs or official pages, summarize why the update matters instead of restating the page title.',
-    '',
-    JSON.stringify({
-      now: now.toISOString(),
-      items: items.map(item => ({
-        id: item.id,
-        title: item.title,
-        summary: item.summary,
-        url: item.url,
-        category: item.category,
-        sourceType: item.sourceType,
-        changeType: item.change_type || null,
-        sourceLabel: item.sourceLabel,
-        publishedAt: item.publishedAt
-      }))
-    })
-  ].join('\n')
-}
-
-function unwrapTriagePayload(payload) {
-  if (Array.isArray(payload)) {
-    return payload
-  }
-
-  if (payload && Array.isArray(payload.items)) {
-    return payload.items
-  }
-
-  throw new Error('Claude triage output did not contain an items array')
-}
-
-function clampScore(value) {
-  const number = Number(value)
-  if (Number.isNaN(number)) {
-    return 5
-  }
-  return Math.min(10, Math.max(0, number))
 }
 
 function countMatches(haystack, phrases) {
