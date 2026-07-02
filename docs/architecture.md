@@ -183,6 +183,58 @@ capability.
   outside the lookback window, or unreachable — see
   `skills/morning-confluence/SKILL.md`'s Coverage section format.
 
+### Corporate GitHub: MCP-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Scope note:** this subsection covers the **corporate** GitHub instance only.
+The github.com instance is unchanged — it stays on the Cowork GitHub connector
+with `scripts/fetch-github-com.js` as its script fallback. Slice `007-03`
+migrated only the corporate gather path to MCP-first.
+
+**Mechanics (spec `007`, documented by slice `007-03`):**
+- **Gather (primary):** the corporate GitHub MCP tools available in the running
+  session, using notification-list for review requests / mentions / assignments
+  / authored-PR activity, PR-list + PR-context/diff/checks for review-requested
+  and authored PRs, check-runs / Prow-job status for failed CI, and issue-read
+  for mentioned/assigned issues. Scoped to `config/github.json`'s
+  `github_corp.orgs`.
+- **Gather (fallback):** `scripts/fetch-github-corp.js --brief`/`--search`/`--context`,
+  tried only when the corp MCP tools are unavailable. It runs the same
+  notification + PR/issue + failed-check scan over the same `github_corp.orgs`
+  scope and emits the standard envelope
+  `{ ok, tool, mode, timestamp, data, errors }`; on `ok: false` the Corporate
+  GitHub section reports "unavailable — <reason>" rather than failing silently.
+  `skills/morning-github/SKILL.md` reports which path ran each time; never
+  assume it silently. The fallback is a documented subset of the primary path,
+  not a second, competing implementation.
+- **Gather (last resort):** browser navigation to the corporate GitHub web UI
+  via Claude in Chrome, read-only (notifications inbox, review-request queue,
+  your open PRs).
+- **Failed jobs are actionable:** failed CI / Prow items carry the failing job
+  name(s) and a link to the run (or checks tab), so the user can decide whether
+  to investigate without a bare "CI failing".
+- **Read-first guarantee (daily brief path):** the workflow never merges,
+  pushes, closes, approves, or requests changes — for either instance and
+  regardless of which gather path ran. See
+  [Review-First Safety](#review-first-safety) below.
+- **Relationship to spec 005 / ADR-0007 (unchanged by this slice):** whichever
+  corp gather path runs, its notifications and PR/issue context feed the **same**
+  spec-005 review-first pipeline (`scripts/list-review-requests.js` →
+  `scripts/fetch-github-{com,corp}.js --context` → the `pr-review` skill →
+  `scripts/write-review-artifact.js` → opt-in
+  `scripts/stage-review-if-enabled.js`). ADR-0007's staging policy — local
+  review artifacts under `output/github-reviews/` by default, opt-in native
+  GitHub *pending* review per repo/run that is never submitted — is **not**
+  changed by 007-03; the MCP-first migration only affects the gather/context
+  path feeding that pipeline.
+- **Coverage is always user-facing:** the daily note's Corporate GitHub section
+  reports which gather path ran and which configured orgs were quiet, active
+  outside the lookback window, or unreachable — see
+  `skills/morning-github/SKILL.md`'s Coverage section format.
+
 ### Review-First Safety
 
 **Principle:** The assistant prepares work; the user decides and submits.

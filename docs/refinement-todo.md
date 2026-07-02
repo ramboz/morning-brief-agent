@@ -102,6 +102,18 @@ lists `confluence` as a valid draft `tool` (stale after the removal); and
 read-only-no-draft outcome. Same disposition — SKILL prose is the source of truth;
 the example-file/script config-contract cleanup stays deferred to spec `008-02`.
 
+**Interim note (2026-07-02):** Slice `007-03` rewrote the **corporate** GitHub gather
+path in `skills/morning-github/SKILL.md` to MCP-first (corp GitHub MCP tools primary,
+`scripts/fetch-github-corp.js` fallback), preserved the github.com path and the
+spec-005/ADR-0007 review pipeline unchanged, and added the "Corporate GitHub:
+MCP-First With Bounded Fallbacks" architecture subsection. Deferred config/contract
+items: `config/github.example.json` / `config/main.example.json` `gather_method`
+taxonomy has no plugin/MCP method for corp; and the spec-005 review-artifact path
+`output/github-reviews/` is now a de-facto contract surface not yet enumerated under
+`docs/architecture.md`'s "Contract surfaces". Same disposition — SKILL prose is the
+source of truth; the example-config/contract-surface cleanup stays deferred to spec
+`008-02`.
+
 **Reconciliation note (2026-06-19):** Source heading nesting is intentionally
 plain string rewriting for the first source. Harden Markdown nesting when a
 later source emits fenced code or literal `#` lines, or when formal snapshots
