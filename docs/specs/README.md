@@ -31,6 +31,6 @@
 | [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-01 - jira-mcp-brief-section | **DONE** |  |
 | [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-02 - confluence-mcp-brief-section | **DONE** |  |
 | [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-03 - github-corp-mcp-brief-section | **DONE** |  |
-| [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-01 - adr-filename-index-normalization | DRAFT |  |
+| [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-01 - adr-filename-index-normalization | **DONE** |  |
 | [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-02 - script-and-config-contracts | DRAFT |  |
 | [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-03 - legacy-cowork-doc-triage | DRAFT |  |
