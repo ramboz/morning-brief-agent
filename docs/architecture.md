@@ -297,8 +297,8 @@ This project is near-stateless. It owns local configuration, small caches, gener
 
 <!-- elicited: 2026-06-18 / status: filled -->
 
-- **CLI output envelopes** (internal data shape; recommended artifact: JSON Schema under `docs/contracts/script-envelope.schema.json`, not yet committed): every helper script writes structured JSON to stdout and diagnostic text to stderr.
-- **Config files** (config/env surface; recommended artifact: JSON Schema per config family under `docs/contracts/config/*.schema.json`, not yet committed): examples exist under `config/*.example.json`.
+- **CLI output envelopes** (internal data shape): every helper script writes a structured JSON envelope to stdout and diagnostic text to stderr. Contract: [`docs/contracts/script-envelope.schema.json`](contracts/script-envelope.schema.json) (JSON Schema draft 2020-12), validated by `npm test` (`tests/script-envelope.schema.test.js`) against the `envelope()` producer and the source fixtures. See [`docs/contracts/README.md`](contracts/README.md).
+- **Config files** (config/env surface): the committed `config/*.example.json` templates **are** the config contract for now — per-config JSON Schemas are deliberately deferred for a single-user tool with one consumer per family (rationale + revisit trigger in [`docs/contracts/README.md`](contracts/README.md#config-files--examples-remain-the-contract-for-now)).
 - **Markdown digest sections** (internal rendering contract; recommended artifact: fixture snapshots in `tests/fixtures/`, partially present for AI Radar): rendered sections should stay stable enough for Obsidian review.
 - **Daily Brief notes** (user-facing composition contract; recommended artifact:
   fixture-backed smoke output, formal snapshots deferred): the brief shell writes

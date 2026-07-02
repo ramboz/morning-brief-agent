@@ -151,7 +151,10 @@ found but explicitly left out of scope: `config/main.example.json`'s
 still reflect the pre-plugin gather taxonomy and don't model the plugin as a
 gather method at all — `morning-slack/SKILL.md` doesn't consult those fields.
 Left for spec `008`'s script-and-config-contracts slice, which is already
-scoped to reconcile config/script contracts. A second residual gap: the root
+scoped to reconcile config/script contracts. **Resolved (2026-07-02, spec
+008-02):** the Slack fields now read `gather_method: "plugin"` /
+`gather_fallback: "script"` with a note that they are advisory
+(`morning-slack/SKILL.md` remains the source of truth). A second residual gap: the root
 `CLAUDE.md` (legacy project bible, out of scope for this slice's deliverable
 list) still references `stage-slack-draft.js` at its per-tool Draft column
 and its Draft delivery rule paragraph — left for spec `008`'s legacy-Cowork-doc

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ramboz/morning-brief-agent/docs/contracts/script-envelope.schema.json",
+  "title": "ScriptEnvelope",
+  "description": "The standard JSON envelope every helper script under scripts/ writes to stdout. Produced by envelope() in scripts/lib/config.js. See docs/contracts/README.md and docs/architecture.md § Contract surfaces.",
+  "type": "object",
+  "required": ["ok", "tool", "mode", "timestamp", "data", "errors"],
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "type": "boolean",
+      "description": "True iff errors is empty. Derived as errors.length === 0 by envelope()."
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The emitting tool, e.g. 'jira', 'confluence', 'github', 'slack', 'ai-radar'."
+    },
+    "mode": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Producer-set run label (non-empty). Primary modes are 'brief' (lookback scan) and 'search' (query); helper scripts also emit operational labels such as 'context', 'draft', 'index', 'cleanup', 'discard', 'list', 'stage', 'write', and 'unknown'. The vocabulary is open — any non-empty label is valid — so a new script operation does not break the contract."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of envelope creation (new Date().toISOString())."
+    },
+    "data": {
+      "type": ["object", "array", "null"],
+      "description": "Tool-specific result payload, or null on fatal error / no result. Shape is defined per tool (fixtures under tests/fixtures/ capture representative payloads)."
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Human-readable error strings; empty array on success. Non-empty implies ok:false."
+    }
+  }
+}

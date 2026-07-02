@@ -27,6 +27,8 @@
   "devDependencies": {
     "@commitlint/cli": "^19.0.0",
     "@commitlint/config-conventional": "^19.0.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "husky": "^9.0.0"
   },
   "engines": {
