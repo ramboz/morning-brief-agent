@@ -108,6 +108,41 @@ capability.
   outside the lookback window, unresolved, or excluded by design — see
   `skills/morning-slack/SKILL.md`'s Coverage section format.
 
+### Jira: MCP-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Mechanics (spec `007`, documented by slice `007-01`):**
+- **Gather (primary):** the Jira MCP tools available in the running session,
+  using issue-search for the three-pass scan (assigned / commented / mentioned)
+  and issue-read for full-ticket context. Scoped to `config/jira.json`'s
+  `projects`.
+- **Gather (fallback):** `scripts/fetch-jira.js --brief`/`--search`/`--context`,
+  tried only when the MCP tools are unavailable. It runs the same three-pass
+  JQL scan over the same `projects` scope and emits the standard envelope
+  `{ ok, tool, mode, timestamp, data, errors }`; on `ok: false` the Jira
+  section reports "unavailable — <reason>" rather than failing silently.
+  `skills/morning-jira/SKILL.md` reports which path ran each time; never
+  assume it silently.
+- **Gather (last resort):** browser navigation to the JIRA web UI via Claude in
+  Chrome, read-only ("My Issues", recent activity, notification bell).
+- **Draft (single path across all gather paths):** local Markdown fragments via
+  `scripts/stage-local-draft.js` ([ADR-002](decisions/ADR-002-draft-generation-and-delivery.md)),
+  gated on `config/jira.json`'s `draft_enabled`. JIRA has no comment-draft
+  persistence, so no browser or MCP drafting is used; the local-MD path does
+  not depend on the MCP tools and still runs after a script-fallback gather.
+- **Read-only / never-change-status guarantee:** the workflow never changes a
+  Jira status, transitions an issue, or adds a comment directly into Jira (no
+  MCP comment-add, no browser submit). All reply staging is local-MD fragments
+  surfaced in the daily note for human review — see
+  [Review-First Safety](#review-first-safety) below.
+- **Coverage is always user-facing:** the daily note's Jira section reports
+  which gather path ran and which configured projects were quiet, active
+  outside the lookback window, or unreachable — see
+  `skills/morning-jira/SKILL.md`'s Coverage section format.
+
 ### Review-First Safety
 
 **Principle:** The assistant prepares work; the user decides and submits.

@@ -28,7 +28,7 @@
 | [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-01 - artifact-inventory | DRAFT |  |
 | [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-02 - text-summary-pipeline | DRAFT |  |
 | [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-03 - recording-only-brief-section | DRAFT |  |
-| [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-01 - jira-mcp-brief-section | DRAFT |  |
+| [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-01 - jira-mcp-brief-section | **DONE** |  |
 | [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-02 - confluence-mcp-brief-section | DRAFT |  |
 | [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-03 - github-corp-mcp-brief-section | DRAFT |  |
 | [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-01 - adr-filename-index-normalization | DRAFT |  |

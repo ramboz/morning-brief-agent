@@ -96,3 +96,36 @@ slice frontmatter rather than trusting the sweep's narrative. Rule: run
 not just once at the end — and when a reconciliation sweep claims a board
 entry will be "updated later," verify that claim against the board's current
 actual content rather than accepting the promise at face value.
+
+## `{scripts_path}/../config/<tool>.json` resolves to repo-root config/, but an isolated reader can misread it
+
+Every source skill's "Load config" step reads `{scripts_path}/../config/<tool>.json`.
+`{scripts_path}` is a config-provided value (from `config/main.json`, surfaced by
+`skills/morning-assistant/SKILL.md`) equal to the repo's `scripts/` dir — so the
+path resolves to the project-root `config/<tool>.json`, exactly what
+`scripts/lib/config.js` (`CONFIG_DIR = repo-root config/`) loads. During slice
+007-01's craft review, a fresh reviewer with only the SKILL in its reading set
+misread `{scripts_path}` as the skill's own directory and flagged the path as a
+`[blocker]` (a non-existent `skills/morning-jira/config/jira.json`); the arch
+reviewer, which had checked against `config.js`, validated the same line as
+correct. Takeaway: the placeholder is correct and house-wide (all 7 skills use
+it), but it is ambiguous to an isolated reader — add a one-line inline
+clarification in each source SKILL that it resolves to the project-root `config/`
+(done for morning-jira; apply to confluence/github as they migrate). Don't
+"fix" an isolated-reader misread by diverging from the convention.
+
+## MCP-first source migration (spec 007): only the script fallback is verifiable offline
+
+When migrating a source (Jira / Confluence / corp-GitHub) to MCP-first per
+ADR-0004, the MCP tools live in the running Codex session, not in a Claude Code /
+offline implementing session — and there are no real configs/creds committed. So
+the MCP gather path cannot be live-tested during implementation; only the script
+fallback (`node scripts/fetch-<tool>.js --brief` → `{ok:false, errors:[...]}`
+graceful envelope) is offline-verifiable. Write the SKILL to target "the MCP tools
+available in the running session" (mirroring how `morning-slack` references
+`slack_*`), reference them by capability/operation rather than exact tool names,
+and make the DoD sample honest: an explicitly-labeled illustrative format template
+PLUS a real captured fallback-envelope run. This satisfies the AC "≥1 item OR a
+clear no-results/unavailable note" without fabricating live MCP output. Leave the
+DoR "MCP auth works" item unchecked with the reason noted, rather than tick it
+dishonestly.

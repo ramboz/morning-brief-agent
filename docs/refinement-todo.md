@@ -77,6 +77,17 @@ digest section in `skills/morning-slack/SKILL.md`. Same disposition as
 fetcher); real test evidence captured instead at
 `docs/specs/004-slack-plugin-triage/slice-02-draft-test-2026-07-01.md`.
 Formal schemas/snapshots remain deferred to spec `008-02`.
+**Interim note (2026-07-02):** Slice `007-01` rewrote `skills/morning-jira/SKILL.md`
+to MCP-first (Jira MCP tools primary, `scripts/fetch-jira.js` fallback) and added
+the "Jira: MCP-First With Bounded Fallbacks" architecture subsection. Two config
+contract items were found and deliberately deferred here: `config/jira.example.json`
+lacks a `draft_enabled` key (the SKILL's Step 3 draft gate) and its `note` still
+says "Copy to `jira-filters.json`"; and `scripts/fetch-jira.js:278,285` emit
+config-missing errors naming the retired `skills/morning-jira/config/jira-filters.json`
+path (the loader + SKILL use repo-root `config/jira.json`). Same disposition as the
+`004` slices — SKILL prose is the source of truth; the example-file/script config
+contract cleanup stays deferred to spec `008-02`.
+
 **Reconciliation note (2026-06-19):** Source heading nesting is intentionally
 plain string rewriting for the first source. Harden Markdown nesting when a
 later source emits fenced code or literal `#` lines, or when formal snapshots
