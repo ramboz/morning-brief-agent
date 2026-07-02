@@ -7,7 +7,16 @@ last_verified: 2026-06-18
 
 ## Status
 
-Proposed (2026-06-18)
+Accepted (2026-07-02) — was Proposed (2026-06-18).
+
+Accepted as the governing decision for spec 007 (MCP Source Migration), which
+realizes Option B end-to-end: the Jira (`007-01`), Confluence (`007-02`, read-only),
+and corporate-GitHub (`007-03`) gather paths are now MCP-first, with the existing
+Node scripts (`scripts/fetch-*.js`) retained as documented fallbacks. All three
+slices are DONE with recorded compliance/craft/arch/reconciliation review evidence;
+Slack (spec 004) already followed this pattern. Each source's fallback boundary is
+documented in `docs/architecture.md`'s "<source>: MCP-First With Bounded Fallbacks"
+subsections.
 
 ## Context
 
