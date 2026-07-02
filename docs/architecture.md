@@ -129,7 +129,7 @@ capability.
 - **Gather (last resort):** browser navigation to the JIRA web UI via Claude in
   Chrome, read-only ("My Issues", recent activity, notification bell).
 - **Draft (single path across all gather paths):** local Markdown fragments via
-  `scripts/stage-local-draft.js` ([ADR-002](decisions/ADR-002-draft-generation-and-delivery.md)),
+  `scripts/stage-local-draft.js` ([ADR-002](decisions/adr-0002-draft-generation-and-delivery.md)),
   gated on `config/jira.json`'s `draft_enabled`. JIRA has no comment-draft
   persistence, so no browser or MCP drafting is used; the local-MD path does
   not depend on the MCP tools and still runs after a script-fallback gather.

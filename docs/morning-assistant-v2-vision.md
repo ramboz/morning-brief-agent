@@ -6,7 +6,7 @@ The Morning Assistant v2 is a hybrid personal productivity agent combining **fas
 
 Implementation should proceed as a series of **thin vertical slices**, not broad platform work. Each slice should earn its place by producing real fetch, useful triage, Obsidian-ready Markdown, and a reproducible fixture.
 
-The key insight: browser automation is only essential for tools with **native draft persistence** (Slack compose box, Outlook Drafts folder, GitHub pending reviews). For tools without draft persistence (JIRA, GitHub issue comments), drafts are written as local Markdown fragments to the Obsidian vault instead. Everything else (reading messages, searching tickets, fetching notifications) is faster and more reliable via APIs and connectors. See [ADR-001](decisions/ADR-001-draft-staging-mechanism.md).
+The key insight: browser automation is only essential for tools with **native draft persistence** (Slack compose box, Outlook Drafts folder, GitHub pending reviews). For tools without draft persistence (JIRA, GitHub issue comments), drafts are written as local Markdown fragments to the Obsidian vault instead. Everything else (reading messages, searching tickets, fetching notifications) is faster and more reliable via APIs and connectors. See [ADR-001](decisions/adr-0001-draft-staging-mechanism.md).
 
 ### Two Modes of Operation
 

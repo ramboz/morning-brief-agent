@@ -159,7 +159,7 @@ Writes to: `{vault}/drafts/YYYY-MM-DD-jira-{TICKET-KEY}-comment.md`
 **Skip drafting for:** tickets with no question directed at the user; tickets
 needing info the agent doesn't have.
 
-See: [ADR-002](../../docs/decisions/ADR-002-draft-generation-and-delivery.md)
+See: [ADR-002](../../docs/decisions/adr-0002-draft-generation-and-delivery.md)
 (the local-MD fragment mechanism for JIRA/GitHub comments is unchanged by the
 MCP migration).
 

@@ -1,5 +1,5 @@
 ---
-status: DRAFT
+status: IN_PROGRESS
 ---
 
 # Spec 008: Legacy Docs and Contract Cleanup

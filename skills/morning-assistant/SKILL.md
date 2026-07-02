@@ -181,7 +181,7 @@ For each tool that identified draft targets in Step 2, stage drafts using the to
 | Confluence | None | Read-only — no drafts |
 | Outlook | **Browser** (deferred) | Claude in Chrome to compose draft email (Phase 3) |
 
-See: `docs/decisions/ADR-002-draft-generation-and-delivery.md` (JIRA/GitHub/Confluence/Outlook
+See: `docs/decisions/adr-0002-draft-generation-and-delivery.md` (JIRA/GitHub/Confluence/Outlook
 rows) and [ADR-0005](../../docs/decisions/adr-0005-slack-plugin-native-drafts.md) (Slack row,
 superseding ADR-002's DM-to-self mechanism for Slack only).
 
