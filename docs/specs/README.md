@@ -33,4 +33,4 @@
 | [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-03 - github-corp-mcp-brief-section | **DONE** |  |
 | [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-01 - adr-filename-index-normalization | **DONE** |  |
 | [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-02 - script-and-config-contracts | **DONE** |  |
-| [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-03 - legacy-cowork-doc-triage | DRAFT |  |
+| [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-03 - legacy-cowork-doc-triage | **DONE** |  |
