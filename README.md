@@ -1,5 +1,16 @@
 # Morning Assistant v2
 
+> **⚠️ Partly legacy (annotated 2026-07-02, spec 008-03).** The helper-script
+> usage (`scripts/…`, `write-brief.js`, AI Radar output) and the safety
+> constraints below are current. The **"Three Layers" architecture / browser
+> draft-staging framing, the Cowork + Claude-in-Chrome "Getting started", and the
+> Phase 0–8 "Slice roadmap" are Cowork-era and superseded** by the Codex/jig,
+> MCP/plugin-first model. Current source of truth: [`docs/product-vision.md`](docs/product-vision.md),
+> [`docs/architecture.md`](docs/architecture.md), [`docs/specs/`](docs/specs/README.md)
+> (status board), and [`docs/decisions/`](docs/decisions/README.md). See
+> [`docs/architecture.md` § Legacy documentation](docs/architecture.md#legacy-documentation);
+> a rewrite to the current model is deferred to a future slice.
+
 A personal productivity agent that scans your work tools, produces a structured Daily Brief, and stages draft replies in each tool's web UI — ready for you to review and send with one click.
 
 ---

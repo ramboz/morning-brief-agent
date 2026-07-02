@@ -16,7 +16,7 @@
  * (future enhancement — for now, Slack DMs persist in the DM channel).
  *
  * Standalone: node scripts/cleanup-drafts.js --dry-run
- * Reference:  docs/decisions/ADR-002-draft-generation-and-delivery.md
+ * Reference:  docs/decisions/adr-0002-draft-generation-and-delivery.md
  */
 
 import dotenv from 'dotenv'

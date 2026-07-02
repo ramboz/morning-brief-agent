@@ -129,7 +129,7 @@ capability.
 - **Gather (last resort):** browser navigation to the JIRA web UI via Claude in
   Chrome, read-only ("My Issues", recent activity, notification bell).
 - **Draft (single path across all gather paths):** local Markdown fragments via
-  `scripts/stage-local-draft.js` ([ADR-002](decisions/ADR-002-draft-generation-and-delivery.md)),
+  `scripts/stage-local-draft.js` ([ADR-002](decisions/adr-0002-draft-generation-and-delivery.md)),
   gated on `config/jira.json`'s `draft_enabled`. JIRA has no comment-draft
   persistence, so no browser or MCP drafting is used; the local-MD path does
   not depend on the MCP tools and still runs after a script-fallback gather.
@@ -297,8 +297,8 @@ This project is near-stateless. It owns local configuration, small caches, gener
 
 <!-- elicited: 2026-06-18 / status: filled -->
 
-- **CLI output envelopes** (internal data shape; recommended artifact: JSON Schema under `docs/contracts/script-envelope.schema.json`, not yet committed): every helper script writes structured JSON to stdout and diagnostic text to stderr.
-- **Config files** (config/env surface; recommended artifact: JSON Schema per config family under `docs/contracts/config/*.schema.json`, not yet committed): examples exist under `config/*.example.json`.
+- **CLI output envelopes** (internal data shape): every helper script writes a structured JSON envelope to stdout and diagnostic text to stderr. Contract: [`docs/contracts/script-envelope.schema.json`](contracts/script-envelope.schema.json) (JSON Schema draft 2020-12), validated by `npm test` (`tests/script-envelope.schema.test.js`) against the `envelope()` producer and the source fixtures. See [`docs/contracts/README.md`](contracts/README.md).
+- **Config files** (config/env surface): the committed `config/*.example.json` templates **are** the config contract for now — per-config JSON Schemas are deliberately deferred for a single-user tool with one consumer per family (rationale + revisit trigger in [`docs/contracts/README.md`](contracts/README.md#config-files--examples-remain-the-contract-for-now)).
 - **Markdown digest sections** (internal rendering contract; recommended artifact: fixture snapshots in `tests/fixtures/`, partially present for AI Radar): rendered sections should stay stable enough for Obsidian review.
 - **Daily Brief notes** (user-facing composition contract; recommended artifact:
   fixture-backed smoke output, formal snapshots deferred): the brief shell writes
@@ -308,6 +308,38 @@ This project is near-stateless. It owns local configuration, small caches, gener
 
 No HTTP API, event bus, RPC, GraphQL schema, or database schema is currently exposed.
 
+## Legacy documentation
+
+<!-- disposition recorded 2026-07-02 by spec 008-03 -->
+
+The project was revived from an older Cowork + Claude-in-Chrome plan into the
+current Codex/jig, MCP/plugin-first workflow (see [ADR-0003](decisions/adr-0003-codex-jig-sdd-workflow.md),
+[ADR-0004](decisions/adr-0004-mcp-plugin-first-source-integration.md)). Several
+root docs predate that shift. This table is the canonical disposition; **removals
+are deliberately deferred to a separate reviewed slice** (spec 008-03 only
+records dispositions and reduces the sharpest contradictions via banners — it
+deletes nothing).
+
+The **current source of truth** is: [`docs/product-vision.md`](product-vision.md)
+(why/for whom), this `docs/architecture.md` (mechanics/boundaries),
+[`docs/specs/`](specs/README.md) (active work + lifecycle), and
+[`docs/decisions/`](decisions/README.md) (ADRs). `AGENTS.md` is the agent primer.
+
+| Surface | Disposition | Note |
+|---|---|---|
+| `CLAUDE.md` | **Keep as reference; annotated** | Legacy "project bible." Its safety constraints, code/commit conventions, and env-var list remain valid; its Cowork+browser architecture, Phase 0–8 plan, `~/.claude/skills` runtime, browser-first gather, and `stage-slack-draft.js` Slack drafting are **superseded** (MCP/plugin-first per ADR-0004; Slack native drafts per ADR-0005; jig specs replace the phase plan). A legacy banner now redirects to the current source of truth. A full port of the still-valid parts into `docs/` is a candidate for a future slice. |
+| `README.md` | **Keep; annotated** | User-facing readme. The helper-script usage examples and safety constraints are current; the "Three Layers / browser draft staging" architecture, the Cowork/Claude-in-Chrome getting-started, and the Phase 0–8 "Slice roadmap" are Cowork-era and superseded by the jig status board. Banner added; a rewrite to the current model is deferred. |
+| `docs/morning-assistant-v2-vision.md` | **Keep as reference; annotated** | Original vision & phase plan, superseded by `docs/product-vision.md` + the specs. Retained for historical design rationale. Banner added pointing at the current vision/architecture. |
+| `specs/` (root, v1 API specs) | **Keep as reference** | Feed helper-script logic; migrate per-slice only when a jig spec deliberately supersedes a file (already the standing policy in `AGENTS.md` and `product-vision.md`). No change needed. |
+| `skills/**` | **Keep — active layer** | The running skill layer, already updated to MCP/plugin-first by specs 004/005/007. `morning-spike` is a Phase-0 validation harness — keep as reference, retire-later. Not contradictory; no banner. |
+| `brief.md` (root) | **Keep** | jig scaffold report (wizard-generated). Historical scaffold artifact; harmless. |
+
+This **resolves** the `product-vision.md` open question "Which legacy Cowork
+skills should be retired, kept as reference, or ported?" — skills are kept as the
+active layer (already MCP/plugin-first); the Cowork-era *narrative docs*
+(`CLAUDE.md`, `README.md`, the vision doc) are kept-as-reference with banners
+until a future slice ports or removes them.
+
 ## Open questions
 
-Deferred items live in [refinement-todo.md](refinement-todo.md). Current architecture questions include Outlook/M365 access, Slack plugin reliance, and how much legacy Cowork material to migrate. (GitHub review staging policy is resolved by [ADR-0007](decisions/adr-0007-review-first-github-pr-automation.md).)
+Deferred items live in [refinement-todo.md](refinement-todo.md). Current architecture questions include Outlook/M365 access and Slack plugin reliance. (GitHub review staging policy is resolved by [ADR-0007](decisions/adr-0007-review-first-github-pr-automation.md); the legacy-Cowork-doc disposition is resolved in § Legacy documentation above by spec 008-03.)

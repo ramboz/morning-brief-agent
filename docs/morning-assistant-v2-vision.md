@@ -1,12 +1,20 @@
 # Morning Assistant v2 — Vision & Reference Plan
 
+> **⚠️ Legacy vision doc (annotated 2026-07-02, spec 008-03).** Superseded as the
+> current vision by [`docs/product-vision.md`](product-vision.md) and as the plan
+> of record by the jig specs ([`docs/specs/`](specs/README.md)); mechanics live in
+> [`docs/architecture.md`](architecture.md). The Cowork + Claude-in-Chrome framing
+> below is historical — the project is now MCP/plugin-first per
+> [ADR-0004](decisions/adr-0004-mcp-plugin-first-source-integration.md). Retained
+> for design rationale. See [`docs/architecture.md` § Legacy documentation](architecture.md#legacy-documentation).
+
 ## Executive Summary
 
 The Morning Assistant v2 is a hybrid personal productivity agent combining **fast API/connector-based data gathering** with **targeted browser automation for draft staging**. It runs on **Cowork + Claude in Chrome**, orchestrated through skills and lightweight scripts.
 
 Implementation should proceed as a series of **thin vertical slices**, not broad platform work. Each slice should earn its place by producing real fetch, useful triage, Obsidian-ready Markdown, and a reproducible fixture.
 
-The key insight: browser automation is only essential for tools with **native draft persistence** (Slack compose box, Outlook Drafts folder, GitHub pending reviews). For tools without draft persistence (JIRA, GitHub issue comments), drafts are written as local Markdown fragments to the Obsidian vault instead. Everything else (reading messages, searching tickets, fetching notifications) is faster and more reliable via APIs and connectors. See [ADR-001](decisions/ADR-001-draft-staging-mechanism.md).
+The key insight: browser automation is only essential for tools with **native draft persistence** (Slack compose box, Outlook Drafts folder, GitHub pending reviews). For tools without draft persistence (JIRA, GitHub issue comments), drafts are written as local Markdown fragments to the Obsidian vault instead. Everything else (reading messages, searching tickets, fetching notifications) is faster and more reliable via APIs and connectors. See [ADR-001](decisions/adr-0001-draft-staging-mechanism.md).
 
 ### Two Modes of Operation
 

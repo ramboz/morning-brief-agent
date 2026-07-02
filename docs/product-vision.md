@@ -106,7 +106,7 @@
   - Helper scripts for source areas without reliable MCP/plugin coverage.
 - **Locked-in vs. still open:**
   - Locked in: Markdown-first output, script-first implementation, no web UI, no database for v1, review-first safety constraints.
-  - Open: final scheduler shape, Outlook/M365 integration path, meeting transcript availability strategy, and which legacy Cowork skills remain useful.
+  - Open: final scheduler shape, Outlook/M365 integration path, and meeting transcript availability strategy. (The legacy-Cowork-skills question is now resolved — see § Open questions below and `architecture.md` § Legacy documentation.)
 
 ## Design principles & constraints
 
@@ -138,7 +138,7 @@
 <!-- elicited: 2026-06-18 / status: filled -->
 
 - Should scheduled runs be Codex automations only, or should the repo keep a CLI scheduler wrapper too?
-- Which legacy Cowork skills should be retired, kept as reference, or ported into Codex/jig docs?
+- ~~Which legacy Cowork skills should be retired, kept as reference, or ported into Codex/jig docs?~~ **Resolved (spec 008-03):** skills are kept as the active layer (already MCP/plugin-first via specs 004/005/007); the Cowork-era narrative docs (`CLAUDE.md`, `README.md`, the vision doc) are kept-as-reference with banners until a future slice ports or removes them. Full dispositions in [`architecture.md` § Legacy documentation](architecture.md#legacy-documentation).
 - What is the right Outlook/M365 path for email and meeting artifacts?
 - Should GitHub PR reviews be written only to Obsidian first, or also staged as pending GitHub reviews when explicitly enabled?
 - How much Slack behavior should rely on the Slack plugin versus existing scripts?

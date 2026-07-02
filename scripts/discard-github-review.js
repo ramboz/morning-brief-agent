@@ -19,7 +19,7 @@
  * The `gh` CLI uses different OAuth auth and CANNOT see or delete these pending reviews.
  *
  * Standalone: node scripts/discard-github-review.js --pr adobe/repo#123
- * Reference:  docs/decisions/ADR-002-draft-generation-and-delivery.md
+ * Reference:  docs/decisions/adr-0002-draft-generation-and-delivery.md
  */
 
 import dotenv from 'dotenv'

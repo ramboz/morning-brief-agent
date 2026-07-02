@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "tool": "ai-radar",
+  "mode": "brief",
+  "timestamp": "2026-07-02T08:00:00.000Z",
+  "data": {
+    "note": "Representative success envelope. `data` is the tool-specific payload; per-tool payload fixtures live alongside this file (e.g. ai-radar.json)."
+  },
+  "errors": []
+}
