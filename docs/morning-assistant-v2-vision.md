@@ -1,5 +1,13 @@
 # Morning Assistant v2 — Vision & Reference Plan
 
+> **⚠️ Legacy vision doc (annotated 2026-07-02, spec 008-03).** Superseded as the
+> current vision by [`docs/product-vision.md`](product-vision.md) and as the plan
+> of record by the jig specs ([`docs/specs/`](specs/README.md)); mechanics live in
+> [`docs/architecture.md`](architecture.md). The Cowork + Claude-in-Chrome framing
+> below is historical — the project is now MCP/plugin-first per
+> [ADR-0004](decisions/adr-0004-mcp-plugin-first-source-integration.md). Retained
+> for design rationale. See [`docs/architecture.md` § Legacy documentation](architecture.md#legacy-documentation).
+
 ## Executive Summary
 
 The Morning Assistant v2 is a hybrid personal productivity agent combining **fast API/connector-based data gathering** with **targeted browser automation for draft staging**. It runs on **Cowork + Claude in Chrome**, orchestrated through skills and lightweight scripts.

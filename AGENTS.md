@@ -54,6 +54,7 @@ Frequently referenced terms and current project state. Update this section when 
 - `docs/refinement-todo.md` - deferred decisions.
 - `docs/memory/glossary.md` - durable domain terms.
 - `docs/inbox.md` - parked ideas.
+- **Legacy docs** (`CLAUDE.md`, `README.md`, `docs/morning-assistant-v2-vision.md`) - Cowork-era, kept as annotated reference, **not** the current source of truth. See `docs/architecture.md` § Legacy documentation for per-surface dispositions (spec 008-03).
 
 ## Current Slice Priority
 1. AI Radar

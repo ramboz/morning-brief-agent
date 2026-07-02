@@ -129,3 +129,31 @@ PLUS a real captured fallback-envelope run. This satisfies the AC "≥1 item OR 
 clear no-results/unavailable note" without fabricating live MCP output. Leave the
 DoR "MCP auth works" item unchecked with the reason noted, rather than tick it
 dishonestly.
+
+## Legacy pre-jig ADRs: `adr.py index` can't parse them (spec 008-01)
+
+The two pre-jig ADRs (`adr-0001`/`adr-0002`) use `# ADR-001:` three-digit
+headings and `**Status:** Accepted` prose, not the canonical `# ADR-NNNN:` +
+`## Status` shape. `adr.py index`'s `_extract_title`/`_extract_status_and_date`
+require the canonical shape, so it renders them "(untitled)"/"(unknown)" — you
+**cannot** regenerate the decisions index with `adr.py index` while a legacy ADR
+is present without a body rewrite. When a DoD forbids changing accepted ADR prose,
+take the "or an equivalent manual index check" path: `git mv` to the canonical
+`adr-000N-*.md` filename, hand-maintain those two index entries, and document the
+deliberate filename-vs-heading digit difference. Also: `migrate.py
+rename-decisions` only does the `docs/adrs/ → docs/decisions/` move — it will NOT
+renumber `ADR-00N-*.md` files already in `docs/decisions/`.
+
+## The script envelope `mode` is an open vocabulary, not `{brief, search}` (spec 008-02)
+
+`CLAUDE.md` says scripts take `--brief`/`--search`, but `envelope()` is actually
+called with a wider set across `scripts/`: `brief`, `search`, `context`, `draft`,
+`index`, `cleanup`, `discard`, `list`, `stage`, `write`, `unknown`. The committed
+contract `docs/contracts/script-envelope.schema.json` therefore types `mode` as an
+open non-empty string (documented labels, not an `enum`) — an enum would reject the
+majority of real envelopes. Lesson for any contract drift-locked to a producer:
+exercise the test across the modes the producer *actually* emits (grep `envelope(`
+call sites); a brief-only test hides the mismatch (this exact gap was caught by the
+arch-review pass, not compliance/craft). Config contracts stay as
+`config/*.example.json` examples for now (single-user tool, one consumer per
+family) — rationale + revisit trigger in `docs/contracts/README.md`.
