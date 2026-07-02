@@ -143,6 +143,46 @@ capability.
   outside the lookback window, or unreachable — see
   `skills/morning-jira/SKILL.md`'s Coverage section format.
 
+### Confluence: MCP-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Mechanics (spec `007`, documented by slice `007-02`):**
+- **Gather (primary):** the Confluence/wiki MCP tools available in the running
+  session, using page-search for recently-modified watched pages and
+  mention/search hits, and page-read for full page/comment context. Scoped to
+  `config/confluence.json`'s `spaces`.
+- **Gather (fallback):** `scripts/fetch-confluence.js --brief`/`--search`,
+  tried only when the MCP tools are unavailable. It runs the same two-pass scan
+  (recently-modified pages + mention comments) over the same `spaces` scope,
+  applies the config pre-filters (`exclude_title_patterns`,
+  `skip_if_only_mentions` + `my_context_keywords`, `min_change_chars`), enriches
+  each page with a `changeSummary`/`totalChange`, and emits the standard
+  envelope `{ ok, tool, mode, timestamp, data, errors }`; on `ok: false` the
+  Confluence section reports "unavailable — <reason>" rather than failing
+  silently. `skills/morning-confluence/SKILL.md` reports which path ran each
+  time; never assume it silently.
+- **Gather (last resort):** browser navigation to the Confluence web UI via
+  Claude in Chrome, read-only ("Recently Updated" per watched space,
+  notification bell for @mentions).
+- **Read-only guarantee (no drafts):** Confluence is strictly read-only in this
+  project — the workflow never edits a page, never adds a comment (no MCP
+  page/comment write, no browser submit), and stages **no draft** of any kind.
+  There is no drafting step for Confluence: the earlier local-MD comment-draft
+  path (`stage-local-draft.js`) was removed in slice `007-02` as a policy
+  alignment, since Confluence output is gather + triage + render only — see
+  [Review-First Safety](#review-first-safety) below.
+- **Minimal state:** page-version tracking is a plain, inspectable JSON file
+  (`~/.claude/skills/morning-assistant/state/wiki-state.json`) — a `lastRun`
+  timestamp and a page id → version map. No database, no complex state; the next
+  run diffs against it to compute change summaries.
+- **Coverage is always user-facing:** the daily note's Confluence section
+  reports which gather path ran and which configured spaces were quiet, active
+  outside the lookback window, or unreachable — see
+  `skills/morning-confluence/SKILL.md`'s Coverage section format.
+
 ### Review-First Safety
 
 **Principle:** The assistant prepares work; the user decides and submits.

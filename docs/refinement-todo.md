@@ -88,6 +88,20 @@ path (the loader + SKILL use repo-root `config/jira.json`). Same disposition as 
 `004` slices — SKILL prose is the source of truth; the example-file/script config
 contract cleanup stays deferred to spec `008-02`.
 
+**Interim note (2026-07-02):** Slice `007-02` rewrote `skills/morning-confluence/SKILL.md`
+to MCP-first read-only (Confluence/wiki MCP tools primary, `scripts/fetch-confluence.js`
+fallback), removed the Confluence local-MD draft path (policy alignment — Confluence
+is read-only), and added the "Confluence: MCP-First With Bounded Fallbacks"
+architecture subsection. Deferred config/script contract items found:
+`scripts/fetch-confluence.js:517,524` and `config/confluence.example.json:20-27`
+still reference the legacy `confluence-spaces.json` filename (the loader + SKILL use
+repo-root `config/confluence.json`); `scripts/stage-local-draft.js:10` JSDoc still
+lists `confluence` as a valid draft `tool` (stale after the removal); and
+`config/main.example.json`'s Confluence block still carries `draft_method: "local_md"`
+/ `draft_enabled` + a page-comment-draft note that now contradict the
+read-only-no-draft outcome. Same disposition — SKILL prose is the source of truth;
+the example-file/script config-contract cleanup stays deferred to spec `008-02`.
+
 **Reconciliation note (2026-06-19):** Source heading nesting is intentionally
 plain string rewriting for the first source. Harden Markdown nesting when a
 later source emits fenced code or literal `#` lines, or when formal snapshots
