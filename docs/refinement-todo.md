@@ -170,6 +170,21 @@ triage slice rather than touched here.
 **Resolved by:** Spec `002`, slice `002-01`.
 **Resolution:** AI Radar v1 keeps a small enabled default source list and leaves broader, static, paper, newsletter, social/trending, and trend-engine examples disabled with explicit `deferred_reason` notes.
 
+### Decision: Meeting-summary processing-pipeline duplication
+**Deferred:** `scripts/summarize-meeting.js` has two structurally near-identical
+fetch/summarize/dedup/write control-flow pairs — `runProcess`/`processRecapEmails`
+(used by `--search` mode) and `processSummarizableMeetings` (used by `--brief`
+mode, added in slice `006-02`). The duplication predates `006-02` (which split
+discovery from processing without also collapsing the two processing paths) and
+was flagged as non-blocking by that slice's craft review.
+**Current options:** Leave as-is (two modes have genuinely different discovery
+inputs, some duplication may be acceptable); extract a shared "download + summarize
++ dedup + write" helper parameterized by source type; unify `--search` mode onto
+the same inventory-based pipeline as `--brief` (bigger scope, would need
+`--search` to build its own ad-hoc inventory).
+**Resolution trigger:** A slice that next touches `scripts/summarize-meeting.js`'s
+processing logic, or a dedicated cleanup slice under spec `008`-style housekeeping.
+
 ## Operations
 
 ### Decision: CI/CD setup
