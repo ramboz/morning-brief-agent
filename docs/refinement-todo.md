@@ -25,10 +25,11 @@ rendered note's Source Results footer. Hung-source timeout isolation was
 explicitly out of scope for `003-03` and remains unresolved — the AI Radar
 subprocess call in `scripts/lib/brief/ai-radar.js` still has no timeout.
 
-### Decision: Outlook and meeting artifact access
-**Deferred:** Outlook email, calendar, Teams transcripts, recap emails, and recording-only links still need a confirmed access path.
+### ~~Decision: Outlook and meeting artifact access~~ — RESOLVED 2026-07-04
+~~**Deferred:** Outlook email, calendar, Teams transcripts, recap emails, and recording-only links still need a confirmed access path.~~
 **Current options:** M365/Outlook connector if available; Microsoft Graph scripts; browser fallback for unavailable artifacts.
 **Resolution trigger:** First spec that revisits Outlook or meeting summaries.
+**Resolved by:** [ADR-0008: Meeting artifact pipeline separation](decisions/adr-0008-meeting-artifact-pipeline-separation.md).
 
 ### Resolved: Legacy Cowork skill layer
 **Resolved by:** Spec `004`, slice `004-01` — the first source-area spec to
