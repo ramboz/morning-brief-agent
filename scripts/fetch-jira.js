@@ -6,6 +6,7 @@
  * Modes:
  *   --brief              Lookback scan: assigned tickets, commented, mentioned
  *   --search "query"     Deep Dive: JQL search by keyword
+ *   --jql "<query>"      Run arbitrary JQL exactly as provided (bypasses project config validation)
  *   --context SITES-123  Fetch full ticket with all comments (for draft enrichment)
  *
  * Standalone: node scripts/fetch-jira.js --brief
@@ -218,6 +219,22 @@ async function runSearch(baseUrl, token, projects, query) {
 }
 
 /**
+ * Run the JQL mode: execute the provided JQL string verbatim.
+ * Caller is responsible for project clauses, time bounds, and ORDER BY.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} jql
+ * @returns {Promise<{issues: object[], truncated: boolean}>}
+ */
+async function runJql(baseUrl, token, jql) {
+  const { issues, truncated } = await paginateJql(baseUrl, token, jql)
+  return {
+    issues: issues.map(i => formatIssue(i, 'jql', baseUrl)),
+    truncated
+  }
+}
+
+/**
  * Run the context mode: fetch a single ticket with ALL comments for draft enrichment.
  * @param {string} baseUrl
  * @param {string} token
@@ -266,6 +283,39 @@ async function main() {
   }
   if (!token) {
     console.log(JSON.stringify(envelope(TOOL, mode, null, ['JIRA_API_TOKEN not set'])))
+    return
+  }
+
+  // --jql mode bypasses project config — caller owns the full JQL
+  const jqlIdx = process.argv.indexOf('--jql')
+  const jqlOverride = jqlIdx !== -1 ? process.argv[jqlIdx + 1] : null
+  if (jqlIdx !== -1 && !jqlOverride) {
+    console.log(JSON.stringify(envelope(TOOL, 'jql', null, ['--jql requires a JQL string'])))
+    return
+  }
+
+  if (jqlOverride) {
+    try {
+      await jiraGet(baseUrl, token, '/rest/api/2/myself')
+    } catch (err) {
+      if (err.status === 401) {
+        console.log(JSON.stringify(envelope(TOOL, 'jql', null, ['JIRA auth failed — check JIRA_API_TOKEN in .env'])))
+        return
+      }
+      const msg = err.message?.toLowerCase().includes('certificate')
+        ? 'JIRA SSL error — certificate could not be verified. Are you on VPN?'
+        : (err.status ? err.message : 'JIRA unreachable — are you on VPN?')
+      console.log(JSON.stringify(envelope(TOOL, 'jql', null, [msg])))
+      return
+    }
+
+    try {
+      const data = await runJql(baseUrl, token, jqlOverride)
+      console.log(JSON.stringify(envelope(TOOL, 'jql', data)))
+    } catch (err) {
+      console.error(`[${TOOL}]`, err.message)
+      console.log(JSON.stringify(envelope(TOOL, 'jql', null, [err.message])))
+    }
     return
   }
 
