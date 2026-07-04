@@ -19,6 +19,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs, loadConfig, envelope } from './lib/config.js'
 import { getGraphToken, graphFetch, graphPost } from './lib/graphAuth.js'
+import { findMeetingRecapEmails } from './lib/meetings/recapEmail.js'
+import { buildArtifactInventory } from './lib/meetings/inventory.js'
 
 dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), '..', '.env') })
 
@@ -349,12 +351,15 @@ async function runBrief(token, config, lookbackHours) {
 
   // ── Calendar (today) ──
   let events = []
-  let yesterdayOnlineMeetings = []
+  // Full raw Graph event objects for yesterday's in-scope online meetings (kept
+  // for buildArtifactInventory, which needs responseStatus/organizer/start).
+  let yesterdayOnlineMeetingEvents = []
+  let yesterdayOnlineMeetings = [] // subject strings — kept for existing call sites (searchRecordings, transcript fallback)
   try {
     const tz = config.timezone || null
     const todayStart = new Date().toISOString().slice(0, 10) + 'T00:00:00Z'
     const todayEnd = new Date().toISOString().slice(0, 10) + 'T23:59:59Z'
-    const select = 'id,subject,start,end,isOnlineMeeting,onlineMeetingUrl,organizer,location,isAllDay,isCancelled'
+    const select = 'id,subject,start,end,isOnlineMeeting,onlineMeetingUrl,organizer,location,isAllDay,isCancelled,responseStatus'
     const url = `${GRAPH}/me/calendarView?startDateTime=${todayStart}&endDateTime=${todayEnd}&$select=${select}&$top=30&$orderby=start/dateTime`
     const result = await graphFetch(token, url)
     events = (result.value ?? []).map(e => mapEvent(e, tz)).filter(e => !e.isCancelled)
@@ -365,8 +370,9 @@ async function runBrief(token, config, lookbackHours) {
     const yStart = yDate + 'T00:00:00Z'
     const yEnd = yDate + 'T23:59:59Z'
     const yResult = await graphFetch(token, `${GRAPH}/me/calendarView?startDateTime=${yStart}&endDateTime=${yEnd}&$select=${select}&$top=30&$orderby=start/dateTime`)
-    yesterdayOnlineMeetings = (yResult.value ?? [])
+    yesterdayOnlineMeetingEvents = (yResult.value ?? [])
       .filter(e => e.isOnlineMeeting && !e.isCancelled)
+    yesterdayOnlineMeetings = yesterdayOnlineMeetingEvents
       .map(e => e.subject)
       .filter(Boolean)
     console.error(`[outlook] Found ${yesterdayOnlineMeetings.length} online meetings yesterday`)
@@ -421,11 +427,6 @@ async function runBrief(token, config, lookbackHours) {
     console.error('[outlook] Transcript search failed:', err.message)
   }
 
-  // ── Meeting recordings (MP4 links) + VTT sibling fetch ──
-  // Always run for yesterday's online meetings. Teams stores recordings in the
-  // organizer's OneDrive (not the attendee's), so SharePoint Search won't find
-  // them. Instead: find the MP4 via title search, then fetch the .vtt sibling
-  // from the same folder using the drive+parent IDs returned by search.
   // ── Meeting recordings (Teams stream URLs from yesterday's online meetings) ──
   // Recordings are stored in the organizer's OneDrive, not the attendee's.
   // VTT transcripts in organizer drives are inaccessible without admin-consent scopes.
@@ -441,12 +442,53 @@ async function runBrief(token, config, lookbackHours) {
     }
   }
 
+  // ── Meeting recap emails ──
+  // Uses the `meetings` config (recap_keywords/recap_lookback_hours), which is
+  // separate from the `outlook` config this script already loads. Missing
+  // meetings config must not break the outlook brief (every tool fails
+  // independently — see CLAUDE.md).
+  let recapEmails = []
+  try {
+    const meetingsConfig = await loadConfig('meetings').catch(() => null)
+    const recapKeywords = meetingsConfig?.recap_keywords ?? []
+    if (recapKeywords.length > 0) {
+      const recapLookback = meetingsConfig?.recap_lookback_hours || Math.max(lookbackHours, 48)
+      recapEmails = await findMeetingRecapEmails(token, recapKeywords, recapLookback)
+      console.error(`[outlook] Found ${recapEmails.length} recap emails`)
+    } else {
+      console.error('[outlook] No meetings config / recap_keywords — skipping recap-email search')
+    }
+  } catch (err) {
+    errors.push(`Recap email search failed: ${err.message}`)
+    console.error('[outlook] Recap email search failed:', err.message)
+  }
+
+  // ── Meeting artifact inventory ──
+  // Deduplicated, typed inventory of meetings-with-artifacts (slice 006-01).
+  // Scoped to yesterday's in-scope online meetings (accepted/tentative,
+  // non-cancelled) per ADR-0008; matches transcripts/recordings/recap emails
+  // by title+time. Must not take down the rest of the brief if it throws.
+  let meetingInventory = []
+  try {
+    meetingInventory = buildArtifactInventory({
+      calendarEvents: yesterdayOnlineMeetingEvents,
+      transcripts,
+      recordings,
+      recapEmails,
+    })
+    console.error(`[outlook] Built meeting artifact inventory: ${meetingInventory.length} meeting(s)`)
+  } catch (err) {
+    errors.push(`Meeting artifact inventory failed: ${err.message}`)
+    console.error('[outlook] Meeting artifact inventory failed:', err.message)
+  }
+
   return {
     emails,
     emailsTruncated,
     calendar: events,
     transcripts,
     recordings,
+    meetingInventory,
     triageSummary: summarizeTriage(emails),
     errors,
   }

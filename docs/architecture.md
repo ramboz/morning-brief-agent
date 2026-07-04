@@ -267,7 +267,7 @@ debugging and portability fallback.
 - **Brief writer:** `scripts/write-brief.js` composes available source sections
   into the dated Daily Brief Markdown note and reports per-source results in the
   standard JSON envelope.
-- **Source libraries:** `scripts/lib/**` contains narrow helpers such as config loading, Graph auth, GitHub helpers, and AI Radar fetch/triage/render modules.
+- **Source libraries:** `scripts/lib/**` contains narrow helpers such as config loading, Graph auth, GitHub helpers, AI Radar fetch/triage/render modules, and meeting-artifact discovery (`scripts/lib/meetings/**` — recap-email search and the pure artifact-inventory transform, per [ADR-0008](decisions/adr-0008-meeting-artifact-pipeline-separation.md)).
 - **Skills / orchestration docs:** `skills/**` records legacy source-area workflows and may become reference material as Codex plugins replace pieces.
 - **Config:** `config/*.example.json` documents personal configuration shape; real configs remain ignored.
 - **Output and fixtures:** `output/**` is generated and ignored; `tests/fixtures/**` stores reproducible examples for review and regression checks.
