@@ -14,3 +14,6 @@
 
 ## Review subagents
 User has granted standing permission to run review subagents for jig review, craft, architecture, and reconciliation passes in this project.
+
+## Meeting artifact inventory
+The deduplicated, typed inventory produced by scripts/lib/meetings/inventory.js's buildArtifactInventory() (slice 006-01, per ADR-0008): one record per non-cancelled online meeting with responseStatus accepted/tentativelyAccepted, each carrying zero or more typed artifacts (transcript, recording, recap_email) plus derived flags hasSummarizableText/recordingOnly/noArtifactFound. This is the single source of truth for meeting-related rendering — fetch-outlook.js exposes it as data.meetingInventory, summarize-meeting.js builds its own copy for --brief mode, and skills/morning-outlook/SKILL.md renders directly from it (never from raw transcripts/recordings search hits).
