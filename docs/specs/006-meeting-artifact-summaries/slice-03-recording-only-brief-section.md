@@ -1,5 +1,5 @@
 ---
-status: DRAFT
+status: READY_FOR_IMPLEMENTATION
 dependencies: ["006-01"]
 last_verified: 2026-06-18
 ---

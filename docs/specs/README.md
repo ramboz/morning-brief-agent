@@ -25,9 +25,9 @@
 | [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-01 - detect-review-requests | **DONE** |  |
 | [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-02 - pr-review-artifact | **DONE** |  |
 | [005-github-pr-review-automation](005-github-pr-review-automation/spec.md) | 005-03 - optional-pending-review-staging | **DONE** |  |
-| [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-01 - artifact-inventory | DRAFT |  |
-| [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-02 - text-summary-pipeline | DRAFT |  |
-| [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-03 - recording-only-brief-section | DRAFT |  |
+| [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-01 - artifact-inventory | READY_FOR_IMPLEMENTATION |  |
+| [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-02 - text-summary-pipeline | READY_FOR_IMPLEMENTATION |  |
+| [006-meeting-artifact-summaries](006-meeting-artifact-summaries/spec.md) | 006-03 - recording-only-brief-section | READY_FOR_IMPLEMENTATION |  |
 | [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-01 - jira-mcp-brief-section | **DONE** |  |
 | [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-02 - confluence-mcp-brief-section | **DONE** |  |
 | [007-mcp-source-migration](007-mcp-source-migration/spec.md) | 007-03 - github-corp-mcp-brief-section | **DONE** |  |
