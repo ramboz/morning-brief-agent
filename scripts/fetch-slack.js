@@ -6,6 +6,7 @@
  * Modes:
  *   --brief              Lookback scan: mentions, DMs, thread updates, priority channels
  *   --search "query"     Deep Dive: message search by keyword/channel/sender
+ *   --channels <ids>     Fetch full history for explicit channel IDs (comma-separated). Bypasses config.
  *
  * Standalone: node scripts/fetch-slack.js --brief
  * Reference:  specs/04-slack.md
@@ -337,6 +338,46 @@ async function fetchDMs(slack, userId, since, workspaceUrl) {
 }
 
 /**
+ * Fetch all replies for a thread parent. No window filter — caller decides what's recent.
+ * @param {WebClient} slack
+ * @param {string} channelId
+ * @param {string} parentTs
+ * @param {string} workspaceUrl
+ * @param {boolean} ignoreBots
+ * @param {string[]} botExceptionKeywords
+ * @returns {Promise<object[]>}
+ */
+async function fetchThreadReplies(slack, channelId, parentTs, workspaceUrl, ignoreBots, botExceptionKeywords) {
+  try {
+    await sleep(1200)
+    const res = await slack.conversations.replies({
+      channel: channelId,
+      ts: parentTs,
+      limit: 100
+    })
+    const replies = []
+    for (const m of (res.messages || [])) {
+      if (m.ts === parentTs) continue
+      if ((m.subtype === 'bot_message' || m.bot_id) && ignoreBots) {
+        if (!includeBotMessage(m, botExceptionKeywords)) continue
+      }
+      const user = await resolveUser(slack, m.user || m.bot_id || 'bot')
+      replies.push({
+        ts: m.ts,
+        user,
+        text: resolveText(m.text),
+        permalink: makePermalink(workspaceUrl, channelId, m.ts, parentTs),
+        reactions: (m.reactions || []).map(r => ({ name: r.name, count: r.count }))
+      })
+    }
+    return replies
+  } catch (err) {
+    console.error(`[slack] Thread replies failed for ${parentTs}: ${err.message}`)
+    return []
+  }
+}
+
+/**
  * Fetch history for a single channel.
  * @param {WebClient} slack
  * @param {{ id: string, name: string, section: string }} ch
@@ -345,26 +386,35 @@ async function fetchDMs(slack, userId, since, workspaceUrl) {
  * @param {boolean} ignoreBots
  * @param {string[]} botExceptionKeywords
  * @param {string} workspaceUrl
+ * @param {{ includeThreads?: boolean, includeOwnMessages?: boolean }} [options]
  * @returns {Promise<object>}
  */
-async function fetchSingleChannel(slack, ch, userId, oldest, ignoreBots, botExceptionKeywords, workspaceUrl) {
+async function fetchSingleChannel(slack, ch, userId, oldest, ignoreBots, botExceptionKeywords, workspaceUrl, options = {}) {
+  const { includeThreads = false, includeOwnMessages = false } = options
   const hist = await slack.conversations.history({ channel: ch.id, oldest, limit: 200 })
   const messages = []
 
   for (const msg of (hist.messages || [])) {
-    if (msg.user === userId) continue // filter own messages
+    if (!includeOwnMessages && msg.user === userId) continue
     if ((msg.subtype === 'bot_message' || msg.bot_id) && ignoreBots) {
       if (!includeBotMessage(msg, botExceptionKeywords)) continue
     }
     const user = await resolveUser(slack, msg.user || msg.bot_id || 'bot')
     const msgThreadTs = msg.thread_ts && msg.thread_ts !== msg.ts ? msg.thread_ts : null
+
+    let threadReplies = []
+    if (includeThreads && (msg.reply_count || 0) > 0) {
+      threadReplies = await fetchThreadReplies(slack, ch.id, msg.ts, workspaceUrl, ignoreBots, botExceptionKeywords)
+    }
+
     messages.push({
       ts: msg.ts,
       user,
       text: resolveText(msg.text),
       permalink: makePermalink(workspaceUrl, ch.id, msg.ts, msgThreadTs),
       replyCount: msg.reply_count || 0,
-      reactions: (msg.reactions || []).map(r => ({ name: r.name, count: r.count }))
+      reactions: (msg.reactions || []).map(r => ({ name: r.name, count: r.count })),
+      threadReplies
     })
   }
 
@@ -390,14 +440,14 @@ async function fetchSingleChannel(slack, ch, userId, oldest, ignoreBots, botExce
  * @param {string} workspaceUrl
  * @returns {Promise<object[]>}
  */
-async function fetchChannelHistories(slack, priorityChannels, userId, since, ignoreBots, botExceptionKeywords, workspaceUrl) {
+async function fetchChannelHistories(slack, priorityChannels, userId, since, ignoreBots, botExceptionKeywords, workspaceUrl, options = {}) {
   const oldest = (since.getTime() / 1000).toString()
   const results = []
 
   for (let i = 0; i < priorityChannels.length; i += CHANNEL_BATCH_SIZE) {
     const batch = priorityChannels.slice(i, i + CHANNEL_BATCH_SIZE)
     const batchResults = await Promise.allSettled(
-      batch.map(ch => fetchSingleChannel(slack, ch, userId, oldest, ignoreBots, botExceptionKeywords, workspaceUrl))
+      batch.map(ch => fetchSingleChannel(slack, ch, userId, oldest, ignoreBots, botExceptionKeywords, workspaceUrl, options))
     )
     for (let j = 0; j < batchResults.length; j++) {
       const r = batchResults[j]
@@ -466,6 +516,48 @@ async function runBrief(slack, userId, lookbackHours, workspaceUrl) {
       mentionCount: otherMentionCount
     }
   }
+}
+
+/**
+ * Channels mode: fetch full message history for an explicit list of channel IDs.
+ * Bypasses slack.json config — caller owns the channel selection.
+ * @param {WebClient} slack
+ * @param {string[]} channelIds - Slack channel IDs (e.g. "C08A1K0U74P")
+ * @param {string} userId
+ * @param {Date} since
+ * @param {string} workspaceUrl
+ * @returns {Promise<{ channels: object[] }>}
+ */
+async function runChannels(slack, channelIds, userId, since, workspaceUrl) {
+  const ignoreBots = true
+  const botExceptionKeywords = ['incident', 'alert', 'failed', 'error', 'outage', 'degraded']
+
+  const resolved = []
+  const failed = []
+  for (const id of channelIds) {
+    try {
+      const info = await slack.conversations.info({ channel: id })
+      resolved.push({ id, name: info.channel?.name || id, section: 'Topic' })
+    } catch (err) {
+      console.error(`[slack] Cannot resolve channel ${id}: ${err.message}`)
+      failed.push({
+        id,
+        name: id,
+        url: makeChannelUrl(workspaceUrl, id),
+        section: 'Topic',
+        messages: [],
+        threadReplies: [],
+        error: err.message
+      })
+    }
+  }
+
+  const histories = await fetchChannelHistories(
+    slack, resolved, userId, since, ignoreBots, botExceptionKeywords, workspaceUrl,
+    { includeThreads: true, includeOwnMessages: true }
+  )
+
+  return { channels: [...histories, ...failed] }
 }
 
 /**
@@ -599,6 +691,25 @@ async function main() {
       }
       data = await runContext(slack, channelId, threadTs, workspaceUrl)
       console.log(JSON.stringify(envelope(TOOL, 'context', data)))
+      return
+    }
+
+    // --channels <id1,id2,...> — fetch full history for explicit channel IDs (bypasses slack.json)
+    const channelsIdx = args.indexOf('--channels')
+    if (channelsIdx !== -1) {
+      const channelsArg = args[channelsIdx + 1]
+      if (!channelsArg) {
+        console.log(JSON.stringify(envelope(TOOL, 'channels', null, ['--channels requires a comma-separated list of channel IDs'])))
+        return
+      }
+      const channelIds = channelsArg.split(',').map(s => s.trim()).filter(Boolean)
+      if (channelIds.length === 0) {
+        console.log(JSON.stringify(envelope(TOOL, 'channels', null, ['--channels list is empty'])))
+        return
+      }
+      const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000)
+      data = await runChannels(slack, channelIds, userId, since, workspaceUrl)
+      console.log(JSON.stringify(envelope(TOOL, 'channels', data)))
       return
     }
 

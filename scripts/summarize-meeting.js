@@ -27,6 +27,9 @@ import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
 import { parseArgs, envelope, loadConfig } from './lib/config.js'
 import { getGraphToken, graphFetch, graphPost, graphDownload } from './lib/graphAuth.js'
+import { findMeetingRecapEmails, fetchEmailBody } from './lib/meetings/recapEmail.js'
+import { buildArtifactInventory } from './lib/meetings/inventory.js'
+import { selectSummarizableMeetings } from './lib/meetings/summarizable.js'
 
 const execFile = promisify(execFileCb)
 
@@ -55,6 +58,28 @@ function getModel() {
 /** Max transcript chars from config. */
 function getMaxChars() {
   return CONFIG.max_transcript_chars || 200_000
+}
+
+// ── Calendar (invitation scope, ADR-0008) ───────────────────────────────────
+
+/**
+ * Fetch yesterday's non-cancelled online meetings, with responseStatus, for
+ * ADR-0008 invitation-scope filtering. Mirrors fetch-outlook.js's
+ * yesterdayOnlineMeetingEvents pattern so both scripts derive the same
+ * scope from the same raw shape (client-side filter, no server-side
+ * $filter on isOnlineMeeting/isCancelled — Graph calendarView doesn't
+ * support filtering on those fields).
+ * @param {string} token
+ * @returns {Promise<object[]>} Raw Graph calendar event objects
+ */
+async function fetchYesterdayOnlineMeetingEvents(token) {
+  const yDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const yStart = yDate + 'T00:00:00Z'
+  const yEnd = yDate + 'T23:59:59Z'
+  const select = 'id,subject,start,end,isOnlineMeeting,onlineMeetingUrl,organizer,location,isAllDay,isCancelled,responseStatus'
+  const url = `${GRAPH}/me/calendarView?startDateTime=${yStart}&endDateTime=${yEnd}&$select=${select}&$top=30&$orderby=start/dateTime`
+  const result = await graphFetch(token, url)
+  return (result.value ?? []).filter(e => e.isOnlineMeeting && !e.isCancelled)
 }
 
 // ── Transcript search ────────────────────────────────────────────────────────
@@ -96,78 +121,15 @@ async function findTranscripts(token, query, maxResults = 20) {
 }
 
 // ── Email recap search ──────────────────────────────────────────────────────
-
-/**
- * Search for emails that contain meeting notes/recaps using Graph search API.
- * @param {string} token
- * @param {string[]} keywords - Subject keywords to match
- * @param {number} lookbackHours
- * @returns {Promise<object[]>}
- */
-async function findMeetingRecapEmails(token, keywords, lookbackHours = 48) {
-  const since = new Date(Date.now() - lookbackHours * 3600_000).toISOString().slice(0, 10)
-  // Build KQL query: subject contains any keyword AND received recently
-  // Use individual words (not exact phrases) so "Meeting Recoding and Notes" matches "meeting notes"
-  const subjectClauses = keywords.map(k => {
-    const words = k.split(/\s+/).filter(w => w.length > 2)
-    return `(${words.map(w => `subject:${w}`).join(' AND ')})`
-  }).join(' OR ')
-  const queryString = `(${subjectClauses}) AND received>=${since}`
-
-  console.error(`[meeting] Searching recap emails: ${queryString}`)
-
-  const result = await graphPost(token, `${GRAPH}/search/query`, {
-    requests: [{
-      entityTypes: ['message'],
-      query: { queryString },
-      from: 0,
-      size: 20,
-    }],
-  })
-
-  const hits = result.value?.[0]?.hitsContainers?.[0]?.hits ?? []
-  return hits.map(hit => ({
-    id: hit.hitId ?? hit.resource?.id ?? '',
-    subject: hit.resource?.subject ?? '',
-    from: hit.resource?.from?.emailAddress?.name ?? hit.resource?.sender?.emailAddress?.name ?? '',
-    fromEmail: hit.resource?.from?.emailAddress?.address ?? '',
-    receivedAt: hit.resource?.receivedDateTime ?? '',
-    webLink: hit.resource?.webLink ?? '',
-    summary: (hit.summary ?? '').replace(/<[^>]+>/g, '').slice(0, 200),
-  }))
-}
-
-/**
- * Fetch the full body of an email, returning plain text.
- * @param {string} token
- * @param {string} messageId
- * @returns {Promise<string>}
- */
-async function fetchEmailBody(token, messageId) {
-  const msg = await graphFetch(token,
-    `${GRAPH}/me/messages/${messageId}?$select=body,from,toRecipients,ccRecipients`)
-  const html = msg.body?.content ?? ''
-  // Strip HTML to plain text
-  const bodyText = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#\d+;/g, '')
-    .replace(/\s+/g, ' ').trim()
-
-  // Prepend sender/recipient info so Claude can detect attendees and companies
-  const fmt = (r) => `${r.emailAddress?.name ?? ''} <${r.emailAddress?.address ?? ''}>`
-  const from = msg.from ? fmt(msg.from) : ''
-  const to = (msg.toRecipients || []).map(fmt).join(', ')
-  const cc = (msg.ccRecipients || []).map(fmt).join(', ')
-  const header = [
-    from && `From: ${from}`,
-    to && `To: ${to}`,
-    cc && `CC: ${cc}`,
-  ].filter(Boolean).join('\n')
-
-  return header ? `${header}\n\n${bodyText}` : bodyText
-}
+// findMeetingRecapEmails / fetchEmailBody now live in lib/meetings/recapEmail.js
+// (extracted in slice 006-01 so fetch-outlook.js can share the same discovery
+// logic without duplicating it).
 
 /**
  * Process recap emails: fetch body, summarize, write notes.
+ * Used by --search mode only (--brief mode uses processSummarizableMeetings,
+ * which is scoped to the calendar-derived artifact inventory per ADR-0008).
+ * --search mode keeps this pre-existing, calendar-agnostic path unchanged.
  * @param {string} token
  * @param {object[]} emails
  * @param {Set<string>} existing - Existing note filenames
@@ -475,6 +437,8 @@ async function runList(token, transcripts, recapEmails = []) {
 
 /**
  * Process transcripts: download, summarize, write notes.
+ * Used by --search mode only (--brief mode uses processSummarizableMeetings,
+ * which is scoped to the calendar-derived artifact inventory per ADR-0008).
  * @param {string} token
  * @param {object[]} transcripts - Pre-fetched transcripts
  * @param {object} options
@@ -570,6 +534,116 @@ async function runProcess(token, transcripts, { dryRun = false, existing = null 
   return { processed, skipped, errors }
 }
 
+/**
+ * Process the calendar-scoped, typed summarizable meetings (transcript or
+ * recap-email artifacts) produced by selectSummarizableMeetings(): download
+ * content, summarize, write notes. Dedup/filename derivation uses the
+ * calendar-sourced meeting title+date (deterministic), not the LLM's own
+ * re-extracted summary.title/summary.date, since the LLM can phrase the
+ * same meeting's title slightly differently across runs (slice 006-02 AC2).
+ * @param {string} token
+ * @param {object[]} entries - selectSummarizableMeetings() output
+ * @param {object} options
+ * @returns {Promise<{processed: object[], skipped: object[], errors: string[]}>}
+ */
+async function processSummarizableMeetings(token, entries, { dryRun = false, existing = null } = {}) {
+  const errors = []
+  if (!existing) existing = await getExistingNotes()
+  const vaultDir = getVaultMeetings()
+
+  console.error(`[meeting] Processing ${entries.length} summarizable meeting(s)`)
+
+  // Ensure output directory exists
+  if (!dryRun && !existsSync(vaultDir)) {
+    await mkdir(vaultDir, { recursive: true })
+    console.error(`[meeting] Created directory: ${vaultDir}`)
+  }
+
+  const processed = []
+  const skipped = []
+
+  for (const entry of entries) {
+    const label = entry.title
+    const isEmail = entry.sourceType === 'recap_email'
+    try {
+      // Deterministic dedup/filename key from calendar-sourced meeting identity,
+      // computed up front — before download/summarize — so a duplicate is
+      // detected without spending an LLM call.
+      const filename = noteFilename(entry.date, entry.title)
+      if (existing.has(filename)) {
+        console.error(`[meeting] Skipping "${filename}" — already exists`)
+        skipped.push({ name: label, source: entry.sourceType, reason: 'note exists', filename })
+        continue
+      }
+
+      // Download content
+      let content
+      if (isEmail) {
+        console.error(`[meeting] Fetching email body: "${label}"...`)
+        content = await fetchEmailBody(token, entry.artifact.id)
+      } else {
+        if (!entry.artifact.driveId || !entry.artifact.driveItemId) {
+          console.error(`[meeting] Skipping "${label}" — missing drive info`)
+          skipped.push({ name: label, source: entry.sourceType, reason: 'missing drive info' })
+          continue
+        }
+        console.error(`[meeting] Downloading "${label}"...`)
+        content = await graphDownload(token, entry.artifact.driveId, entry.artifact.driveItemId)
+      }
+
+      const minLength = isEmail ? 200 : 100
+      if (!content || content.length < minLength) {
+        console.error(`[meeting] Skipping "${label}" — content too short (${content?.length ?? 0} chars)`)
+        skipped.push({ name: label, source: entry.sourceType, reason: 'content too short' })
+        continue
+      }
+
+      console.error(`[meeting] Content: ${(content.length / 1024).toFixed(0)}KB — summarizing with Claude...`)
+
+      // Summarize with Claude (the LLM's own title/date extraction still
+      // populates the note body/frontmatter — only the filename/dedup key
+      // comes from calendar data)
+      const summary = await summarizeWithClaude(content, entry.title, isEmail ? 'email' : 'transcript')
+
+      // Fix date if Claude couldn't extract it — fall back to meeting date
+      if (!summary.date || summary.date.includes('XX') || summary.date === 'unknown') {
+        const d = new Date(entry.date)
+        summary.date = `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`
+      }
+
+      // Generate note
+      const note = formatMeetingNote(summary)
+      const notePath = join(vaultDir, filename)
+
+      if (dryRun) {
+        console.error(`[meeting] DRY RUN — would write: ${filename}`)
+        console.error('--- preview ---')
+        console.error(note.slice(0, 500))
+        console.error('--- end preview ---')
+      } else {
+        await writeFile(notePath, note, 'utf-8')
+        console.error(`[meeting] Wrote: ${notePath}`)
+      }
+
+      processed.push({
+        source: entry.sourceType,
+        meetingId: entry.meetingId,
+        title: entry.title,
+        noteFile: filename,
+        date: summary.date,
+        attendees: summary.attendees?.length ?? 0,
+        actionItems: summary.actionItems?.length ?? 0,
+        dryRun,
+      })
+    } catch (err) {
+      console.error(`[meeting] Error processing "${label}":`, err.message)
+      errors.push(`${label}: ${err.message}`)
+    }
+  }
+
+  return { processed, skipped, errors }
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -649,20 +723,60 @@ async function main() {
   if (listOnly) {
     const result = await runList(token, allTranscripts, recapEmails)
     console.log(JSON.stringify(envelope(TOOL, 'list', result, [])))
-  } else {
+  } else if (mode === 'search') {
+    // --search: ad-hoc keyword search, unchanged by this slice — no
+    // calendar/invitation-scope involvement. Processes both matched
+    // transcripts and config-keyword-matched recap emails, same as before
+    // slice 006-02 (which only rebuilt --brief mode's discovery).
     const existing = await getExistingNotes()
     const transcriptResult = await runProcess(token, allTranscripts, { dryRun, existing })
     const emailResult = recapEmails.length > 0
       ? await processRecapEmails(token, recapEmails, existing, { dryRun })
       : { processed: [], skipped: [], errors: [] }
-
-    // Merge results from both sources
     const result = {
       processed: [...transcriptResult.processed, ...emailResult.processed],
       skipped: [...transcriptResult.skipped, ...emailResult.skipped],
     }
     const errors = [...(transcriptResult.errors || []), ...emailResult.errors]
     console.log(JSON.stringify(envelope(TOOL, mode, result, errors)))
+  } else {
+    // --brief: rebuild discovery on top of the ADR-0008-scoped artifact
+    // inventory (slice 006-02) instead of the old calendar-agnostic
+    // "process every transcript/recap-email hit" pipeline.
+    const errors = []
+
+    let calendarEvents = []
+    try {
+      calendarEvents = await fetchYesterdayOnlineMeetingEvents(token)
+      console.error(`[meeting] Found ${calendarEvents.length} in-scope online meeting(s) yesterday`)
+    } catch (err) {
+      console.error(`[meeting] Calendar fetch failed: ${err.message}`)
+      errors.push(`calendar: ${err.message}`)
+    }
+
+    let inventory = []
+    try {
+      inventory = buildArtifactInventory({
+        calendarEvents,
+        transcripts: allTranscripts,
+        recordings: [], // this script doesn't search MP4s — that's fetch-outlook.js's job
+        recapEmails,
+      })
+      console.error(`[meeting] Built meeting artifact inventory: ${inventory.length} meeting(s)`)
+    } catch (err) {
+      console.error(`[meeting] Meeting artifact inventory failed: ${err.message}`)
+      errors.push(`inventory: ${err.message}`)
+    }
+
+    const summarizable = selectSummarizableMeetings(inventory)
+    console.error(`[meeting] ${summarizable.length} meeting(s) have summarizable text`)
+
+    const existing = await getExistingNotes()
+    const { processed, skipped, errors: processErrors } =
+      await processSummarizableMeetings(token, summarizable, { dryRun, existing })
+
+    const result = { processed, skipped }
+    console.log(JSON.stringify(envelope(TOOL, mode, result, [...errors, ...processErrors])))
   }
 }
 

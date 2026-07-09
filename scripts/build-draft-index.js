@@ -16,7 +16,7 @@
  * Requires: VAULT_PATH env var or --vault CLI arg.
  *
  * Standalone: node scripts/build-draft-index.js --vault /tmp/vault --dry-run
- * Reference:  docs/decisions/ADR-002-draft-generation-and-delivery.md
+ * Reference:  docs/decisions/adr-0002-draft-generation-and-delivery.md
  */
 
 import dotenv from 'dotenv'

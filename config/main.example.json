@@ -11,15 +11,27 @@
   "lookback_hours": 24,
   "deep_dive_default_days": 7,
   "scripts_path": "/path/to/morning-brief-agent/scripts",
+  "open_work": {
+    "pr": {
+      "stale_days": 3,
+      "very_stale_days": 7,
+      "note": "Days since a PR's last activity (updated_at) before it is tagged 🟡 stale / 🔴 very-stale in the Open Work brief section (spec 009-01). Defaults used if this block is absent."
+    },
+    "jira": {
+      "stale_business_days": 3,
+      "very_stale_business_days": 5,
+      "note": "Business days (weekends excluded) since an in-progress ticket's last update before it is tagged 🟡 stale / 🔴 very-stale in the Open Work brief section (spec 009-02). Defaults used if this block is absent."
+    }
+  },
   "tools": {
     "slack": {
       "enabled": true,
-      "gather_method": "script",
-      "gather_fallback": "connector",
+      "gather_method": "plugin",
+      "gather_fallback": "script",
       "draft_method": "slack_native_draft",
       "draft_enabled": true,
       "url": "https://app.slack.com",
-      "note": "Drafts staged via the Slack plugin's slack_send_message_draft (ADR-0005), gated separately by config/slack.json's own draft_enabled field. No draft fallback if the plugin is unavailable — see docs/architecture.md's 'Slack: Plugin-First With Bounded Fallbacks'."
+      "note": "Gather is plugin-first (Slack plugin) with scripts/fetch-slack.js as the bounded fallback (ADR-0004/ADR-0005); these gather_* fields are advisory — morning-slack/SKILL.md is the source of truth. Drafts staged via the Slack plugin's slack_send_message_draft (ADR-0005), gated separately by config/slack.json's own draft_enabled field. No draft fallback if the plugin is unavailable — see docs/architecture.md's 'Slack: Plugin-First With Bounded Fallbacks'."
     },
     "outlook": {
       "enabled": true,

@@ -20,7 +20,7 @@
  * Requires: VAULT_PATH env var or --vault CLI arg.
  *
  * Standalone: echo '{"tool":"jira","target":"TEST-1","draft":"test"}' | node scripts/stage-local-draft.js --vault /tmp
- * Reference:  docs/decisions/ADR-002-draft-generation-and-delivery.md
+ * Reference:  docs/decisions/adr-0002-draft-generation-and-delivery.md
  */
 
 import dotenv from 'dotenv'

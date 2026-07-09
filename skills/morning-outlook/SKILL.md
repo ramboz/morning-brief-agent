@@ -28,6 +28,13 @@ This returns structured JSON with:
 - `emails` — inbox messages within lookback window (triaged: action_required, fyi, newsletter, marketing, automated_alert, junk)
 - `calendar` — today's events with Teams meeting flags
 - `transcripts` — recent meeting transcript files (.vtt) found via SharePoint search
+- `recordings` — MP4 meeting-recording links found via SharePoint search
+- `meetingInventory` — deduplicated, typed inventory of yesterday's accepted/tentative
+  online meetings (per [ADR-0008](../../docs/decisions/adr-0008-meeting-artifact-pipeline-separation.md)),
+  each entry shaped `{ meetingId, title, date, organizer, artifacts, hasSummarizableText,
+  recordingOnly, noArtifactFound }` — this is the source of truth for rendering the
+  Meeting Summaries and Meeting Recordings sections below, not the raw `transcripts`/
+  `recordings` arrays.
 - `triageSummary` — counts per triage category
 - `emailsTruncated` — true if >50 emails in window
 
@@ -35,19 +42,22 @@ This returns structured JSON with:
 
 **Last resort — browser:** Navigate to Outlook Web App via Claude in Chrome. Scan inbox manually.
 
-**Step 1b — Summarize meeting transcripts (if any found):**
+**Step 1b — Summarize meeting transcripts and recap emails (if any are summarizable):**
 
-If `fetch-outlook.js` returned any items in `transcripts`, run:
+If any `meetingInventory` entry has `hasSummarizableText: true`, run:
 
 ```bash
 CLAUDE_BIN=$(which claude) node scripts/summarize-meeting.js --brief
 ```
 
-This downloads each `.vtt` transcript from SharePoint, summarizes it with Claude, and writes a meeting note to `{vault_path}/Meetings/YYYY-MM-DD-{meeting-title}.md`. It returns structured JSON with:
-- `meetings` — list of summarized meetings (title, date, key decisions, action items, attendees, vault_path)
-- `skipped` — transcripts skipped (already summarized, too old, or download failed)
+This builds its own (independently-scoped, same ADR-0008 rules) artifact inventory,
+downloads each summarizable transcript or recap email, summarizes it with Claude, and
+writes a meeting note to `{vault_path}/Meetings/YYYY-MM-DD - {Meeting Title}.md`. It
+returns structured JSON with:
+- `processed` — list of summarized meetings (title, note file, attendees, action items)
+- `skipped` — meetings skipped (note already exists, content too short, or download failed)
 
-If `CLAUDE_BIN` is not found via `which claude`, check `~/.local/bin/claude` or `/usr/local/bin/claude`. If unavailable, skip transcript summarization and note it in the brief.
+If `CLAUDE_BIN` is not found via `which claude`, check `~/.local/bin/claude` or `/usr/local/bin/claude`. If unavailable, skip summarization and note it in the brief.
 
 ### Step 2 — ANALYZE (fast)
 
@@ -134,17 +144,21 @@ Return to orchestrator:
 2. Reply to Alice Chen → Merge conflict resolution
 ```
 
-Omit the "Meeting Summaries" section if no transcripts were found or summarized. Each entry links to the Obsidian meeting note using the `vault_path` returned by `summarize-meeting.js`.
+Omit the "Meeting Summaries" section entirely if no `meetingInventory` entry had `hasSummarizableText: true` (nothing was processed). Each entry links to the Obsidian meeting note using the note filename `summarize-meeting.js` reports in `processed[].noteFile`.
 
-If `transcripts` is empty but `recordings` is non-empty, skip Step 1b (no VTT to summarize) and instead render a **Meeting Recordings** section:
+**Recording-only meetings** ([spec 006-03](../../docs/specs/006-meeting-artifact-summaries/slice-03-recording-only-brief-section.md)): for each `meetingInventory` entry with `recordingOnly: true`, render a **Meeting Recordings** section — one line per meeting, with title, date, a watch link, and an explicit reason summarization couldn't happen:
 
 ```markdown
 ### 🎬 Meeting Recordings (yesterday)
-- **[2xWeekly]ASO Auto-Optimize Check-In** — [Watch recording](https://adobe-my.sharepoint.com/...) *(transcript unavailable — not organizer)*
-- **[Weekly] ASO ESE/Engineering Sync** — [Watch recording](https://adobe-my.sharepoint.com/...) *(transcript unavailable — not organizer)*
+- **[2xWeekly] ASO Auto-Optimize Check-In** (Jul 3) — [Watch recording](https://adobe-my.sharepoint.com/...) *(transcript unavailable)*
+- **[Weekly] ASO ESE/Engineering Sync** (Jul 3) — [Watch recording](https://adobe-my.sharepoint.com/...) *(transcript unavailable)*
 ```
 
-Use the `webUrl` field from each recording object as the link. Note that auto-summarization is unavailable for these — the user must watch the recording manually.
+Use each entry's `date` field for the per-item date (short form, e.g. `Jul 3`) and the recording artifact's `webUrl` field (`meetingInventory[].artifacts[].type === 'recording'`) as the link — don't rely on the section heading's "(yesterday)" alone, since it doesn't disambiguate if the lookback window is ever widened beyond a single day. **Omit this section entirely** if no `meetingInventory` entry has `recordingOnly: true` — don't render an empty heading.
+
+**Wording matters here (AC2/AC3):** say the transcript is *unavailable*, not that summarization *failed* — this is expected behavior for meetings you didn't organize, not an error. Keep the tone calm and informational (a manual-watch reminder, not an alert): no 🔴/urgent styling, and don't fold these into "Action Required" unless the meeting invite or a recap explicitly calls out an action item for the user.
+
+Meetings where `noArtifactFound: true` (no transcript, recap email, or recording matched) are not rendered anywhere — there's nothing actionable to say about them.
 
 **Calendar timezone:** The script outputs calendar times already converted to local timezone (from `timezone` in `outlook.json`). Display times as-is — do NOT convert again.
 

@@ -1,13 +1,14 @@
 ---
 dependencies: []
-last_verified: 2026-06-18
+last_verified: 2026-07-04
+status: Accepted
 ---
 
 # ADR-0008: Meeting artifact pipeline separation
 
 ## Status
 
-Proposed (2026-06-18)
+Accepted (2026-07-04)
 
 ## Context
 
@@ -18,6 +19,20 @@ emails may arrive later, and recording-only links may be the only artifact.
 
 Combining discovery, download, summarization, and note writing makes it harder
 to explain what happened when a meeting cannot be summarized.
+
+**Spike findings (2026-07-04):** A live probe against Microsoft Graph
+confirmed the access boundaries above and settled the invitation-scope
+question. `responseStatus` (`accepted` / `tentativelyAccepted` / `declined` /
+`notResponded`) is available today by adding it to the existing
+`calendarView` `$select` — no new permissions needed. Teams attendance
+reports (`/me/onlineMeetings/{id}/attendanceReports`) returned 403 Forbidden
+for every meeting tested, including ones the calling user did not organize;
+reaching them would require `OnlineMeetingArtifact.Read.All` with tenant
+admin consent, which is not worth pursuing for a personal tool. Cross-tenant
+meetings (e.g. a customer-organized meeting in the sample) also 403 on the
+basic `onlineMeetings` lookup, so calendar-based meeting-ID resolution only
+works for internally-organized meetings — externally-organized meetings must
+rely on the other artifact fallbacks (MP4 search, recap email).
 
 ## Decision Options Considered
 
@@ -42,11 +57,18 @@ Separate meeting artifact discovery from summarization. Discovery should return
 typed artifacts; summarization should consume only accessible text artifacts;
 the daily brief should render recording-only meetings as manual-watch items.
 
+Discovery treats a meeting as in-scope when it is a non-cancelled online
+meeting with `responseStatus.response` of `accepted` or `tentativelyAccepted`;
+`declined` and `notResponded` are out of scope. True attendance is not used
+as a filter, since it isn't reliably obtainable (see spike findings above).
+
 ## Consequences
 
 **Becomes easier:**
 - The brief can accurately say "recording available, transcript unavailable."
 - Recap emails and transcripts can share a summarization path.
+- Invitation scope is decidable purely from calendar data (`responseStatus`)
+  without needing attendance-report access.
 
 **Becomes harder:**
 - The scripts need a clearer intermediate shape and deduplication rules.
@@ -56,3 +78,13 @@ the daily brief should render recording-only meetings as manual-watch items.
 
 - What fields define meeting identity for deduplication?
 - Should recording-only items create Obsidian notes or remain brief-only?
+
+**Resolved by spike (2026-07-04):**
+- Invitation scope for discovery: `responseStatus.response` in `accepted` or
+  `tentativelyAccepted`; `declined` and `notResponded` are excluded (user
+  decision, confirmed after the spike).
+- True attendance is not used as a signal — Teams attendance reports are not
+  reachable without admin-consent scopes this project won't pursue.
+- Externally-organized (cross-tenant) meetings can't be resolved to an
+  `onlineMeeting` id via the calling user's calendar; they stay on the
+  MP4/recap-email fallback path, same as before.

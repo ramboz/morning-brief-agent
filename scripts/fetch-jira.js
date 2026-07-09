@@ -6,6 +6,7 @@
  * Modes:
  *   --brief              Lookback scan: assigned tickets, commented, mentioned
  *   --search "query"     Deep Dive: JQL search by keyword
+ *   --jql "<query>"      Run arbitrary JQL exactly as provided (bypasses project config validation)
  *   --context SITES-123  Fetch full ticket with all comments (for draft enrichment)
  *
  * Standalone: node scripts/fetch-jira.js --brief
@@ -16,125 +17,20 @@ import dotenv from 'dotenv'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs, loadConfig, envelope } from './lib/config.js'
-import { atlassianFetch } from './lib/atlassianFetch.js'
+import {
+  MAX_ISSUES,
+  stripJiraMarkup,
+  jiraGet,
+  paginateJql,
+  formatIssue
+} from './lib/jira/query.js'
 
 dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), '.env') })
 
 const TOOL = 'jira'
-const FIELDS = 'summary,status,priority,assignee,reporter,updated,comment,labels,issuetype,parent'
-const MAX_PAGES = 3
-const PAGE_SIZE = 50
-const MAX_COMMENTS = 3
-const MAX_COMMENT_CHARS = 300
-const MAX_ISSUES = MAX_PAGES * PAGE_SIZE
 
 /** @type {RegExp} Valid JIRA project key format */
 const PROJECT_KEY_RE = /^[A-Z][A-Z0-9]+$/
-
-/**
- * Strip JIRA wiki markup from a comment body.
- * @param {string} text - Raw comment body
- * @returns {string} Cleaned text
- */
-function stripJiraMarkup(text) {
-  if (!text) return ''
-  return text
-    .replace(/\{code[^}]*\}[\s\S]*?\{code\}/gi, '[code block]')
-    .replace(/\{noformat[^}]*\}[\s\S]*?\{noformat\}/gi, '[block]')
-    .replace(/\[~([^\]]+)\]/g, '@$1')
-    .replace(/\{[^}]+\}/g, '')
-    .trim()
-}
-
-/**
- * Make a GET request to the JIRA REST API with Bearer auth.
- * @param {string} baseUrl - JIRA base URL
- * @param {string} token - PAT token
- * @param {string} path - API path
- * @param {object} [params] - Query string parameters
- * @returns {Promise<object>} Parsed JSON response
- */
-async function jiraGet(baseUrl, token, path, params = {}) {
-  const qs = new URLSearchParams(
-    Object.entries(params).filter(([, v]) => v !== undefined && v !== null)
-  ).toString()
-  const fullPath = qs ? `${path}?${qs}` : path
-  return atlassianFetch(baseUrl, fullPath, token)
-}
-
-/**
- * Paginate a JQL search query, up to MAX_PAGES pages.
- * @param {string} baseUrl
- * @param {string} token
- * @param {string} jql
- * @returns {Promise<{issues: object[], truncated: boolean}>}
- */
-async function paginateJql(baseUrl, token, jql) {
-  const issues = []
-  let startAt = 0
-  let truncated = false
-
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const data = await jiraGet(baseUrl, token, '/rest/api/2/search', {
-      jql,
-      startAt,
-      maxResults: PAGE_SIZE,
-      fields: FIELDS
-    })
-
-    issues.push(...(data.issues ?? []))
-
-    if (issues.length >= data.total || data.issues.length < PAGE_SIZE) break
-
-    startAt += PAGE_SIZE
-
-    if (page === MAX_PAGES - 1 && issues.length < data.total) {
-      truncated = true
-    }
-  }
-
-  return { issues, truncated }
-}
-
-/**
- * Extract and clean recent comments from an issue.
- * @param {object} issue - Raw JIRA issue object
- * @returns {Array<{author: string, body: string, createdAt: string}>}
- */
-function extractRecentComments(issue) {
-  const comments = issue.fields?.comment?.comments ?? []
-  return comments
-    .slice(-MAX_COMMENTS)
-    .map(c => ({
-      author: c.author?.displayName ?? c.author?.name ?? 'unknown',
-      body: stripJiraMarkup(c.body ?? '').slice(0, MAX_COMMENT_CHARS),
-      createdAt: c.created
-    }))
-}
-
-/**
- * Map a raw JIRA issue to the output shape.
- * @param {object} issue - Raw JIRA issue
- * @param {string} reason - 'assigned' | 'commented' | 'mentioned'
- * @param {string} baseUrl - JIRA base URL
- * @returns {object} Formatted issue
- */
-function formatIssue(issue, reason, baseUrl) {
-  const f = issue.fields ?? {}
-  return {
-    key: issue.key,
-    summary: f.summary ?? '',
-    type: f.issuetype?.name ?? 'Unknown',
-    status: f.status?.name ?? 'Unknown',
-    priority: f.priority?.name ?? 'Unknown',
-    assignedToMe: reason === 'assigned',
-    reason,
-    labels: f.labels ?? [],
-    updatedAt: f.updated,
-    recentComments: extractRecentComments(issue),
-    url: `${baseUrl}/browse/${issue.key}`
-  }
-}
 
 /**
  * Run the brief mode: three-pass JQL scan (assigned, commented, mentioned).
@@ -218,6 +114,22 @@ async function runSearch(baseUrl, token, projects, query) {
 }
 
 /**
+ * Run the JQL mode: execute the provided JQL string verbatim.
+ * Caller is responsible for project clauses, time bounds, and ORDER BY.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} jql
+ * @returns {Promise<{issues: object[], truncated: boolean}>}
+ */
+async function runJql(baseUrl, token, jql) {
+  const { issues, truncated } = await paginateJql(baseUrl, token, jql)
+  return {
+    issues: issues.map(i => formatIssue(i, 'jql', baseUrl)),
+    truncated
+  }
+}
+
+/**
  * Run the context mode: fetch a single ticket with ALL comments for draft enrichment.
  * @param {string} baseUrl
  * @param {string} token
@@ -266,6 +178,39 @@ async function main() {
   }
   if (!token) {
     console.log(JSON.stringify(envelope(TOOL, mode, null, ['JIRA_API_TOKEN not set'])))
+    return
+  }
+
+  // --jql mode bypasses project config — caller owns the full JQL
+  const jqlIdx = process.argv.indexOf('--jql')
+  const jqlOverride = jqlIdx !== -1 ? process.argv[jqlIdx + 1] : null
+  if (jqlIdx !== -1 && !jqlOverride) {
+    console.log(JSON.stringify(envelope(TOOL, 'jql', null, ['--jql requires a JQL string'])))
+    return
+  }
+
+  if (jqlOverride) {
+    try {
+      await jiraGet(baseUrl, token, '/rest/api/2/myself')
+    } catch (err) {
+      if (err.status === 401) {
+        console.log(JSON.stringify(envelope(TOOL, 'jql', null, ['JIRA auth failed — check JIRA_API_TOKEN in .env'])))
+        return
+      }
+      const msg = err.message?.toLowerCase().includes('certificate')
+        ? 'JIRA SSL error — certificate could not be verified. Are you on VPN?'
+        : (err.status ? err.message : 'JIRA unreachable — are you on VPN?')
+      console.log(JSON.stringify(envelope(TOOL, 'jql', null, [msg])))
+      return
+    }
+
+    try {
+      const data = await runJql(baseUrl, token, jqlOverride)
+      console.log(JSON.stringify(envelope(TOOL, 'jql', data)))
+    } catch (err) {
+      console.error(`[${TOOL}]`, err.message)
+      console.log(JSON.stringify(envelope(TOOL, 'jql', null, [err.message])))
+    }
     return
   }
 

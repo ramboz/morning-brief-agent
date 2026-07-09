@@ -1,0 +1,178 @@
+{
+  "calendarEvents": [
+    {
+      "id": "evt-transcript-only",
+      "subject": "Sprint Planning: Core Web Vitals",
+      "start": { "dateTime": "2026-07-03T14:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "accepted" },
+      "organizer": { "emailAddress": { "name": "Alice Adobe", "address": "alice@adobe.com" } }
+    },
+    {
+      "id": "evt-recap-only",
+      "subject": "Customer Sync: Bulk.com Renewal",
+      "start": { "dateTime": "2026-07-03T16:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "tentativelyAccepted" },
+      "organizer": { "emailAddress": { "name": "Bob Bulk", "address": "bob@bulk.com" } }
+    },
+    {
+      "id": "evt-recording-only",
+      "subject": "All Hands: Q3 Roadmap Review",
+      "start": { "dateTime": "2026-07-03T09:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "accepted" },
+      "organizer": { "emailAddress": { "name": "Carol Corp", "address": "carol@adobe.com" } }
+    },
+    {
+      "id": "evt-both-transcript-and-recording",
+      "subject": "Architecture Review: Auto-Optimize Pipeline",
+      "start": { "dateTime": "2026-07-03T11:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "accepted" },
+      "organizer": { "emailAddress": { "name": "Dave Dev", "address": "dave@adobe.com" } }
+    },
+    {
+      "id": "evt-no-artifacts",
+      "subject": "1:1 with Manager",
+      "start": { "dateTime": "2026-07-03T10:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "accepted" },
+      "organizer": { "emailAddress": { "name": "Erin Eng", "address": "erin@adobe.com" } }
+    },
+    {
+      "id": "evt-declined",
+      "subject": "Declined Meeting: Should Not Appear",
+      "start": { "dateTime": "2026-07-03T13:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "declined" },
+      "organizer": { "emailAddress": { "name": "Frank FYI", "address": "frank@adobe.com" } }
+    },
+    {
+      "id": "evt-not-responded",
+      "subject": "Not Responded Meeting: Should Not Appear",
+      "start": { "dateTime": "2026-07-03T15:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "notResponded" },
+      "organizer": { "emailAddress": { "name": "Grace GHI", "address": "grace@adobe.com" } }
+    },
+    {
+      "id": "evt-cancelled",
+      "subject": "Cancelled Meeting: Should Not Appear",
+      "start": { "dateTime": "2026-07-03T17:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": true,
+      "responseStatus": { "response": "accepted" },
+      "organizer": { "emailAddress": { "name": "Hank HIJ", "address": "hank@adobe.com" } }
+    },
+    {
+      "id": "evt-not-online",
+      "subject": "In-Person Offsite: Should Not Appear",
+      "start": { "dateTime": "2026-07-03T18:00:00.0000000" },
+      "isOnlineMeeting": false,
+      "isCancelled": false,
+      "responseStatus": { "response": "accepted" },
+      "organizer": { "emailAddress": { "name": "Ivy IJK", "address": "ivy@adobe.com" } }
+    },
+    {
+      "id": "evt-external-organizer",
+      "subject": "Vendor Kickoff: SAP Integration Planning",
+      "start": { "dateTime": "2026-07-03T08:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "accepted" },
+      "organizer": { "emailAddress": { "name": "Sam SAP", "address": "sam@sap.com" } }
+    },
+    {
+      "id": "evt-ambiguous-prefix-a",
+      "subject": "Weekly Sync with Team Alpha",
+      "start": { "dateTime": "2026-07-03T09:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "accepted" },
+      "organizer": { "emailAddress": { "name": "Alpha Owner", "address": "alpha@adobe.com" } }
+    },
+    {
+      "id": "evt-ambiguous-prefix-b",
+      "subject": "Weekly Sync with Team Beta",
+      "start": { "dateTime": "2026-07-03T15:00:00.0000000" },
+      "isOnlineMeeting": true,
+      "isCancelled": false,
+      "responseStatus": { "response": "accepted" },
+      "organizer": { "emailAddress": { "name": "Beta Owner", "address": "beta@adobe.com" } }
+    }
+  ],
+  "transcripts": [
+    {
+      "name": "Sprint Planning Core Web Vitals-20260703_140000-Meeting Recording.vtt",
+      "webUrl": "https://adobe-my.sharepoint.com/personal/alice_adobe_com/Documents/Recordings/sprint-planning.vtt",
+      "driveId": "drive-alice",
+      "driveItemId": "item-transcript-1",
+      "createdAt": "2026-07-03T18:05:00Z",
+      "modifiedAt": "2026-07-03T18:05:00Z"
+    },
+    {
+      "name": "Architecture Review Auto-Optimize Pipeline-20260703_110000-Meeting Recording.vtt",
+      "webUrl": "https://adobe-my.sharepoint.com/personal/dave_adobe_com/Documents/Recordings/arch-review.vtt",
+      "driveId": "drive-dave",
+      "driveItemId": "item-transcript-2",
+      "createdAt": "2026-07-03T15:10:00Z",
+      "modifiedAt": "2026-07-03T15:10:00Z"
+    }
+  ],
+  "recordings": [
+    {
+      "subject": "All Hands: Q3 Roadmap Review",
+      "name": "All Hands Q3 Roadmap Review-20260703_090000-Meeting Recording.mp4",
+      "webUrl": "https://adobe-my.sharepoint.com/sites/allhands/_layouts/15/stream.aspx?id=/allhands.mp4",
+      "recordedAt": "2026-07-03T13:15:00Z",
+      "organizer": "Carol Corp",
+      "driveId": "drive-carol",
+      "parentId": "parent-carol"
+    },
+    {
+      "subject": "Architecture Review: Auto-Optimize Pipeline",
+      "name": "Architecture Review Auto-Optimize Pipeline-20260703_110000-Meeting Recording.mp4",
+      "webUrl": "https://adobe-my.sharepoint.com/sites/arch/_layouts/15/stream.aspx?id=/arch-review.mp4",
+      "recordedAt": "2026-07-03T15:20:00Z",
+      "organizer": "Dave Dev",
+      "driveId": "drive-dave",
+      "parentId": "parent-dave"
+    },
+    {
+      "subject": "Vendor Kickoff: SAP Integration Planning",
+      "name": "Vendor Kickoff SAP Integration Planning-20260703_080000-Meeting Recording.mp4",
+      "webUrl": "https://adobe-my.sharepoint.com/sites/vendor/_layouts/15/stream.aspx?id=/vendor-kickoff.mp4",
+      "recordedAt": "2026-07-03T12:30:00Z",
+      "organizer": "Sam SAP",
+      "driveId": "drive-sam",
+      "parentId": "parent-sam"
+    },
+    {
+      "subject": "Weekly Sync with Team Beta",
+      "name": "Weekly Sync with Team Beta-20260703_150000-Meeting Recording.mp4",
+      "webUrl": "https://adobe-my.sharepoint.com/sites/beta/_layouts/15/stream.aspx?id=/weekly-beta.mp4",
+      "recordedAt": "2026-07-03T19:00:00Z",
+      "organizer": "Beta Owner",
+      "driveId": "drive-beta",
+      "parentId": "parent-beta"
+    }
+  ],
+  "recapEmails": [
+    {
+      "id": "email-1",
+      "subject": "Meeting Notes: Customer Sync Bulk.com Renewal",
+      "from": "Bob Bulk",
+      "fromEmail": "bob@bulk.com",
+      "receivedAt": "2026-07-03T18:30:00Z",
+      "webLink": "https://outlook.office.com/mail/id/email-1"
+    }
+  ]
+}

@@ -1,5 +1,21 @@
 # CLAUDE.md — Morning Assistant v2
 
+> **⚠️ Legacy Cowork-era bible (annotated 2026-07-02, spec 008-03).** This file
+> predates the project's move to the Codex/jig, MCP/plugin-first workflow. The
+> **current source of truth** is [`docs/product-vision.md`](docs/product-vision.md),
+> [`docs/architecture.md`](docs/architecture.md), [`docs/specs/`](docs/specs/README.md),
+> and [`docs/decisions/`](docs/decisions/README.md) (ADRs), with
+> [`AGENTS.md`](AGENTS.md) as the agent primer. **Still valid here:** the safety
+> constraints, code/commit conventions, and environment-variable list.
+> **Superseded here:** the Cowork + Claude-in-Chrome runtime and three-layer
+> *browser-first data gathering* model (now MCP/plugin-first per
+> [ADR-0004](docs/decisions/adr-0004-mcp-plugin-first-source-integration.md)); the
+> Slack DM-to-self / `stage-slack-draft.js` draft path (now native Slack drafts per
+> [ADR-0005](docs/decisions/adr-0005-slack-plugin-native-drafts.md)); and the
+> Phase 0–8 plan (replaced by the jig spec lifecycle). See
+> [`docs/architecture.md` § Legacy documentation](docs/architecture.md#legacy-documentation)
+> for the full disposition. Kept as reference; a port of the still-valid parts is deferred.
+
 This is the project bible. Read this file AND `docs/morning-assistant-v2-vision.md` before writing any code or skills. Follow these conventions strictly.
 
 ---

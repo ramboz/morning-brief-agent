@@ -96,3 +96,73 @@ slice frontmatter rather than trusting the sweep's narrative. Rule: run
 not just once at the end — and when a reconciliation sweep claims a board
 entry will be "updated later," verify that claim against the board's current
 actual content rather than accepting the promise at face value.
+
+## `{scripts_path}/../config/<tool>.json` resolves to repo-root config/, but an isolated reader can misread it
+
+Every source skill's "Load config" step reads `{scripts_path}/../config/<tool>.json`.
+`{scripts_path}` is a config-provided value (from `config/main.json`, surfaced by
+`skills/morning-assistant/SKILL.md`) equal to the repo's `scripts/` dir — so the
+path resolves to the project-root `config/<tool>.json`, exactly what
+`scripts/lib/config.js` (`CONFIG_DIR = repo-root config/`) loads. During slice
+007-01's craft review, a fresh reviewer with only the SKILL in its reading set
+misread `{scripts_path}` as the skill's own directory and flagged the path as a
+`[blocker]` (a non-existent `skills/morning-jira/config/jira.json`); the arch
+reviewer, which had checked against `config.js`, validated the same line as
+correct. Takeaway: the placeholder is correct and house-wide (all 7 skills use
+it), but it is ambiguous to an isolated reader — add a one-line inline
+clarification in each source SKILL that it resolves to the project-root `config/`
+(done for morning-jira; apply to confluence/github as they migrate). Don't
+"fix" an isolated-reader misread by diverging from the convention.
+
+## MCP-first source migration (spec 007): only the script fallback is verifiable offline
+
+When migrating a source (Jira / Confluence / corp-GitHub) to MCP-first per
+ADR-0004, the MCP tools live in the running Codex session, not in a Claude Code /
+offline implementing session — and there are no real configs/creds committed. So
+the MCP gather path cannot be live-tested during implementation; only the script
+fallback (`node scripts/fetch-<tool>.js --brief` → `{ok:false, errors:[...]}`
+graceful envelope) is offline-verifiable. Write the SKILL to target "the MCP tools
+available in the running session" (mirroring how `morning-slack` references
+`slack_*`), reference them by capability/operation rather than exact tool names,
+and make the DoD sample honest: an explicitly-labeled illustrative format template
+PLUS a real captured fallback-envelope run. This satisfies the AC "≥1 item OR a
+clear no-results/unavailable note" without fabricating live MCP output. Leave the
+DoR "MCP auth works" item unchecked with the reason noted, rather than tick it
+dishonestly.
+
+## Legacy pre-jig ADRs: `adr.py index` can't parse them (spec 008-01)
+
+The two pre-jig ADRs (`adr-0001`/`adr-0002`) use `# ADR-001:` three-digit
+headings and `**Status:** Accepted` prose, not the canonical `# ADR-NNNN:` +
+`## Status` shape. `adr.py index`'s `_extract_title`/`_extract_status_and_date`
+require the canonical shape, so it renders them "(untitled)"/"(unknown)" — you
+**cannot** regenerate the decisions index with `adr.py index` while a legacy ADR
+is present without a body rewrite. When a DoD forbids changing accepted ADR prose,
+take the "or an equivalent manual index check" path: `git mv` to the canonical
+`adr-000N-*.md` filename, hand-maintain those two index entries, and document the
+deliberate filename-vs-heading digit difference. Also: `migrate.py
+rename-decisions` only does the `docs/adrs/ → docs/decisions/` move — it will NOT
+renumber `ADR-00N-*.md` files already in `docs/decisions/`.
+
+## The script envelope `mode` is an open vocabulary, not `{brief, search}` (spec 008-02)
+
+`CLAUDE.md` says scripts take `--brief`/`--search`, but `envelope()` is actually
+called with a wider set across `scripts/`: `brief`, `search`, `context`, `draft`,
+`index`, `cleanup`, `discard`, `list`, `stage`, `write`, `unknown`. The committed
+contract `docs/contracts/script-envelope.schema.json` therefore types `mode` as an
+open non-empty string (documented labels, not an `enum`) — an enum would reject the
+majority of real envelopes. Lesson for any contract drift-locked to a producer:
+exercise the test across the modes the producer *actually* emits (grep `envelope(`
+call sites); a brief-only test hides the mismatch (this exact gap was caught by the
+arch-review pass, not compliance/craft). Config contracts stay as
+`config/*.example.json` examples for now (single-user tool, one consumer per
+family) — rationale + revisit trigger in `docs/contracts/README.md`.
+
+## Artifact-to-meeting matching by title-prefix needs closest-timestamp disambiguation, not first-match
+scripts/lib/meetings/inventory.js matches transcripts/recordings/recap-emails to calendar meetings by normalized-title-prefix + time-window (an existing heuristic reused from fetch-outlook.js). Using Array.find (first-match-wins) silently misattaches an artifact when two same-day meetings share the same title prefix (e.g. two truncate to the same 20-char prefix) — caught independently by two review passes on slice 006-01, not by the original implementation or its first test suite. Fix: when multiple candidates pass the title+window filter, pick the one whose meeting start is closest in time to the artifact's own timestamp (see findMatchingMeeting()). Lesson for any similar fuzzy-matching code: if the match key can collide, add a same-day-collision test case explicitly — a single-candidate fixture will not catch first-match-wins bugs.
+
+## Cross-tenant (externally-organized) meetings can't be resolved via Graph's onlineMeetings lookup
+A live probe against Microsoft Graph (ADR-0008) found /me/onlineMeetings?$filter=JoinWebUrl resolves fine for internally-organized meetings but returns 403 for a meeting organized by an external company (tested: SAP-organized meeting). Teams attendance reports (/me/onlineMeetings/{id}/attendanceReports) also 403 unconditionally — even for internally-organized meetings — and would need OnlineMeetingArtifact.Read.All with tenant admin consent, not worth pursuing for a personal tool. Net effect: meeting-artifact discovery (scripts/lib/meetings/inventory.js) never uses calendar-based meeting-ID resolution — it matches artifacts to meetings by title+time only, uniformly for internal and external organizers, which is why cross-tenant meetings degrade gracefully instead of needing special-casing.
+
+## Staleness/"open work" detection is the inverse of the lookback-bounded brief queries
+Spec 009 (open-work radar) surfaces the user's own stalled work — open authored PRs and in-progress JIRA tickets that have gone quiet. Three durable lessons: (1) **Do NOT apply a lookback bound.** The existing brief queries filter to `updated >= -Nh` (recent activity); a *stale* item is precisely one that's been untouched, so `runInProgress`/`buildInProgressJql` (lib/jira/query.js) deliberately omit any time clause and query by `statusCategory = "In Progress"` (covers project-specific statuses like "In Review"), oldest-first. Reusing the brief's query would return the empty set for exactly the items you care about. (2) **Unknown age surfaces, never hides.** A missing/unparsable `updated_at`/`updated` classifies as very-stale (surfaced), not fresh (hidden) — `toMs` must guard `null`/`''` explicitly since `new Date(null)` is epoch 0, not Invalid Date. (3) **Scripts with `main()` at module load can't be imported** — put reusable fetch/format logic in side-effect-free libs (`lib/github.js`, `lib/jira/query.js`, pure `lib/github/open-prs.js` + `lib/jira/staleness.js`), and let thin `list-*.js` runners + the orchestrator compose them. Day-cadence (Monday full inventory vs weekday stale-only) is a pure rule in `lib/open-work.js` applied by the orchestrator. Also: authoring a spec off a stale local `main` (14 commits behind `origin/main`) meant a mid-implementation rebase — the rebase's schema-contract test (spec 008's ajv) caught the divergence; always confirm the branch base against `origin/main` before implementing, not just local `main`.

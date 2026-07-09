@@ -66,6 +66,22 @@ If `gather_fallback` is set and the primary method fails, try the fallback.
 
 **If a tool fails**: note the error, skip it, continue. Never let one tool block others.
 
+**Open Work radar (direct script call, no sub-agent):** Also run
+`node {scripts_path}/list-open-work.js --brief` directly — it composes both
+009-01/009-02 sources (GitHub open authored PRs + JIRA in-progress tickets)
+and already applies the Monday/weekday selection rule, returning pre-selected
+JSON (`data.prs` / `data.tickets`, each tagged `fresh`/`stale`/`very-stale`;
+plus `data.mondayInventory`, `data.suppressedFreshCount`, `data.isEmpty`), so
+there's no interpretation step for a sub-agent to add. It feeds the "Your
+Open Work" section in Step 3. Like every other tool, each source fails
+independently inside the script: if GitHub is unreachable, the JIRA side
+still runs (and vice versa); if both fail, `data.isEmpty` is `true` with both
+errors noted, and the rest of the brief runs unaffected. (The two
+single-source scripts, `list-open-prs.js` and `list-inprogress.js`, still
+exist as standalone tools — e.g. for `npm run list:open-prs` debugging — but
+this section now reads from the combined script's output only, so the two
+sources aren't fetched twice.)
+
 ## Step 2 — Analyze and synthesize (Layer 1)
 
 Collect results from all sub-agents. Synthesize a unified Action Items list (max 10), ranked by priority:
@@ -123,6 +139,11 @@ Write to: `{vault_path}/{daily_notes_folder}/{YYYY-MM-DD}.md`
 {from morning-ai-radar sub-agent}
 <!-- /AGENT:ai_radar -->
 
+## 🧭 Your Open Work
+<!-- AGENT:open_work -->
+{stale/very-stale PRs + tickets on a normal day; full inventory incl. fresh on Mondays ("Open Work Review"); one-line note if empty}
+<!-- /AGENT:open_work -->
+
 ---
 *Generated at {HH:MM} {TZ} — Lookback: {N}h — Duration: {Xm Ys}*
 *Agent: Morning Assistant v2 (Cowork Hybrid)*
@@ -156,6 +177,116 @@ Exception: If a tool was enabled but *failed* (API error, timeout), include the 
 
 **Relative timestamps:** Use `timeAgo()` formatting throughout — both in action items and in per-tool sections. Examples: "2h ago", "yesterday", "3d ago".
 
+**"Your Open Work" section (slices 009-01 + 009-02 + 009-03 — GitHub PRs,
+JIRA in-progress tickets, and the Monday/weekday cadence rule):** This
+section surfaces the user's own open, authored work from two sources, each
+with its own threshold, gathered by the single `list-open-work.js` call in
+Step 1:
+
+- **Open, authored PRs** — no activity past the configured threshold
+  (defaults 3d 🟡 stale / 7d 🔴 very-stale, from `config/main.json`'s
+  `open_work.pr` block).
+- **Assigned, in-progress JIRA tickets** — no update past the configured
+  threshold in **business days** (defaults 3 🟡 stale / 5 🔴 very-stale, from
+  `config/main.json`'s `open_work.jira` block). Business days exclude
+  weekends, so a ticket last updated Friday and read the following Monday is
+  only 1 business day old, not 3 calendar days.
+
+`list-open-work.js` already applies the Monday/weekday selection rule and
+returns the result pre-selected in `data.prs` / `data.tickets` (each item
+tagged `fresh`/`stale`/`very-stale`), plus `data.mondayInventory`,
+`data.suppressedFreshCount`, and `data.isEmpty`. The orchestrator only
+renders whichever list comes back — it never re-filters or re-sorts (both
+lists arrive most-stale-first).
+
+**Non-Monday (`data.mondayInventory` is `false`) — stale-only:** Render
+`data.prs` and `data.tickets` as-is (fresh items are already withheld by the
+script). Group by source — PRs first, then tickets — most-stale-first within
+each group. Each line gets a deep link (the item's own `url` — never
+construct one) and its age:
+
+```
+## 🧭 Your Open Work
+<!-- AGENT:open_work -->
+- 🔴 **[octo-org/web-frontend #499 — Fix flaky pagination test](https://github.com/octo-org/web-frontend/pull/499)** — no activity 7d
+- 🟡 **[octo-org/payments-service #1204 — Handle idempotency keys](https://github.yourcompany.com/octo-org/payments-service/pull/1204)** — no activity 3d
+- 🔴 **[SITES-142 — Investigate flaky checkout webhook retries](https://jira.yourcompany.com/browse/SITES-142)** (In Review) — no update 5 business days
+- 🟡 **[SITES-210 — Migrate ledger schema to v3](https://jira.yourcompany.com/browse/SITES-210)** (In Progress) — no update 3 business days
+<!-- /AGENT:open_work -->
+```
+
+**Monday (`data.mondayInventory` is `true`) — full inventory ("Open Work
+Review"):** Render *all* of `data.prs` and `data.tickets`, including `fresh`
+items, as a prioritised worklist — grouped by source (PRs, then tickets),
+most-stale-first within each group, every item still flagged (🟢 fresh / 🟡
+stale / 🔴 very-stale) so the stale ones still stand out within the fuller
+list. Head the section "Open Work Review" instead of "Your Open Work" so it
+reads as the weekly checkpoint it is:
+
+```
+## 🧭 Open Work Review
+<!-- AGENT:open_work -->
+- 🔴 **[octo-org/web-frontend #499 — Fix flaky pagination test](https://github.com/octo-org/web-frontend/pull/499)** — no activity 7d
+- 🟡 **[octo-org/payments-service #1204 — Handle idempotency keys](https://github.yourcompany.com/octo-org/payments-service/pull/1204)** — no activity 3d
+- 🟢 **[octo-org/web-frontend #501 — Add retry backoff to sync job](https://github.com/octo-org/web-frontend/pull/501)** — updated today
+- 🔴 **[SITES-142 — Investigate flaky checkout webhook retries](https://jira.yourcompany.com/browse/SITES-142)** (In Review) — no update 5 business days
+- 🟡 **[SITES-210 — Migrate ledger schema to v3](https://jira.yourcompany.com/browse/SITES-210)** (In Progress) — no update 3 business days
+- 🟢 **[SITES-100 — Add pagination to search results endpoint](https://jira.yourcompany.com/browse/SITES-100)** (In Progress) — updated 1 business day ago
+<!-- /AGENT:open_work -->
+```
+
+Draft PRs (`isDraft: true`) are de-emphasised, not hidden — flag them
+inline, e.g. append "(draft)" after the title, since a draft that is
+WIP-by-intent is a different signal than a ready PR stuck waiting on a merge.
+For JIRA tickets, show the **concrete status** (`status`, e.g. "In Review")
+in parentheses — never the statusCategory — since that's the actionable
+detail ("it's stuck in review", not just "it's in progress").
+
+**Empty inventory (AC5):** When `data.isEmpty` is `true` (no open PRs AND no
+in-progress tickets at all — checked before any staleness filtering, so this
+is the same on Mondays and every other day), render one line instead of
+empty group headers, on either cadence:
+
+```
+## 🧭 Your Open Work
+<!-- AGENT:open_work -->
+No open PRs or in-progress tickets.
+<!-- /AGENT:open_work -->
+```
+
+**Section suppression (non-Monday only):** when `data.isEmpty` is `false`
+but `data.mondayInventory` is also `false` and both `data.prs` and
+`data.tickets` come back empty (i.e. everything was fresh and withheld —
+`data.suppressedFreshCount > 0`), omit the "Your Open Work" section entirely
+— same rule as every other tool. This suppression never applies on Mondays:
+the full inventory always has something to render when `data.isEmpty` is
+`false`, since fresh items are included. If `list-open-work.js` reported
+errors (e.g. a GitHub surface unreachable, or JIRA auth failure), keep the
+section suppressed unless there are items to show from the *other* source
+(stale-only on weekdays, any staleness on Mondays), but still add a one-line
+note to the daily note footer with the error, mirroring the
+stale-config-warning pattern.
+
+**No double-counting with the recently-updated JIRA section (AC4, spec
+009-02):** the `morning-jira` sub-agent's section (Step 1) covers tickets
+**updated within the lookback window** (assigned/commented/mentioned); on a
+normal day this Open Work section covers only in-progress tickets that are
+stale **because** they fall outside that window. By construction these two
+sets can't overlap on a non-Monday run — a ticket can't be both "updated in
+the last N hours" and "stale for 3+ business days" at once — but if the
+lookback window and staleness threshold are ever configured close enough to
+overlap, de-dupe by JIRA key: skip an entry in this section if its `key`
+already appears in the JIRA section's items for this run. This de-dupe rule
+applies to `stale`/`very-stale` entries only. On a **Monday** full-inventory
+run, a `fresh` ticket in this section legitimately can also appear in the
+JIRA section if it was updated within the lookback window — that overlap is
+expected (the two sections answer different questions, "what moved" vs.
+"the whole open-work picture") and is not a double-count to de-dupe away.
+
+**Read-only:** this section only reports; the orchestrator never comments
+on, merges, closes, transitions, or otherwise modifies any PR or ticket it
+lists.
+
 **Re-run / smart merge:** If the file already exists, replace only content between matching `<!-- AGENT:{key} -->` / `<!-- /AGENT:{key} -->` anchors. Preserve everything else (including user edits, checked checkboxes).
 
 ## Step 4 — Clean up old drafts, then stage new ones
@@ -181,7 +312,7 @@ For each tool that identified draft targets in Step 2, stage drafts using the to
 | Confluence | None | Read-only — no drafts |
 | Outlook | **Browser** (deferred) | Claude in Chrome to compose draft email (Phase 3) |
 
-See: `docs/decisions/ADR-002-draft-generation-and-delivery.md` (JIRA/GitHub/Confluence/Outlook
+See: `docs/decisions/adr-0002-draft-generation-and-delivery.md` (JIRA/GitHub/Confluence/Outlook
 rows) and [ADR-0005](../../docs/decisions/adr-0005-slack-plugin-native-drafts.md) (Slack row,
 superseding ADR-002's DM-to-self mechanism for Slack only).
 

@@ -120,7 +120,7 @@ state is enough. Never imply full workspace coverage.
 Per [ADR-0005](../../docs/decisions/adr-0005-slack-plugin-native-drafts.md)
 (Accepted), native Slack drafts (`slack_send_message_draft`) are the primary
 reply-staging mechanism for Slack, superseding the DM-to-self mechanism in
-[ADR-002](../../docs/decisions/ADR-002-draft-generation-and-delivery.md)'s
+[ADR-002](../../docs/decisions/adr-0002-draft-generation-and-delivery.md)'s
 Slack row (JIRA/GitHub/Confluence in ADR-002 are unaffected).
 
 **Skip this entire step unless `config/slack.json`'s `draft_enabled` is

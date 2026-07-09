@@ -25,10 +25,11 @@ rendered note's Source Results footer. Hung-source timeout isolation was
 explicitly out of scope for `003-03` and remains unresolved — the AI Radar
 subprocess call in `scripts/lib/brief/ai-radar.js` still has no timeout.
 
-### Decision: Outlook and meeting artifact access
-**Deferred:** Outlook email, calendar, Teams transcripts, recap emails, and recording-only links still need a confirmed access path.
+### ~~Decision: Outlook and meeting artifact access~~ — RESOLVED 2026-07-04
+~~**Deferred:** Outlook email, calendar, Teams transcripts, recap emails, and recording-only links still need a confirmed access path.~~
 **Current options:** M365/Outlook connector if available; Microsoft Graph scripts; browser fallback for unavailable artifacts.
 **Resolution trigger:** First spec that revisits Outlook or meeting summaries.
+**Resolved by:** [ADR-0008: Meeting artifact pipeline separation](decisions/adr-0008-meeting-artifact-pipeline-separation.md).
 
 ### Resolved: Legacy Cowork skill layer
 **Resolved by:** Spec `004`, slice `004-01` — the first source-area spec to
@@ -77,6 +78,43 @@ digest section in `skills/morning-slack/SKILL.md`. Same disposition as
 fetcher); real test evidence captured instead at
 `docs/specs/004-slack-plugin-triage/slice-02-draft-test-2026-07-01.md`.
 Formal schemas/snapshots remain deferred to spec `008-02`.
+**Interim note (2026-07-02):** Slice `007-01` rewrote `skills/morning-jira/SKILL.md`
+to MCP-first (Jira MCP tools primary, `scripts/fetch-jira.js` fallback) and added
+the "Jira: MCP-First With Bounded Fallbacks" architecture subsection. Two config
+contract items were found and deliberately deferred here: `config/jira.example.json`
+lacks a `draft_enabled` key (the SKILL's Step 3 draft gate) and its `note` still
+says "Copy to `jira-filters.json`"; and `scripts/fetch-jira.js:278,285` emit
+config-missing errors naming the retired `skills/morning-jira/config/jira-filters.json`
+path (the loader + SKILL use repo-root `config/jira.json`). Same disposition as the
+`004` slices — SKILL prose is the source of truth; the example-file/script config
+contract cleanup stays deferred to spec `008-02`.
+
+**Interim note (2026-07-02):** Slice `007-02` rewrote `skills/morning-confluence/SKILL.md`
+to MCP-first read-only (Confluence/wiki MCP tools primary, `scripts/fetch-confluence.js`
+fallback), removed the Confluence local-MD draft path (policy alignment — Confluence
+is read-only), and added the "Confluence: MCP-First With Bounded Fallbacks"
+architecture subsection. Deferred config/script contract items found:
+`scripts/fetch-confluence.js:517,524` and `config/confluence.example.json:20-27`
+still reference the legacy `confluence-spaces.json` filename (the loader + SKILL use
+repo-root `config/confluence.json`); `scripts/stage-local-draft.js:10` JSDoc still
+lists `confluence` as a valid draft `tool` (stale after the removal); and
+`config/main.example.json`'s Confluence block still carries `draft_method: "local_md"`
+/ `draft_enabled` + a page-comment-draft note that now contradict the
+read-only-no-draft outcome. Same disposition — SKILL prose is the source of truth;
+the example-file/script config-contract cleanup stays deferred to spec `008-02`.
+
+**Interim note (2026-07-02):** Slice `007-03` rewrote the **corporate** GitHub gather
+path in `skills/morning-github/SKILL.md` to MCP-first (corp GitHub MCP tools primary,
+`scripts/fetch-github-corp.js` fallback), preserved the github.com path and the
+spec-005/ADR-0007 review pipeline unchanged, and added the "Corporate GitHub:
+MCP-First With Bounded Fallbacks" architecture subsection. Deferred config/contract
+items: `config/github.example.json` / `config/main.example.json` `gather_method`
+taxonomy has no plugin/MCP method for corp; and the spec-005 review-artifact path
+`output/github-reviews/` is now a de-facto contract surface not yet enumerated under
+`docs/architecture.md`'s "Contract surfaces". Same disposition — SKILL prose is the
+source of truth; the example-config/contract-surface cleanup stays deferred to spec
+`008-02`.
+
 **Reconciliation note (2026-06-19):** Source heading nesting is intentionally
 plain string rewriting for the first source. Harden Markdown nesting when a
 later source emits fenced code or literal `#` lines, or when formal snapshots
@@ -114,7 +152,10 @@ found but explicitly left out of scope: `config/main.example.json`'s
 still reflect the pre-plugin gather taxonomy and don't model the plugin as a
 gather method at all — `morning-slack/SKILL.md` doesn't consult those fields.
 Left for spec `008`'s script-and-config-contracts slice, which is already
-scoped to reconcile config/script contracts. A second residual gap: the root
+scoped to reconcile config/script contracts. **Resolved (2026-07-02, spec
+008-02):** the Slack fields now read `gather_method: "plugin"` /
+`gather_fallback: "script"` with a note that they are advisory
+(`morning-slack/SKILL.md` remains the source of truth). A second residual gap: the root
 `CLAUDE.md` (legacy project bible, out of scope for this slice's deliverable
 list) still references `stage-slack-draft.js` at its per-tool Draft column
 and its Draft delivery rule paragraph — left for spec `008`'s legacy-Cowork-doc
@@ -128,6 +169,21 @@ triage slice rather than touched here.
 ### Resolved: AI Radar source list
 **Resolved by:** Spec `002`, slice `002-01`.
 **Resolution:** AI Radar v1 keeps a small enabled default source list and leaves broader, static, paper, newsletter, social/trending, and trend-engine examples disabled with explicit `deferred_reason` notes.
+
+### Decision: Meeting-summary processing-pipeline duplication
+**Deferred:** `scripts/summarize-meeting.js` has two structurally near-identical
+fetch/summarize/dedup/write control-flow pairs — `runProcess`/`processRecapEmails`
+(used by `--search` mode) and `processSummarizableMeetings` (used by `--brief`
+mode, added in slice `006-02`). The duplication predates `006-02` (which split
+discovery from processing without also collapsing the two processing paths) and
+was flagged as non-blocking by that slice's craft review.
+**Current options:** Leave as-is (two modes have genuinely different discovery
+inputs, some duplication may be acceptable); extract a shared "download + summarize
++ dedup + write" helper parameterized by source type; unify `--search` mode onto
+the same inventory-based pipeline as `--brief` (bigger scope, would need
+`--search` to build its own ad-hoc inventory).
+**Resolution trigger:** A slice that next touches `scripts/summarize-meeting.js`'s
+processing logic, or a dedicated cleanup slice under spec `008`-style housekeeping.
 
 ## Operations
 
@@ -150,3 +206,32 @@ Node test command (`npm test` / `.jig/test-command`) for focused helper tests.
 A broader CI policy remains deferred.
 **Reconciliation note (2026-06-19):** CLI envelope/wiring tests remain a
 follow-up; this slice verifies the CLI path with a fixture-backed smoke run.
+
+## Open-work radar (spec 009) — deferred follow-ups
+
+### Deferred: architecture.md module-boundary wording
+**Deferred by:** spec `009`, slice `009-01`.
+**Context:** The "Module boundaries" section still names `scripts/fetch-*.js` as
+the source-fetcher convention; the `list-*.js` runner + `lib/github/*` pure-
+transform pattern (spec 005, extended by 009) has outpaced it.
+**Resolution trigger:** Next edit to the module-boundaries section, or a
+docs-consolidation slice.
+
+### Deferred: shared `loadGithubSection` helper
+**Deferred by:** spec `009`, slice `009-01`.
+**Context:** `loadSection` in `list-open-prs.js` is the 3rd site of the
+`loadConfig('github')` + key-fallback pattern (also `fetch-github-com.js`,
+`fetch-github-corp.js`), but this variant adds `altKeys` + `DEFAULT_CONFIG`.
+**Resolution trigger:** A 4th caller, or the next change touching GitHub config
+loading (ADR-0002 rule-of-three).
+
+### Deferred: extract shared per-surface gather glue (rule-of-three fired)
+**Deferred by:** spec `009`, slice `009-03`.
+**Context:** `scripts/list-open-work.js` is now the THIRD inline copy of the
+GitHub surface-gather glue (also `list-open-prs.js`, `list-review-requests.js`)
+and a 2nd+ copy of the JIRA error-message mapping (also `list-inprogress.js`).
+This is the "extract on the third caller" trigger point; deferred here only to
+avoid modifying the already-DONE 009-01/009-02 sibling runners inside 009-03.
+**Resolution trigger:** A dedicated refactor slice, or the next change touching
+any of these runners — extract a shared `gatherGithubSurfaces()` + `mapJiraError()`
+(and fold in the deferred `loadGithubSection` from 009-01) then update all callers.

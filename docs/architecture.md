@@ -108,6 +108,133 @@ capability.
   outside the lookback window, unresolved, or excluded by design — see
   `skills/morning-slack/SKILL.md`'s Coverage section format.
 
+### Jira: MCP-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Mechanics (spec `007`, documented by slice `007-01`):**
+- **Gather (primary):** the Jira MCP tools available in the running session,
+  using issue-search for the three-pass scan (assigned / commented / mentioned)
+  and issue-read for full-ticket context. Scoped to `config/jira.json`'s
+  `projects`.
+- **Gather (fallback):** `scripts/fetch-jira.js --brief`/`--search`/`--context`,
+  tried only when the MCP tools are unavailable. It runs the same three-pass
+  JQL scan over the same `projects` scope and emits the standard envelope
+  `{ ok, tool, mode, timestamp, data, errors }`; on `ok: false` the Jira
+  section reports "unavailable — <reason>" rather than failing silently.
+  `skills/morning-jira/SKILL.md` reports which path ran each time; never
+  assume it silently.
+- **Gather (last resort):** browser navigation to the JIRA web UI via Claude in
+  Chrome, read-only ("My Issues", recent activity, notification bell).
+- **Draft (single path across all gather paths):** local Markdown fragments via
+  `scripts/stage-local-draft.js` ([ADR-002](decisions/adr-0002-draft-generation-and-delivery.md)),
+  gated on `config/jira.json`'s `draft_enabled`. JIRA has no comment-draft
+  persistence, so no browser or MCP drafting is used; the local-MD path does
+  not depend on the MCP tools and still runs after a script-fallback gather.
+- **Read-only / never-change-status guarantee:** the workflow never changes a
+  Jira status, transitions an issue, or adds a comment directly into Jira (no
+  MCP comment-add, no browser submit). All reply staging is local-MD fragments
+  surfaced in the daily note for human review — see
+  [Review-First Safety](#review-first-safety) below.
+- **Coverage is always user-facing:** the daily note's Jira section reports
+  which gather path ran and which configured projects were quiet, active
+  outside the lookback window, or unreachable — see
+  `skills/morning-jira/SKILL.md`'s Coverage section format.
+
+### Confluence: MCP-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Mechanics (spec `007`, documented by slice `007-02`):**
+- **Gather (primary):** the Confluence/wiki MCP tools available in the running
+  session, using page-search for recently-modified watched pages and
+  mention/search hits, and page-read for full page/comment context. Scoped to
+  `config/confluence.json`'s `spaces`.
+- **Gather (fallback):** `scripts/fetch-confluence.js --brief`/`--search`,
+  tried only when the MCP tools are unavailable. It runs the same two-pass scan
+  (recently-modified pages + mention comments) over the same `spaces` scope,
+  applies the config pre-filters (`exclude_title_patterns`,
+  `skip_if_only_mentions` + `my_context_keywords`, `min_change_chars`), enriches
+  each page with a `changeSummary`/`totalChange`, and emits the standard
+  envelope `{ ok, tool, mode, timestamp, data, errors }`; on `ok: false` the
+  Confluence section reports "unavailable — <reason>" rather than failing
+  silently. `skills/morning-confluence/SKILL.md` reports which path ran each
+  time; never assume it silently.
+- **Gather (last resort):** browser navigation to the Confluence web UI via
+  Claude in Chrome, read-only ("Recently Updated" per watched space,
+  notification bell for @mentions).
+- **Read-only guarantee (no drafts):** Confluence is strictly read-only in this
+  project — the workflow never edits a page, never adds a comment (no MCP
+  page/comment write, no browser submit), and stages **no draft** of any kind.
+  There is no drafting step for Confluence: the earlier local-MD comment-draft
+  path (`stage-local-draft.js`) was removed in slice `007-02` as a policy
+  alignment, since Confluence output is gather + triage + render only — see
+  [Review-First Safety](#review-first-safety) below.
+- **Minimal state:** page-version tracking is a plain, inspectable JSON file
+  (`~/.claude/skills/morning-assistant/state/wiki-state.json`) — a `lastRun`
+  timestamp and a page id → version map. No database, no complex state; the next
+  run diffs against it to compute change summaries.
+- **Coverage is always user-facing:** the daily note's Confluence section
+  reports which gather path ran and which configured spaces were quiet, active
+  outside the lookback window, or unreachable — see
+  `skills/morning-confluence/SKILL.md`'s Coverage section format.
+
+### Corporate GitHub: MCP-First With Bounded Fallbacks
+
+**Principle:** A fallback earns its place by covering a gap the primary path
+can't; it should never grow a second, competing implementation of the same
+capability.
+
+**Scope note:** this subsection covers the **corporate** GitHub instance only.
+The github.com instance is unchanged — it stays on the Cowork GitHub connector
+with `scripts/fetch-github-com.js` as its script fallback. Slice `007-03`
+migrated only the corporate gather path to MCP-first.
+
+**Mechanics (spec `007`, documented by slice `007-03`):**
+- **Gather (primary):** the corporate GitHub MCP tools available in the running
+  session, using notification-list for review requests / mentions / assignments
+  / authored-PR activity, PR-list + PR-context/diff/checks for review-requested
+  and authored PRs, check-runs / Prow-job status for failed CI, and issue-read
+  for mentioned/assigned issues. Scoped to `config/github.json`'s
+  `github_corp.orgs`.
+- **Gather (fallback):** `scripts/fetch-github-corp.js --brief`/`--search`/`--context`,
+  tried only when the corp MCP tools are unavailable. It runs the same
+  notification + PR/issue + failed-check scan over the same `github_corp.orgs`
+  scope and emits the standard envelope
+  `{ ok, tool, mode, timestamp, data, errors }`; on `ok: false` the Corporate
+  GitHub section reports "unavailable — <reason>" rather than failing silently.
+  `skills/morning-github/SKILL.md` reports which path ran each time; never
+  assume it silently. The fallback is a documented subset of the primary path,
+  not a second, competing implementation.
+- **Gather (last resort):** browser navigation to the corporate GitHub web UI
+  via Claude in Chrome, read-only (notifications inbox, review-request queue,
+  your open PRs).
+- **Failed jobs are actionable:** failed CI / Prow items carry the failing job
+  name(s) and a link to the run (or checks tab), so the user can decide whether
+  to investigate without a bare "CI failing".
+- **Read-first guarantee (daily brief path):** the workflow never merges,
+  pushes, closes, approves, or requests changes — for either instance and
+  regardless of which gather path ran. See
+  [Review-First Safety](#review-first-safety) below.
+- **Relationship to spec 005 / ADR-0007 (unchanged by this slice):** whichever
+  corp gather path runs, its notifications and PR/issue context feed the **same**
+  spec-005 review-first pipeline (`scripts/list-review-requests.js` →
+  `scripts/fetch-github-{com,corp}.js --context` → the `pr-review` skill →
+  `scripts/write-review-artifact.js` → opt-in
+  `scripts/stage-review-if-enabled.js`). ADR-0007's staging policy — local
+  review artifacts under `output/github-reviews/` by default, opt-in native
+  GitHub *pending* review per repo/run that is never submitted — is **not**
+  changed by 007-03; the MCP-first migration only affects the gather/context
+  path feeding that pipeline.
+- **Coverage is always user-facing:** the daily note's Corporate GitHub section
+  reports which gather path ran and which configured orgs were quiet, active
+  outside the lookback window, or unreachable — see
+  `skills/morning-github/SKILL.md`'s Coverage section format.
+
 ### Review-First Safety
 
 **Principle:** The assistant prepares work; the user decides and submits.
@@ -140,7 +267,7 @@ debugging and portability fallback.
 - **Brief writer:** `scripts/write-brief.js` composes available source sections
   into the dated Daily Brief Markdown note and reports per-source results in the
   standard JSON envelope.
-- **Source libraries:** `scripts/lib/**` contains narrow helpers such as config loading, Graph auth, GitHub helpers, and AI Radar fetch/triage/render modules.
+- **Source libraries:** `scripts/lib/**` contains narrow helpers such as config loading, Graph auth, GitHub helpers, AI Radar fetch/triage/render modules, and meeting-artifact discovery (`scripts/lib/meetings/**` — recap-email search, the pure artifact-inventory transform, and the pure summarizable-meeting selection transform, per [ADR-0008](decisions/adr-0008-meeting-artifact-pipeline-separation.md)). The open-work radar (spec 009) follows the same shape: side-effect-free source helpers in `scripts/lib/github/open-prs.js` and `scripts/lib/jira/{query,staleness}.js` (network fetch + field-mapping in `query.js`, pure staleness classification alongside), consumed by thin `scripts/list-*.js` runners — never by importing a `fetch-*.js` script, whose `main()` runs at module load.
 - **Skills / orchestration docs:** `skills/**` records legacy source-area workflows and may become reference material as Codex plugins replace pieces.
 - **Config:** `config/*.example.json` documents personal configuration shape; real configs remain ignored.
 - **Output and fixtures:** `output/**` is generated and ignored; `tests/fixtures/**` stores reproducible examples for review and regression checks.
@@ -170,8 +297,8 @@ This project is near-stateless. It owns local configuration, small caches, gener
 
 <!-- elicited: 2026-06-18 / status: filled -->
 
-- **CLI output envelopes** (internal data shape; recommended artifact: JSON Schema under `docs/contracts/script-envelope.schema.json`, not yet committed): every helper script writes structured JSON to stdout and diagnostic text to stderr.
-- **Config files** (config/env surface; recommended artifact: JSON Schema per config family under `docs/contracts/config/*.schema.json`, not yet committed): examples exist under `config/*.example.json`.
+- **CLI output envelopes** (internal data shape): every helper script writes a structured JSON envelope to stdout and diagnostic text to stderr. Contract: [`docs/contracts/script-envelope.schema.json`](contracts/script-envelope.schema.json) (JSON Schema draft 2020-12), validated by `npm test` (`tests/script-envelope.schema.test.js`) against the `envelope()` producer and the source fixtures. See [`docs/contracts/README.md`](contracts/README.md).
+- **Config files** (config/env surface): the committed `config/*.example.json` templates **are** the config contract for now — per-config JSON Schemas are deliberately deferred for a single-user tool with one consumer per family (rationale + revisit trigger in [`docs/contracts/README.md`](contracts/README.md#config-files--examples-remain-the-contract-for-now)).
 - **Markdown digest sections** (internal rendering contract; recommended artifact: fixture snapshots in `tests/fixtures/`, partially present for AI Radar): rendered sections should stay stable enough for Obsidian review.
 - **Daily Brief notes** (user-facing composition contract; recommended artifact:
   fixture-backed smoke output, formal snapshots deferred): the brief shell writes
@@ -181,6 +308,38 @@ This project is near-stateless. It owns local configuration, small caches, gener
 
 No HTTP API, event bus, RPC, GraphQL schema, or database schema is currently exposed.
 
+## Legacy documentation
+
+<!-- disposition recorded 2026-07-02 by spec 008-03 -->
+
+The project was revived from an older Cowork + Claude-in-Chrome plan into the
+current Codex/jig, MCP/plugin-first workflow (see [ADR-0003](decisions/adr-0003-codex-jig-sdd-workflow.md),
+[ADR-0004](decisions/adr-0004-mcp-plugin-first-source-integration.md)). Several
+root docs predate that shift. This table is the canonical disposition; **removals
+are deliberately deferred to a separate reviewed slice** (spec 008-03 only
+records dispositions and reduces the sharpest contradictions via banners — it
+deletes nothing).
+
+The **current source of truth** is: [`docs/product-vision.md`](product-vision.md)
+(why/for whom), this `docs/architecture.md` (mechanics/boundaries),
+[`docs/specs/`](specs/README.md) (active work + lifecycle), and
+[`docs/decisions/`](decisions/README.md) (ADRs). `AGENTS.md` is the agent primer.
+
+| Surface | Disposition | Note |
+|---|---|---|
+| `CLAUDE.md` | **Keep as reference; annotated** | Legacy "project bible." Its safety constraints, code/commit conventions, and env-var list remain valid; its Cowork+browser architecture, Phase 0–8 plan, `~/.claude/skills` runtime, browser-first gather, and `stage-slack-draft.js` Slack drafting are **superseded** (MCP/plugin-first per ADR-0004; Slack native drafts per ADR-0005; jig specs replace the phase plan). A legacy banner now redirects to the current source of truth. A full port of the still-valid parts into `docs/` is a candidate for a future slice. |
+| `README.md` | **Keep; annotated** | User-facing readme. The helper-script usage examples and safety constraints are current; the "Three Layers / browser draft staging" architecture, the Cowork/Claude-in-Chrome getting-started, and the Phase 0–8 "Slice roadmap" are Cowork-era and superseded by the jig status board. Banner added; a rewrite to the current model is deferred. |
+| `docs/morning-assistant-v2-vision.md` | **Keep as reference; annotated** | Original vision & phase plan, superseded by `docs/product-vision.md` + the specs. Retained for historical design rationale. Banner added pointing at the current vision/architecture. |
+| `specs/` (root, v1 API specs) | **Keep as reference** | Feed helper-script logic; migrate per-slice only when a jig spec deliberately supersedes a file (already the standing policy in `AGENTS.md` and `product-vision.md`). No change needed. |
+| `skills/**` | **Keep — active layer** | The running skill layer, already updated to MCP/plugin-first by specs 004/005/007. `morning-spike` is a Phase-0 validation harness — keep as reference, retire-later. Not contradictory; no banner. |
+| `brief.md` (root) | **Keep** | jig scaffold report (wizard-generated). Historical scaffold artifact; harmless. |
+
+This **resolves** the `product-vision.md` open question "Which legacy Cowork
+skills should be retired, kept as reference, or ported?" — skills are kept as the
+active layer (already MCP/plugin-first); the Cowork-era *narrative docs*
+(`CLAUDE.md`, `README.md`, the vision doc) are kept-as-reference with banners
+until a future slice ports or removes them.
+
 ## Open questions
 
-Deferred items live in [refinement-todo.md](refinement-todo.md). Current architecture questions include Outlook/M365 access, Slack plugin reliance, and how much legacy Cowork material to migrate. (GitHub review staging policy is resolved by [ADR-0007](decisions/adr-0007-review-first-github-pr-automation.md).)
+Deferred items live in [refinement-todo.md](refinement-todo.md). Current architecture questions include Outlook/M365 access and Slack plugin reliance. (GitHub review staging policy is resolved by [ADR-0007](decisions/adr-0007-review-first-github-pr-automation.md); the legacy-Cowork-doc disposition is resolved in § Legacy documentation above by spec 008-03.)

@@ -357,6 +357,60 @@ export async function runSearch(baseUrl, token, instanceConfig, query, instanceL
 }
 
 /**
+ * Fetch the user's own open, authored, non-merged pull requests via the
+ * GitHub search API — `is:open is:pr author:@me`, scoped to configured orgs
+ * (same org-scoping approach as runSearch). Read-only: no PR is modified.
+ *
+ * Returns the raw search-issue items unmodified; staleness classification
+ * and normalization happen downstream in lib/github/open-prs.js's
+ * extractOpenPrs — this function only fetches.
+ *
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {object} instanceConfig - Config with an `orgs` array
+ * @param {string} instanceLabel - "github.com" or "corporate"
+ * @param {string} toolName - Tool name for error logging
+ * @returns {Promise<{ instance: string, prs: object[], errors: string[] }>}
+ * @throws {Error} Only when EVERY query fails (total instance failure) — the
+ *   caller (gatherSurface) then classifies it as auth/VPN/unreachable. A
+ *   partial failure (one org of several) is tolerated: surviving orgs' PRs are
+ *   returned and the failed org is reported in the `errors` array.
+ */
+export async function runOpenPrs(baseUrl, token, instanceConfig, instanceLabel, toolName) {
+  const orgs = instanceConfig.orgs ?? []
+  // One search query per configured org (org-scoped), or a single unscoped
+  // query when no orgs are configured. per_page is capped at 50 with no Link
+  // pagination — sufficient for a personal stale-PR view; revisit if slice
+  // 009-03's full Monday inventory needs to page a heavy multi-PR account.
+  const queries = orgs.length > 0
+    ? orgs.map(org => ({ scope: `org ${org}`, q: `is:open is:pr author:@me org:${org}` }))
+    : [{ scope: 'search', q: 'is:open is:pr author:@me' }]
+
+  const items = []
+  const errors = []
+  let firstError = null
+
+  for (const { scope, q } of queries) {
+    try {
+      const { data } = await githubGet(baseUrl, token, '/search/issues', { q, sort: 'updated', per_page: 50 })
+      items.push(...(data.items ?? []))
+    } catch (err) {
+      if (!firstError) firstError = err
+      errors.push(`${instanceLabel}: ${scope} query failed — ${err.message}`)
+      console.error(`[${toolName}] ${instanceLabel}: ${scope} query failed:`, err.message)
+    }
+  }
+
+  // Every query failed → total instance failure. Rethrow so gatherSurface can
+  // classify it (auth vs. unreachable). Partial failures fall through with
+  // whatever succeeded, plus per-org errors for the caller to surface.
+  if (errors.length === queries.length && firstError) throw firstError
+
+  console.error(`[${toolName}] ${instanceLabel}: found ${items.length} open authored PR(s)`)
+  return { instance: instanceLabel, prs: items, errors }
+}
+
+/**
  * Make an authenticated POST request to the GitHub API.
  * @param {string} baseUrl
  * @param {string} token

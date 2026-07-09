@@ -104,3 +104,12 @@ Deferred (non-gating) follow-ups:
 - **Module boundaries** — no-op. Additive pure module + CLI + shared helpers;
   no boundary or public-contract break.
 
+## Amendments
+
+- **2026-07-02 (spec 008-01):** The deferred follow-up above —
+  "`discard-github-review.js` still cites ADR-002 in its header … tidy on a
+  future pass" — is resolved. Slice 008-01 renamed the ADR files to canonical
+  `adr-000N-*.md` and swept the header `Reference:` comment in
+  `scripts/discard-github-review.js` (and three sibling stagers) to
+  `adr-0002-draft-generation-and-delivery.md`. No decision content changed;
+  original prose preserved above.
