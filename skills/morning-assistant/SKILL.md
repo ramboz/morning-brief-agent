@@ -6,12 +6,13 @@ allowed-tools: bash, computer
 
 # Morning Assistant (Orchestrator)
 
-You run in two modes. Detect which applies, then follow the corresponding workflow.
+You run in two modes. Detect which applies, then follow the corresponding workflow. A third path delegates topic-scoped requests to a dedicated skill.
 
 ## Detect Mode
 
 **Morning Brief** — user says "Run my morning brief", "morning brief", "daily brief", or similar.
 **Deep Dive** — user asks a specific question: "What's the latest on Project X?", "Catch me up on ENG-482", "What has Alice been working on?", etc.
+**Topic Status** (delegate) — user asks for a focused brief on a defined track: "CWV/ASO status", "topic status: <id>", "what moved on CWV today?". When the request matches a topic id or `name` in `config/topics.json`, delegate to the **morning-topic-status** skill rather than running Morning Brief or Deep Dive yourself.
 
 ---
 

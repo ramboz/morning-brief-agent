@@ -1,0 +1,16 @@
+{
+  "_comment": "Topic-scoped daily status definitions. Each entry produces a daily brief covering one focused area, drawn from a custom JIRA JQL and a list of Slack channel IDs. Used by the morning-topic-status skill.",
+  "topics": {
+    "cwv-aso": {
+      "name": "CWV in ASO",
+      "jira": {
+        "jql": "project in (SITES, ASO) and (component in componentsWithString(\"cwv\") or labels in (cwv, Opy-CWV))",
+        "search_url": "https://jira.corp.adobe.com/issues/?jql=project%20in%20(SITES%2C%20ASO)%20and%20(component%20in%20componentsWithString(%22cwv%22)%20or%20labels%20in%20(cwv%2C%20Opy-CWV))%20ORDER%20BY%20updatedDate%20DESC"
+      },
+      "slack": {
+        "channels": ["C08A1K0U74P"]
+      },
+      "lookback_hours": 24
+    }
+  }
+}
