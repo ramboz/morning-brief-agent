@@ -16,6 +16,11 @@
       "stale_days": 3,
       "very_stale_days": 7,
       "note": "Days since a PR's last activity (updated_at) before it is tagged 🟡 stale / 🔴 very-stale in the Open Work brief section (spec 009-01). Defaults used if this block is absent."
+    },
+    "jira": {
+      "stale_business_days": 3,
+      "very_stale_business_days": 5,
+      "note": "Business days (weekends excluded) since an in-progress ticket's last update before it is tagged 🟡 stale / 🔴 very-stale in the Open Work brief section (spec 009-02). Defaults used if this block is absent."
     }
   },
   "tools": {

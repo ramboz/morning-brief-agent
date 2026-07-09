@@ -1,0 +1,54 @@
+[
+  {
+    "key": "SITES-100",
+    "summary": "Add pagination to search results endpoint",
+    "type": "Story",
+    "status": "In Progress",
+    "priority": "Medium",
+    "assignedToMe": true,
+    "reason": "assigned",
+    "labels": [],
+    "updatedAt": "2026-07-10T15:00:00Z",
+    "recentComments": [],
+    "url": "https://jira.example.com/browse/SITES-100"
+  },
+  {
+    "key": "SITES-142",
+    "summary": "Investigate flaky checkout webhook retries",
+    "type": "Bug",
+    "status": "In Review",
+    "priority": "High",
+    "assignedToMe": true,
+    "reason": "assigned",
+    "labels": ["backend"],
+    "updatedAt": "2026-07-06T09:00:00Z",
+    "recentComments": [],
+    "url": "https://jira.example.com/browse/SITES-142"
+  },
+  {
+    "key": "SITES-210",
+    "summary": "Migrate ledger schema to v3",
+    "type": "Task",
+    "status": "In Progress",
+    "priority": "Medium",
+    "assignedToMe": true,
+    "reason": "assigned",
+    "labels": [],
+    "updatedAt": "2026-07-08T09:00:00Z",
+    "recentComments": [],
+    "url": "https://jira.example.com/browse/SITES-210"
+  },
+  {
+    "key": "SITES-305",
+    "summary": "Draft new ingestion pipeline design doc",
+    "type": "Task",
+    "status": "In Review",
+    "priority": "Low",
+    "assignedToMe": true,
+    "reason": "assigned",
+    "labels": [],
+    "updatedAt": null,
+    "recentComments": [],
+    "url": "https://jira.example.com/browse/SITES-305"
+  }
+]

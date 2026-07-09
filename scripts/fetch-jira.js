@@ -17,125 +17,20 @@ import dotenv from 'dotenv'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs, loadConfig, envelope } from './lib/config.js'
-import { atlassianFetch } from './lib/atlassianFetch.js'
+import {
+  MAX_ISSUES,
+  stripJiraMarkup,
+  jiraGet,
+  paginateJql,
+  formatIssue
+} from './lib/jira/query.js'
 
 dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), '.env') })
 
 const TOOL = 'jira'
-const FIELDS = 'summary,status,priority,assignee,reporter,updated,comment,labels,issuetype,parent'
-const MAX_PAGES = 3
-const PAGE_SIZE = 50
-const MAX_COMMENTS = 3
-const MAX_COMMENT_CHARS = 300
-const MAX_ISSUES = MAX_PAGES * PAGE_SIZE
 
 /** @type {RegExp} Valid JIRA project key format */
 const PROJECT_KEY_RE = /^[A-Z][A-Z0-9]+$/
-
-/**
- * Strip JIRA wiki markup from a comment body.
- * @param {string} text - Raw comment body
- * @returns {string} Cleaned text
- */
-function stripJiraMarkup(text) {
-  if (!text) return ''
-  return text
-    .replace(/\{code[^}]*\}[\s\S]*?\{code\}/gi, '[code block]')
-    .replace(/\{noformat[^}]*\}[\s\S]*?\{noformat\}/gi, '[block]')
-    .replace(/\[~([^\]]+)\]/g, '@$1')
-    .replace(/\{[^}]+\}/g, '')
-    .trim()
-}
-
-/**
- * Make a GET request to the JIRA REST API with Bearer auth.
- * @param {string} baseUrl - JIRA base URL
- * @param {string} token - PAT token
- * @param {string} path - API path
- * @param {object} [params] - Query string parameters
- * @returns {Promise<object>} Parsed JSON response
- */
-async function jiraGet(baseUrl, token, path, params = {}) {
-  const qs = new URLSearchParams(
-    Object.entries(params).filter(([, v]) => v !== undefined && v !== null)
-  ).toString()
-  const fullPath = qs ? `${path}?${qs}` : path
-  return atlassianFetch(baseUrl, fullPath, token)
-}
-
-/**
- * Paginate a JQL search query, up to MAX_PAGES pages.
- * @param {string} baseUrl
- * @param {string} token
- * @param {string} jql
- * @returns {Promise<{issues: object[], truncated: boolean}>}
- */
-async function paginateJql(baseUrl, token, jql) {
-  const issues = []
-  let startAt = 0
-  let truncated = false
-
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const data = await jiraGet(baseUrl, token, '/rest/api/2/search', {
-      jql,
-      startAt,
-      maxResults: PAGE_SIZE,
-      fields: FIELDS
-    })
-
-    issues.push(...(data.issues ?? []))
-
-    if (issues.length >= data.total || data.issues.length < PAGE_SIZE) break
-
-    startAt += PAGE_SIZE
-
-    if (page === MAX_PAGES - 1 && issues.length < data.total) {
-      truncated = true
-    }
-  }
-
-  return { issues, truncated }
-}
-
-/**
- * Extract and clean recent comments from an issue.
- * @param {object} issue - Raw JIRA issue object
- * @returns {Array<{author: string, body: string, createdAt: string}>}
- */
-function extractRecentComments(issue) {
-  const comments = issue.fields?.comment?.comments ?? []
-  return comments
-    .slice(-MAX_COMMENTS)
-    .map(c => ({
-      author: c.author?.displayName ?? c.author?.name ?? 'unknown',
-      body: stripJiraMarkup(c.body ?? '').slice(0, MAX_COMMENT_CHARS),
-      createdAt: c.created
-    }))
-}
-
-/**
- * Map a raw JIRA issue to the output shape.
- * @param {object} issue - Raw JIRA issue
- * @param {string} reason - 'assigned' | 'commented' | 'mentioned'
- * @param {string} baseUrl - JIRA base URL
- * @returns {object} Formatted issue
- */
-function formatIssue(issue, reason, baseUrl) {
-  const f = issue.fields ?? {}
-  return {
-    key: issue.key,
-    summary: f.summary ?? '',
-    type: f.issuetype?.name ?? 'Unknown',
-    status: f.status?.name ?? 'Unknown',
-    priority: f.priority?.name ?? 'Unknown',
-    assignedToMe: reason === 'assigned',
-    reason,
-    labels: f.labels ?? [],
-    updatedAt: f.updated,
-    recentComments: extractRecentComments(issue),
-    url: `${baseUrl}/browse/${issue.key}`
-  }
-}
 
 /**
  * Run the brief mode: three-pass JQL scan (assigned, commented, mentioned).

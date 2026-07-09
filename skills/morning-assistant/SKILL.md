@@ -66,13 +66,16 @@ If `gather_fallback` is set and the primary method fails, try the fallback.
 
 **If a tool fails**: note the error, skip it, continue. Never let one tool block others.
 
-**Open Work radar (direct script call, no sub-agent):** Also run
-`node {scripts_path}/list-open-prs.js --brief` directly — the script already
-returns pre-classified JSON (`data.openPRs`, each tagged `fresh`/`stale`/
-`very-stale`), so there's no interpretation step for a sub-agent to add. This
-feeds the "Your Open Work" section in Step 3. Like every other tool, it fails
-independently: if both GitHub surfaces are unreachable, the section is simply
-omitted with the errors noted, and the rest of the brief runs unaffected.
+**Open Work radar (direct script calls, no sub-agent):** Also run
+`node {scripts_path}/list-open-prs.js --brief` and
+`node {scripts_path}/list-inprogress.js --brief` directly — both scripts
+already return pre-classified JSON (`data.openPRs` / `data.inProgress`, each
+tagged `fresh`/`stale`/`very-stale`), so there's no interpretation step for a
+sub-agent to add. Together they feed the "Your Open Work" section in Step 3.
+Like every other tool, each fails independently: if GitHub is unreachable,
+JIRA's in-progress list still runs (and vice versa); if both fail, the
+section is simply omitted with the errors noted, and the rest of the brief
+runs unaffected.
 
 ## Step 2 — Analyze and synthesize (Layer 1)
 
@@ -169,41 +172,68 @@ Exception: If a tool was enabled but *failed* (API error, timeout), include the 
 
 **Relative timestamps:** Use `timeAgo()` formatting throughout — both in action items and in per-tool sections. Examples: "2h ago", "yesterday", "3d ago".
 
-**"Your Open Work" section (slice 009-01 — GitHub PRs only so far):** This
-section surfaces the user's own open, authored PRs that have gone stale — no
-activity past the configured threshold (defaults 3d 🟡 stale / 7d 🔴
-very-stale, from `config/main.json`'s `open_work.pr` block; see
-`list-open-prs.js`). On a normal (non-Monday) day, list **only** the PRs
-tagged `stale` or `very-stale` from `data.openPRs` — fresh PRs are withheld
-entirely. Each line gets a deep link (the PR's own `url` — never construct
-one) and its age, e.g.:
+**"Your Open Work" section (slices 009-01 + 009-02 — GitHub PRs and JIRA
+in-progress tickets):** This section surfaces two independent stale-work
+signals, each with its own threshold and its own source script:
+
+- **Open, authored PRs** that have gone stale — no activity past the
+  configured threshold (defaults 3d 🟡 stale / 7d 🔴 very-stale, from
+  `config/main.json`'s `open_work.pr` block; see `list-open-prs.js`).
+- **Assigned, in-progress JIRA tickets** with no update — past the
+  configured threshold in **business days** (defaults 3 🟡 stale / 5 🔴
+  very-stale, from `config/main.json`'s `open_work.jira` block; see
+  `list-inprogress.js`). Business days exclude weekends, so a ticket last
+  updated Friday and read the following Monday is only 1 business day old,
+  not 3 calendar days.
+
+On a normal (non-Monday) day, list **only** the entries tagged `stale` or
+`very-stale` from `data.openPRs` and `data.inProgress` — fresh items are
+withheld entirely from both sources. Each line gets a deep link (the item's
+own `url` — never construct one) and its age, e.g.:
 
 ```
 ## 🧭 Your Open Work
 <!-- AGENT:open_work -->
 - 🔴 **[octo-org/web-frontend #499 — Fix flaky pagination test](https://github.com/octo-org/web-frontend/pull/499)** — no activity 7d
 - 🟡 **[octo-org/payments-service #1204 — Handle idempotency keys](https://github.yourcompany.com/octo-org/payments-service/pull/1204)** — no activity 3d
+- 🔴 **[SITES-142 — Investigate flaky checkout webhook retries](https://jira.yourcompany.com/browse/SITES-142)** (In Review) — no update 5 business days
+- 🟡 **[SITES-210 — Migrate ledger schema to v3](https://jira.yourcompany.com/browse/SITES-210)** (In Progress) — no update 3 business days
 <!-- /AGENT:open_work -->
 ```
 
 Draft PRs (`isDraft: true`) are de-emphasised, not hidden — flag them
 inline, e.g. append "(draft)" after the title, since a draft that is
 WIP-by-intent is a different signal than a ready PR stuck waiting on a merge.
+For JIRA tickets, show the **concrete status** (`status`, e.g. "In Review")
+in parentheses — never the statusCategory — since that's the actionable
+detail ("it's stuck in review", not just "it's in progress").
 
-**Section suppression applies here too:** when `data.openPRs` has no
-`stale`/`very-stale` entries, omit the "Your Open Work" section entirely —
-same rule as every other tool. If `list-open-prs.js` reported errors (e.g.
-one GitHub surface unreachable), keep the section suppressed unless there
-are stale PRs to show, but still add a one-line note to the daily note
-footer with the error, mirroring the stale-config-warning pattern.
+**Section suppression applies here too:** when neither `data.openPRs` nor
+`data.inProgress` has any `stale`/`very-stale` entries, omit the "Your Open
+Work" section entirely — same rule as every other tool. If either script
+reported errors (e.g. a GitHub surface unreachable, or JIRA auth failure),
+keep the section suppressed unless there are stale items to show from the
+*other* source, but still add a one-line note to the daily note footer with
+the error, mirroring the stale-config-warning pattern.
+
+**No double-counting with the recently-updated JIRA section (AC4):** the
+`morning-jira` sub-agent's section (Step 1) covers tickets **updated within
+the lookback window** (assigned/commented/mentioned); this Open Work section
+covers in-progress tickets that are stale **because** they fall outside that
+window. By construction these two sets can't overlap — a ticket can't be both
+"updated in the last N hours" and "stale for 3+ business days" at once — but
+if the lookback window and staleness threshold are ever configured close
+enough to overlap, de-dupe by JIRA key: skip an entry in this section if its
+`key` already appears in the JIRA section's items for this run.
 
 **Read-only:** this section only reports; the orchestrator never comments
-on, merges, closes, or otherwise modifies any PR it lists.
+on, merges, closes, transitions, or otherwise modifies any PR or ticket it
+lists.
 
 **Scope note — Monday full inventory deferred:** Today this section is
-stale-only, every day. The fuller Monday "Open Work Review" (fresh +
-stale PRs, plus JIRA in-progress tickets) described in spec 009's overview
-is **not yet implemented** — it lands in slice
+stale-only, every day, for both PRs and JIRA in-progress tickets. The fuller
+Monday "Open Work Review" (fresh + stale for both sources) described in spec
+009's overview is **not yet implemented** — it lands in slice
 [009-03](../../docs/specs/009-open-work-radar/slice-03-monday-full-inventory.md).
 Do not expand this section on Mondays until that slice is done.
 
