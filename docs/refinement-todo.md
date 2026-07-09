@@ -224,3 +224,14 @@ docs-consolidation slice.
 `fetch-github-corp.js`), but this variant adds `altKeys` + `DEFAULT_CONFIG`.
 **Resolution trigger:** A 4th caller, or the next change touching GitHub config
 loading (ADR-0002 rule-of-three).
+
+### Deferred: extract shared per-surface gather glue (rule-of-three fired)
+**Deferred by:** spec `009`, slice `009-03`.
+**Context:** `scripts/list-open-work.js` is now the THIRD inline copy of the
+GitHub surface-gather glue (also `list-open-prs.js`, `list-review-requests.js`)
+and a 2nd+ copy of the JIRA error-message mapping (also `list-inprogress.js`).
+This is the "extract on the third caller" trigger point; deferred here only to
+avoid modifying the already-DONE 009-01/009-02 sibling runners inside 009-03.
+**Resolution trigger:** A dedicated refactor slice, or the next change touching
+any of these runners — extract a shared `gatherGithubSurfaces()` + `mapJiraError()`
+(and fold in the deferred `loadGithubSection` from 009-01) then update all callers.

@@ -36,4 +36,4 @@
 | [008-legacy-docs-contract-cleanup](008-legacy-docs-contract-cleanup/spec.md) | 008-03 - legacy-cowork-doc-triage | **DONE** |  |
 | [009-open-work-radar](009-open-work-radar/spec.md) | 009-01 — github-open-pr-staleness | **DONE** |  |
 | [009-open-work-radar](009-open-work-radar/spec.md) | 009-02 — jira-inprogress-staleness | **DONE** |  |
-| [009-open-work-radar](009-open-work-radar/spec.md) | 009-03 — monday-full-inventory | READY_FOR_IMPLEMENTATION |  |
+| [009-open-work-radar](009-open-work-radar/spec.md) | 009-03 — monday-full-inventory | **DONE** |  |
