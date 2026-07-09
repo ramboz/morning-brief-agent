@@ -66,6 +66,14 @@ If `gather_fallback` is set and the primary method fails, try the fallback.
 
 **If a tool fails**: note the error, skip it, continue. Never let one tool block others.
 
+**Open Work radar (direct script call, no sub-agent):** Also run
+`node {scripts_path}/list-open-prs.js --brief` directly — the script already
+returns pre-classified JSON (`data.openPRs`, each tagged `fresh`/`stale`/
+`very-stale`), so there's no interpretation step for a sub-agent to add. This
+feeds the "Your Open Work" section in Step 3. Like every other tool, it fails
+independently: if both GitHub surfaces are unreachable, the section is simply
+omitted with the errors noted, and the rest of the brief runs unaffected.
+
 ## Step 2 — Analyze and synthesize (Layer 1)
 
 Collect results from all sub-agents. Synthesize a unified Action Items list (max 10), ranked by priority:
@@ -123,6 +131,11 @@ Write to: `{vault_path}/{daily_notes_folder}/{YYYY-MM-DD}.md`
 {from morning-ai-radar sub-agent}
 <!-- /AGENT:ai_radar -->
 
+## 🧭 Your Open Work
+<!-- AGENT:open_work -->
+{stale/very-stale authored PRs, if any}
+<!-- /AGENT:open_work -->
+
 ---
 *Generated at {HH:MM} {TZ} — Lookback: {N}h — Duration: {Xm Ys}*
 *Agent: Morning Assistant v2 (Cowork Hybrid)*
@@ -155,6 +168,44 @@ If a deep link URL is not available for an item, still include the item but with
 Exception: If a tool was enabled but *failed* (API error, timeout), include the section with a one-line error note: `_JIRA: unavailable — connection refused_`
 
 **Relative timestamps:** Use `timeAgo()` formatting throughout — both in action items and in per-tool sections. Examples: "2h ago", "yesterday", "3d ago".
+
+**"Your Open Work" section (slice 009-01 — GitHub PRs only so far):** This
+section surfaces the user's own open, authored PRs that have gone stale — no
+activity past the configured threshold (defaults 3d 🟡 stale / 7d 🔴
+very-stale, from `config/main.json`'s `open_work.pr` block; see
+`list-open-prs.js`). On a normal (non-Monday) day, list **only** the PRs
+tagged `stale` or `very-stale` from `data.openPRs` — fresh PRs are withheld
+entirely. Each line gets a deep link (the PR's own `url` — never construct
+one) and its age, e.g.:
+
+```
+## 🧭 Your Open Work
+<!-- AGENT:open_work -->
+- 🔴 **[octo-org/web-frontend #499 — Fix flaky pagination test](https://github.com/octo-org/web-frontend/pull/499)** — no activity 7d
+- 🟡 **[octo-org/payments-service #1204 — Handle idempotency keys](https://github.yourcompany.com/octo-org/payments-service/pull/1204)** — no activity 3d
+<!-- /AGENT:open_work -->
+```
+
+Draft PRs (`isDraft: true`) are de-emphasised, not hidden — flag them
+inline, e.g. append "(draft)" after the title, since a draft that is
+WIP-by-intent is a different signal than a ready PR stuck waiting on a merge.
+
+**Section suppression applies here too:** when `data.openPRs` has no
+`stale`/`very-stale` entries, omit the "Your Open Work" section entirely —
+same rule as every other tool. If `list-open-prs.js` reported errors (e.g.
+one GitHub surface unreachable), keep the section suppressed unless there
+are stale PRs to show, but still add a one-line note to the daily note
+footer with the error, mirroring the stale-config-warning pattern.
+
+**Read-only:** this section only reports; the orchestrator never comments
+on, merges, closes, or otherwise modifies any PR it lists.
+
+**Scope note — Monday full inventory deferred:** Today this section is
+stale-only, every day. The fuller Monday "Open Work Review" (fresh +
+stale PRs, plus JIRA in-progress tickets) described in spec 009's overview
+is **not yet implemented** — it lands in slice
+[009-03](../../docs/specs/009-open-work-radar/slice-03-monday-full-inventory.md).
+Do not expand this section on Mondays until that slice is done.
 
 **Re-run / smart merge:** If the file already exists, replace only content between matching `<!-- AGENT:{key} -->` / `<!-- /AGENT:{key} -->` anchors. Preserve everything else (including user edits, checked checkboxes).
 

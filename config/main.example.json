@@ -11,6 +11,13 @@
   "lookback_hours": 24,
   "deep_dive_default_days": 7,
   "scripts_path": "/path/to/morning-brief-agent/scripts",
+  "open_work": {
+    "pr": {
+      "stale_days": 3,
+      "very_stale_days": 7,
+      "note": "Days since a PR's last activity (updated_at) before it is tagged 🟡 stale / 🔴 very-stale in the Open Work brief section (spec 009-01). Defaults used if this block is absent."
+    }
+  },
   "tools": {
     "slack": {
       "enabled": true,

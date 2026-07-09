@@ -206,3 +206,21 @@ Node test command (`npm test` / `.jig/test-command`) for focused helper tests.
 A broader CI policy remains deferred.
 **Reconciliation note (2026-06-19):** CLI envelope/wiring tests remain a
 follow-up; this slice verifies the CLI path with a fixture-backed smoke run.
+
+## Open-work radar (spec 009) — deferred follow-ups
+
+### Deferred: architecture.md module-boundary wording
+**Deferred by:** spec `009`, slice `009-01`.
+**Context:** The "Module boundaries" section still names `scripts/fetch-*.js` as
+the source-fetcher convention; the `list-*.js` runner + `lib/github/*` pure-
+transform pattern (spec 005, extended by 009) has outpaced it.
+**Resolution trigger:** Next edit to the module-boundaries section, or a
+docs-consolidation slice.
+
+### Deferred: shared `loadGithubSection` helper
+**Deferred by:** spec `009`, slice `009-01`.
+**Context:** `loadSection` in `list-open-prs.js` is the 3rd site of the
+`loadConfig('github')` + key-fallback pattern (also `fetch-github-com.js`,
+`fetch-github-corp.js`), but this variant adds `altKeys` + `DEFAULT_CONFIG`.
+**Resolution trigger:** A 4th caller, or the next change touching GitHub config
+loading (ADR-0002 rule-of-three).
