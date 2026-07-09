@@ -223,9 +223,19 @@ export async function enrichNotification(baseUrl, token, notification, fetchCi, 
     const subjectApiUrl = notification.subject?.url
     if (!subjectApiUrl) return base
 
-    const subjectPath = subjectApiUrl.startsWith('https://')
-      ? new URL(subjectApiUrl).pathname + new URL(subjectApiUrl).search
-      : subjectApiUrl
+    // subject.url is an absolute API URL. On GitHub Enterprise it already
+    // includes the base's /api/v3 prefix, so we must strip the whole baseUrl
+    // (not just the origin) before githubGet re-prepends it — otherwise the
+    // prefix doubles (…/api/v3/api/v3/…) and every enrichment 404s. This
+    // mirrors the next-page handling in fetchAllNotifications.
+    let subjectPath
+    if (subjectApiUrl.startsWith(baseUrl)) {
+      subjectPath = subjectApiUrl.slice(baseUrl.length)
+    } else if (subjectApiUrl.startsWith('https://')) {
+      subjectPath = new URL(subjectApiUrl).pathname + new URL(subjectApiUrl).search
+    } else {
+      subjectPath = subjectApiUrl
+    }
 
     const { data: subject } = await githubGet(baseUrl, token, subjectPath)
     const htmlUrl = subject.html_url ?? null
